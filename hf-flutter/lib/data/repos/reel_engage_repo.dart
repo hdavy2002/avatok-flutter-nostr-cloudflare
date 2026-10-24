@@ -8,15 +8,19 @@ import '../models/reel_engage.dart';
 abstract class ReelEngageApi {
   Future<LikeResult> setLike(String reelId, bool on);
   Future<CommentsPage> comments(String reelId, {String? cursor});
-  Future<ReelComment> send(String reelId, String body, {String? parentId});
+  Future<SentComment> send(String reelId, String body, {String? parentId});
   Future<void> delete(String commentId);
-  Future<void> report(String commentId, String reason);
+  Future<ReportResult> report(String commentId, String reason);
 }
 
 /// Plain-English text for a refused comment (spec 4.4). Falls back to the server's own sentence, then a generic one.
 String engageErrorText(Object e, {String fallback = 'Could not do that. Please try again.'}) {
   if (e is ApiException) {
     switch (e.code) {
+      case 'not_verified':
+        return e.message ?? 'Please verify your WhatsApp number first.';
+      case 'bad_parent':
+        return 'That comment is no longer there, so you cannot reply to it.';
       case 'empty':
         return 'Write something first.';
       case 'too_long':
@@ -55,11 +59,8 @@ class ReelEngageRepo implements ReelEngageApi {
   );
 
   @override
-  Future<ReelComment> send(String reelId, String body, {String? parentId}) async {
-    final j = await _api.postJson('${_p(reelId)}/comments', body: {'body': body, if (parentId != null) 'parentId': parentId});
-    final item = j['item'] is Map ? j['item'] : j;
-    return ReelComment.fromJson(Map<String, dynamic>.from(item as Map));
-  }
+  Future<SentComment> send(String reelId, String body, {String? parentId}) async =>
+      SentComment.fromJson(await _api.postJson('${_p(reelId)}/comments', body: {'body': body, if (parentId != null) 'parentId': parentId}));
 
   @override
   Future<void> delete(String commentId) async {
@@ -67,9 +68,8 @@ class ReelEngageRepo implements ReelEngageApi {
   }
 
   @override
-  Future<void> report(String commentId, String reason) async {
-    await _api.postJson('/api/hf/reels/comments/${Uri.encodeComponent(commentId)}/report', body: {'reason': reason});
-  }
+  Future<ReportResult> report(String commentId, String reason) async =>
+      ReportResult.fromJson(await _api.postJson('/api/hf/reels/comments/${Uri.encodeComponent(commentId)}/report', body: {'reason': reason}));
 }
 
 /// Demo build: likes and comments live in memory only.
@@ -89,7 +89,7 @@ class DemoReelEngage implements ReelEngageApi {
       CommentsPage(items: List.of(_byReel[reelId] ?? const []));
 
   @override
-  Future<ReelComment> send(String reelId, String body, {String? parentId}) async {
+  Future<SentComment> send(String reelId, String body, {String? parentId}) async {
     final c = ReelComment(
       id: 'demo_${_n++}',
       authorName: authorName,
@@ -106,7 +106,7 @@ class DemoReelEngage implements ReelEngageApi {
       final i = list.indexWhere((e) => e.id == parentId);
       if (i >= 0) list[i] = list[i].withReplies([...list[i].replies, c]);
     }
-    return c;
+    return SentComment(item: c);
   }
 
   @override
@@ -121,5 +121,5 @@ class DemoReelEngage implements ReelEngageApi {
   }
 
   @override
-  Future<void> report(String commentId, String reason) async {}
+  Future<ReportResult> report(String commentId, String reason) async => const ReportResult(reported: true);
 }

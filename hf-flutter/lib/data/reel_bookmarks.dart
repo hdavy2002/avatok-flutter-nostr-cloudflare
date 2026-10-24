@@ -66,6 +66,8 @@ class ReelBookmarks extends ChangeNotifier {
     return _loading ??= _fetch(_epoch);
   }
 
+  static Map<String, int> _count(EngageCount c) => {'platform': c.platform, 'ours': c.ours, 'total': c.total};
+
   Map<String, dynamic> _json(FeedReel r) => {
     'id': r.id,
     'platform': r.platform,
@@ -75,6 +77,9 @@ class ReelBookmarks extends ChangeNotifier {
     'caption': r.caption,
     'likes': r.likes,
     'views': r.views,
+    if (r.likeCounts != null) 'likeCounts': _count(r.likeCounts!),
+    if (r.commentCounts != null) 'commentCounts': _count(r.commentCounts!),
+    if (r.likeCounts != null) 'likedByMe': r.likedByMe,
     'host': {
       'slug': r.host.slug,
       'name': r.host.name,

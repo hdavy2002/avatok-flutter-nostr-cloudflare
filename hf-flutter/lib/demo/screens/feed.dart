@@ -514,6 +514,13 @@ class _ReelPageState extends State<ReelPage>
       builder: (context, _) {
         final faved = bookmarks?.isSaved(widget.real!.id) ?? demo.isFav(r.id);
         final eState = engageOn ? engage.of(engageId) : null;
+        // [HF-REEL-ENGAGE-APP-1] On a short screen the "Reel information" button leaves the column (it moves to the bottom-left)
+        // so nothing has to shrink: text never renders under 14 sp.
+        return LayoutBuilder(builder: (context, box) {
+        final buttons = 5 + (eState != null ? 2 : 0) + 1;
+        final natural = buttons * 64.0 + (eState != null ? 40.0 : 0.0);
+        final avail = box.maxHeight - MediaQuery.paddingOf(context).top - 8 - 12;
+        final short = avail < natural;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -630,6 +637,17 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
+            if (short)
+              Positioned(
+                left: 8,
+                bottom: _originalUrl != null ? 15 + 64 : 15,
+                child: _action(
+                  'Reel information',
+                  Icons.info_outline_rounded,
+                  () => _whileCovered(() => _info(context)),
+                  key: const ValueKey('reel-info-left'),
+                ),
+              ),
             // [HF-REEL-ORIGINAL-1] bottom-left: the original post (Instagram / YouTube) in an in-app page with an X back
             if (_originalUrl != null)
               Positioned(
@@ -650,18 +668,17 @@ class _ReelPageState extends State<ReelPage>
               right: 8,
               bottom: 12,
               top: MediaQuery.paddingOf(context).top + 8,
-              // a short phone shrinks the column a little instead of cutting buttons off the top
-              child: FittedBox(
-               fit: BoxFit.scaleDown,
+              child: Align(
                alignment: Alignment.bottomRight,
                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _action(
-                    'Reel information',
-                    Icons.info_outline_rounded,
-                    () => _whileCovered(() => _info(context)),
-                  ),
+                  if (!short)
+                    _action(
+                      'Reel information',
+                      Icons.info_outline_rounded,
+                      () => _whileCovered(() => _info(context)),
+                    ),
                   _action(
                     'Open ${who.name} profile',
                     Icons.person_outline_rounded,
@@ -765,6 +782,7 @@ class _ReelPageState extends State<ReelPage>
             ),
           ],
         );
+        });
       },
     );
   }

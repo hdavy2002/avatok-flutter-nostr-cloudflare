@@ -120,7 +120,13 @@ void main() {
       final api = _Api((m, p, q, b) {
         if (p.endsWith('/like')) return {'liked': m == 'POST', 'likes': {'platform': 1, 'ours': m == 'POST' ? 1 : 0, 'total': m == 'POST' ? 2 : 1}};
         if (m == 'GET') return {'items': [], 'counts': {}};
-        if (m == 'POST' && p.endsWith('/comments')) return {'id': 'hfrc_9', 'author': {'name': 'Me'}, 'body': (b as Map)['body'], 'mine': true, 'parentId': b['parentId']};
+        if (m == 'POST' && p.endsWith('/comments')) {
+          return {
+            'item': {'id': 'hfrc_9', 'author': {'name': 'Me'}, 'body': (b as Map)['body'], 'mine': true, 'parentId': b['parentId']},
+            'counts': {'likes': {'platform': 1, 'ours': 0}, 'comments': {'platform': 3, 'ours': 1}},
+          };
+        }
+        if (p.endsWith('/report')) return {'reported': true, 'hidden': true};
         return {'ok': true};
       });
       final repo = ReelEngageRepo(api);
@@ -130,10 +136,12 @@ void main() {
       expect((await repo.setLike('hfrl_1', false)).liked, isFalse);
       await repo.comments('hfrl_1', cursor: 'c1');
       final c = await repo.send('hfrl_1', 'Hello', parentId: 'hfrc_1');
-      expect(c.body, 'Hello');
-      expect(c.parentId, 'hfrc_1');
+      expect(c.item.body, 'Hello');
+      expect(c.item.parentId, 'hfrc_1');
+      expect(c.comments!.total, 4);
       await repo.delete('hfrc_9');
-      await repo.report('hfrc_9', 'spam');
+      final rep = await repo.report('hfrc_9', 'spam');
+      expect(rep.reported && rep.hidden, isTrue);
       expect(api.calls, [
         'POST /api/hf/reels/hfrl_1/like',
         'DELETE /api/hf/reels/hfrl_1/like',
@@ -151,6 +159,12 @@ void main() {
       expect(engageErrorText(e(422, 'empty')), contains('Write something'));
       expect(engageErrorText(e(429, 'http_429')), contains('too fast'));
       expect(engageErrorText(e(401, 'unauthorized')), contains('sign in'));
+      expect(engageErrorText(e(422, 'bad_parent')), contains('no longer there'));
+      expect(
+        engageErrorText(const ApiException(kind: ApiFailure.http, status: 403, code: 'not_verified', message: 'Please verify your WhatsApp number first.')),
+        'Please verify your WhatsApp number first.',
+      );
+      expect(engageErrorText(e(403, 'not_verified')), contains('verify your WhatsApp'));
       expect(engageErrorText(StateError('x'), fallback: 'fb'), 'fb');
     });
   });

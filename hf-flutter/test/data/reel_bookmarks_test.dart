@@ -87,6 +87,25 @@ void main() {
       expect(api.saved, isEmpty);
     },
   );
+  test('a saved reel keeps its like and comment numbers when restored', () async {
+    const counted = FeedReel(
+      id: 'hfrl_abcdefgh1234',
+      host: ReelHost(slug: 'maya', name: 'Maya'),
+      embedUrl: 'https://www.youtube.com/embed/video',
+      likeCounts: EngageCount(platform: 10, ours: 2),
+      commentCounts: EngageCount(platform: 3, ours: 1),
+      likedByMe: true,
+    );
+    final api = FakeApi();
+    await ReelBookmarks(api, () => 'account-a').toggle(counted);
+    final restored = ReelBookmarks(api, () => 'account-a');
+    await restored.load();
+    final r = restored.items.single;
+    expect(r.engagementOn, isTrue);
+    expect(r.likeCounts!.total, 12);
+    expect(r.commentCounts!.ours, 1);
+    expect(r.likedByMe, isTrue);
+  });
   test(
     'account changes and sign-out never reveal the previous saved list',
     () async {

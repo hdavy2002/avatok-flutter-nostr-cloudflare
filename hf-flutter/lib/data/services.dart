@@ -21,6 +21,7 @@ import 'repos/me_repo.dart';
 import 'repos/merch_repo.dart'; // [HF-MERCH-APP-1]
 import 'repos/payouts_repo.dart';
 import 'repos/queue_repo.dart'; // [HF-CALL-MODES-E2]
+import 'reel_engage_store.dart';
 import 'repos/reel_engage_repo.dart';
 import 'repos/reels_repo.dart';
 import 'repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
@@ -110,6 +111,7 @@ class Services {
     PushNotifications.forget(); // [HF-BOOK-APPROVE-PUSH] the session is gone, so the token cannot be removed from here
     demo.signOut();
     FavouritesStore.instance.reset(); // [HF-WIRE-9]
+    ReelEngageStore.instance.clear(); // [HF-REEL-ENGAGE-APP-1] nobody's likes leak to the next account
   }
 
   /// [HF-APP-CACHE-1] Wipe this account's cached reads (memory and disk) so the next person on this phone never sees them.
@@ -222,6 +224,7 @@ class Services {
     _prefetchedFor = null;
     demo.signOut();
     FavouritesStore.instance.reset(); // [HF-WIRE-9]
+    ReelEngageStore.instance.clear(); // [HF-REEL-ENGAGE-APP-1] nobody's likes leak to the next account
   }
 
   /// Android versionCode, or 0 when unknown (never nag on a guess).

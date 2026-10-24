@@ -42,17 +42,20 @@ class _Repo implements ReelEngageApi {
   Future<CommentsPage> comments(String reelId, {String? cursor}) async => CommentsPage(items: List.of(existing));
 
   @override
-  Future<ReelComment> send(String reelId, String body, {String? parentId}) async {
+  Future<SentComment> send(String reelId, String body, {String? parentId}) async {
     if (sendError != null) throw sendError!;
     sent.add(body);
-    return ReelComment(id: 'hfrc_${sent.length}', authorName: 'Fan', body: body, mine: true, createdAt: DateTime.now().millisecondsSinceEpoch, parentId: parentId);
+    return SentComment(
+      item: ReelComment(id: 'hfrc_${sent.length}', authorName: 'Fan', body: body, mine: true, createdAt: DateTime.now().millisecondsSinceEpoch, parentId: parentId),
+      comments: EngageCount(platform: 30, ours: 4 + sent.length),
+    );
   }
 
   @override
   Future<void> delete(String commentId) async {}
 
   @override
-  Future<void> report(String commentId, String reason) async {}
+  Future<ReportResult> report(String commentId, String reason) async => const ReportResult(reported: true);
 }
 
 FeedReel _reel({bool on = true, String platform = 'youtube', bool liked = false}) => FeedReel.fromJson({
@@ -69,8 +72,8 @@ FeedReel _reel({bool on = true, String platform = 'youtube', bool liked = false}
   },
 });
 
-Future<void> _pump(WidgetTester tester, FeedReel r, ReelEngageApi repo) async {
-  tester.view.physicalSize = const Size(900, 2000);
+Future<void> _pump(WidgetTester tester, FeedReel r, ReelEngageApi repo, {Size size = const Size(900, 2000)}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final router = GoRouter(initialLocation: '/start', routes: [
@@ -247,5 +250,26 @@ void main() {
     await _settle(tester);
     expect(find.byType(SignUpSheet), findsOneWidget);
     expect(repo.likes, isEmpty);
+  });
+
+  testWidgets('a short screen moves Reel information to the bottom-left and nothing shrinks', (tester) async {
+    await _pump(tester, _reel(), _Repo(), size: const Size(400, 560));
+    expect(find.byKey(const ValueKey('reel-info-left')), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline_rounded), findsWidgets);
+    expect(find.byType(FittedBox), findsNothing);
+    final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));
+    expect(count.style!.fontSize, greaterThanOrEqualTo(14));
+  });
+
+  testWidgets('a tall screen keeps Reel information in the column', (tester) async {
+    await _pump(tester, _reel(), _Repo());
+    expect(find.byKey(const ValueKey('reel-info-left')), findsNothing);
+  });
+
+  test('signing out clears the shared like state', () {
+    final s = ReelEngageStore();
+    s.seed('a', likes: const EngageCount(platform: 1), comments: const EngageCount(), liked: true);
+    s.clear();
+    expect(s.of('a'), isNull);
   });
 }

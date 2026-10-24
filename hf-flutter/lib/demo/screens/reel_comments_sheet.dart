@@ -216,9 +216,12 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
     _bumpComments(1);
     Telemetry.event('hf_reel_action', {'action': 'comment_send'});
     try {
-      final saved = await widget.repo.send(widget.reelId, body, parentId: parentId);
+      final sent = await widget.repo.send(widget.reelId, body, parentId: parentId);
+      // the server's numbers win over our +1
+      final cc = sent.comments;
+      if (cc != null) widget.store.update(widget.reelId, (s) => s.copyWith(comments: cc, likes: sent.likes ?? s.likes));
       if (!mounted) return;
-      setState(() => _swap(tmpId, saved));
+      setState(() => _swap(tmpId, sent.item));
     } catch (e) {
       _bumpComments(-1);
       if (!mounted) return;
@@ -310,8 +313,9 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
     );
     if (reason == null) return;
     try {
-      await widget.repo.report(c.id, reason);
+      final res = await widget.repo.report(c.id, reason);
       Telemetry.event('hf_reel_action', {'action': 'comment_report'});
+      if (res.hidden && mounted) setState(() => _remove(c.id));
       _say('Thank you. We will look at it.', error: false);
     } catch (e) {
       _say(engageErrorText(e, fallback: 'Could not send your report. Please try again.'));

@@ -111,6 +111,34 @@ class CommentsPage {
   }
 }
 
+/// Answer of `POST .../comments`: `{item, counts:{likes, comments}}`.
+class SentComment {
+  const SentComment({required this.item, this.likes, this.comments});
+
+  final ReelComment item;
+  final EngageCount? likes;
+  final EngageCount? comments;
+
+  factory SentComment.fromJson(Map<String, dynamic> j) {
+    final c = j['counts'] is Map ? Map<String, dynamic>.from(j['counts'] as Map) : const <String, dynamic>{};
+    return SentComment(
+      item: ReelComment.fromJson(j['item'] is Map ? Map<String, dynamic>.from(j['item'] as Map) : const <String, dynamic>{}),
+      likes: EngageCount.tryParse(c['likes']),
+      comments: EngageCount.tryParse(c['comments']),
+    );
+  }
+}
+
+/// Answer of `POST .../comments/:cid/report`: `{reported, hidden}`.
+class ReportResult {
+  const ReportResult({this.reported = false, this.hidden = false});
+
+  final bool reported;
+  final bool hidden;
+
+  factory ReportResult.fromJson(Map<String, dynamic> j) => ReportResult(reported: j['reported'] == true, hidden: j['hidden'] == true);
+}
+
 /// Answer of a like / unlike.
 class LikeResult {
   const LikeResult({required this.liked, required this.likes});
