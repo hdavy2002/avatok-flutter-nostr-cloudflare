@@ -600,3 +600,4 @@
   .gp .soc .nums{gap:10px}
   .gp .soc .nums b{font-size:18px}
 }
+@media(max-width:900px){.gp .info .hf-sb{justify-content:center;margin-inline:auto}} /* [HF-CHANNEL-MOBILE-1] badges centred on phones */
