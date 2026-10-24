@@ -1,5 +1,5 @@
 /* [HF-MERCH-STUDIO-2] Print export + mockups for the studio. exportDesign() renders every visible layer at 300 DPI (long side capped at 5000 px) into ONE transparent
- * PNG = union box of the layers clipped to the print area (spec section 2). Layers are drawn by the same Konva nodes the stage uses (nodes.ts). */
+ * PNG = union box of the layers clipped to the print area (spec section 2). [HF-MERCH-AI-HIRES-1] A PNG over 14 MB is redrawn smaller (never under 200 DPI) to fit the 15 MB limit. Layers are drawn by the same Konva nodes the stage uses (nodes.ts). */
 import type Konva from 'konva';
 import { EXPORT_DPI, EXPORT_MAX_PX } from '../../../../lib/studioGeometry';
 import { canvasToBlob } from '../../../../lib/printFile';
@@ -12,6 +12,11 @@ export class ExportError extends Error {
   constructor(public code: 'nothing' | 'unreadable_picture' | 'canvas', message: string) { super(message); }
 }
 export const UNREADABLE = 'Could not read the picture — please upload it again.';
+/** [HF-MERCH-AI-HIRES-1] The server and Printrove take print files up to 15 MB (MERCH_PRINT_MAX_BYTES); we aim a little under it. */
+export const PRINT_LIMIT_BYTES = 15 * 1024 * 1024;
+export const EXPORT_MAX_BYTES = 14 * 1024 * 1024;
+/** Lowest DPI a too-big file is redrawn at ("Good" in dpiQuality). */
+export const EXPORT_MIN_DPI = 200;
 
 export interface ExportResult {
   blob: Blob; canvas: HTMLCanvasElement; preview: Blob;
@@ -74,29 +79,44 @@ export async function exportDesign(input: { layers: Layer[]; areaIn: { w: number
 
   const temp: string[] = [];
   const prevRatio = K.pixelRatio;
-  let stage: Konva.Stage | null = null;
+  const held: { stage: Konva.Stage | null } = { stage: null };
   try {
     // images first (async), then build the stage in one synchronous go with pixelRatio 1 (a retina 2x canvas of 5000 px would not fit in memory)
-    const imgs = new Map<string, CanvasImageSource>();
+    const els = new Map<string, HTMLImageElement>();
     for (const l of input.layers) {
       if (l.type !== 'image' || !l.visible) continue;
-      const el = await loadPicture(sourceFor(l, input.arts), temp);
-      imgs.set(l.id, prescale(el, l.w * ppi, l.h * ppi));
+      els.set(l.id, await loadPicture(sourceFor(l, input.arts), temp));
     }
-    K.pixelRatio = 1;
-    stage = new K.Stage({ container: document.createElement('div'), width: widthPx, height: heightPx });
-    const lay = new K.Layer(); stage.add(lay);
-    for (const l of input.layers) {
-      if (!l.visible) continue;
-      const node = createNode(K, l);
-      applyLayer(node, l, ppi, -bounds.left * ppi, -bounds.top * ppi);
-      if (l.type === 'image') (node as Konva.Image).image(imgs.get(l.id) as CanvasImageSource as HTMLImageElement);
-      lay.add(node);
+    const draw = (): HTMLCanvasElement => {
+      held.stage?.destroy();
+      K.pixelRatio = 1;
+      const stage = new K.Stage({ container: document.createElement('div'), width: widthPx, height: heightPx });
+      held.stage = stage;
+      const lay = new K.Layer(); stage.add(lay);
+      for (const l of input.layers) {
+        if (!l.visible) continue;
+        const node = createNode(K, l);
+        applyLayer(node, l, ppi, -bounds.left * ppi, -bounds.top * ppi);
+        const el = els.get(l.id);
+        if (l.type === 'image' && el) (node as Konva.Image).image(prescale(el, l.w * ppi, l.h * ppi) as HTMLImageElement);
+        lay.add(node);
+      }
+      lay.draw();
+      const c = stage.toCanvas({ pixelRatio: 1 }) as HTMLCanvasElement;
+      K.pixelRatio = prevRatio;
+      return c;
+    };
+    let canvas = draw();
+    let blob = await canvasToBlob(canvas, 'image/png');
+    // [HF-MERCH-AI-HIRES-1] A big, detailed picture (a sharp 4K AI picture across the whole shirt) can make a PNG over the 15 MB print-file limit.
+    // Then draw it again a little smaller, never under EXPORT_MIN_DPI (the print stays "Good"); the server and Printrove both cap the file at 15 MB.
+    for (let i = 0; i < 3 && blob.size > EXPORT_MAX_BYTES && ppi > EXPORT_MIN_DPI; i++) {
+      ppi = Math.max(EXPORT_MIN_DPI, ppi * Math.sqrt(EXPORT_MAX_BYTES / blob.size) * 0.92);
+      widthPx = Math.max(1, Math.round(bounds.w * ppi)); heightPx = Math.max(1, Math.round(bounds.h * ppi)); scaledDown = true;
+      canvas = draw();
+      blob = await canvasToBlob(canvas, 'image/png');
     }
-    lay.draw();
-    const canvas = stage.toCanvas({ pixelRatio: 1 }) as HTMLCanvasElement;
-    K.pixelRatio = prevRatio;
-    const blob = await canvasToBlob(canvas, 'image/png');
+    if (blob.size > PRINT_LIMIT_BYTES) throw new ExportError('canvas', 'Your design makes a print file that is too big. Make the picture a little smaller on the product and try again.');
     const pk = Math.min(1, 1600 / Math.max(canvas.width, canvas.height));
     const pc = canvasOf(canvas.width * pk, canvas.height * pk);
     const pctx = pc.getContext('2d');
@@ -107,7 +127,7 @@ export async function exportDesign(input: { layers: Layer[]; areaIn: { w: number
     return { blob, canvas, preview, wIn: bounds.w, hIn: bounds.h, leftIn: bounds.left, topIn: bounds.top, widthPx: canvas.width, heightPx: canvas.height, dpi: Math.round(canvas.width / bounds.w), scaledDown };
   } finally {
     K.pixelRatio = prevRatio;
-    stage?.destroy();
+    held.stage?.destroy();
     temp.forEach(u => URL.revokeObjectURL(u));
   }
 }

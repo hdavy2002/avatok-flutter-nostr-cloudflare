@@ -15,6 +15,12 @@ import 'silhouettes.dart';
 const double kExportDpi = 300;
 const int kExportMaxPx = 5000;
 
+/// [HF-MERCH-AI-HIRES-1] The server and Printrove take print files up to 15 MB. A PNG over [kPrintTargetBytes] is drawn again a little
+/// smaller, never under [kExportMinDpi] ("Good"). Same rule as the web studio (exportPrint.ts).
+const int kPrintLimitBytes = 15 * 1024 * 1024;
+const int kPrintTargetBytes = 14 * 1024 * 1024;
+const double kExportMinDpi = 200;
+
 /// A failure with a sentence that is safe to show.
 class StudioExportException implements Exception {
   const StudioExportException(this.message);
@@ -128,22 +134,35 @@ Future<ExportOutput> renderPrint({
         throw const StudioExportException('Could not read the picture - please add it again.');
       }
     }
-    final rec = ui.PictureRecorder();
-    final canvas = ui.Canvas(rec, ui.Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()));
-    canvas.clipRect(ui.Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()));
-    final origin = ui.Offset(-bounds.left * ppi, -bounds.top * ppi);
-    for (final l in layers) {
-      if (!l.visible || l.opacity <= 0.01) continue;
-      paintLayer(canvas, l, ppi: ppi, origin: origin, image: l is ImageDesignLayer ? decoded[l.id] : null);
+    var png = Uint8List(0);
+    late ui.Image printImage;
+    for (var attempt = 0;; attempt++) {
+      full?.dispose();
+      full = null;
+      final rec = ui.PictureRecorder();
+      final canvas = ui.Canvas(rec, ui.Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()));
+      canvas.clipRect(ui.Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()));
+      final origin = ui.Offset(-bounds.left * ppi, -bounds.top * ppi);
+      for (final l in layers) {
+        if (!l.visible || l.opacity <= 0.01) continue;
+        paintLayer(canvas, l, ppi: ppi, origin: origin, image: l is ImageDesignLayer ? decoded[l.id] : null);
+      }
+      final pic = rec.endRecording();
+      final drawn = await pic.toImage(widthPx, heightPx).whenComplete(pic.dispose);
+      full = drawn;
+      printImage = drawn;
+      png = await encodePng(drawn);
+      // [HF-MERCH-AI-HIRES-1] Too big for the 15 MB limit: draw it again a little smaller (at most 3 times, never under 200 DPI).
+      if (png.length <= kPrintTargetBytes || ppi <= kExportMinDpi || attempt >= 3) break;
+      ppi = math.max(kExportMinDpi, ppi * math.sqrt(kPrintTargetBytes / png.length) * 0.92);
+      widthPx = math.max(1, (bounds.width * ppi).round());
+      heightPx = math.max(1, (bounds.height * ppi).round());
+      scaledDown = true;
     }
-    final pic = rec.endRecording();
-    try {
-      full = await pic.toImage(widthPx, heightPx);
-    } finally {
-      pic.dispose();
+    if (png.length > kPrintLimitBytes) {
+      throw const StudioExportException('Your design makes a print file that is too big. Make the picture a little smaller on the product and try again.');
     }
-    final png = await encodePng(full);
-    final small = await scaledCopy(full, 1400);
+    final small = await scaledCopy(printImage, 1400);
     Uint8List preview;
     if (math.max(small.width, small.height) <= 1200) {
       preview = await encodePng(small);

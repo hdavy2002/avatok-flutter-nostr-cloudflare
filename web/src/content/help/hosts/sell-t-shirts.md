@@ -3,7 +3,7 @@ title: "How do I sell T-shirts as an influencer?"
 description: "Upload your art, pick a T-shirt, set your markup and publish. We print and deliver every order. You earn 60% of your markup."
 section: hosts
 order: 9
-updated: 2026-10-23
+updated: 2026-10-24
 keywords: ["merch", "t-shirt", "sell", "markup", "product", "review", "print on demand", "own this art", "quality meter", "base price"]
 audience: creator
 faq:
@@ -19,6 +19,8 @@ faq:
     a: "No. You can start without one. There is an optional GSTIN field if you have a number and want to add it."
   - q: "Do fans get a GST invoice?"
     a: "Yes. We sell every item, so we send the fan a GST invoice by email and it is in their My orders."
+  - q: "My picture is too blurry to print. What can I do?"
+    a: "Tap Make it sharper (free) in the studio. We make a bigger, sharper copy of the picture (up to 10 a day). You can also make the picture smaller on the product, or use a bigger file. We make AI pictures extra large so they can fill a whole T-shirt front."
   - q: "Why is my product waiting?"
     a: "Every new product is reviewed by our team before it goes on sale. You tick that you own the art."
 draft: false
@@ -34,7 +36,7 @@ You can sell T-shirts, hoodies, mugs, bottles, phone cases, posters and more wit
 1. Open **Merch** in your dashboard or in the app.
 2. Upload your art and tick **I own this art**.
 3. Pick a T-shirt. Choose the **front or the back**, the **colours** and the **sizes** (S to 5XL).
-4. Place your art on the shirt. A **quality meter** tells you if the art is too small or blurry to print well, and it will not let a blurry print go through.
+4. Place your art on the shirt. A **quality meter** tells you if the art is too small or blurry to print well, and it will not let a blurry print go through. If a picture is too blurry at the size you want, tap **Make it sharper (free)**: we make a bigger, sharper copy of it (up to 10 a day). We make AI pictures extra large so they can fill the whole front of a T-shirt.
 5. Add your **markup**. The lowest markup is **₹10** (currently).
 6. Send it for review.
 

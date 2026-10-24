@@ -64,6 +64,9 @@ p.ms-q{margin:0; width:max-content; max-width:100%}
 .ms-note.busy{border-left-color:var(--ms-indigo); background:var(--ms-lav); color:var(--ms-indigo); display:flex; align-items:center; gap:10px}
 .ms-err{margin:0; color:#b0124f; font-size:15px; font-weight:700}
 .ms-hint{margin:0; font-size:15px; color:var(--ms-muted)}
+/* [HF-MERCH-AI-HIRES-1] "Make it sharper" row under the blurry-picture note */
+.ms-sharp{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px}
+.ms-sharp .ms-err{flex-basis:100%}
 .ms-empty{margin:0; padding:14px 16px; border-radius:16px; background:var(--ms-cream); border:1.5px dashed var(--ms-line2); color:var(--ms-muted); font-size:15px}
 
 /* ── layout ── */

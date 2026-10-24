@@ -1,7 +1,7 @@
 // [HF-MERCH-CORE-1 2026-10-23] Influencer merch shop: influencer, public and fan routes. Spec: Specs/SPEC-2026-10-23-HF-MERCH.md section 5.
 // Every response is { ok:true, ... } or { ok:false, error, message }. Everything is dark behind hfMerchEnabled (404 not_enabled);
 // checkout is also behind hfMerchCheckoutEnabled (403 checkout_off). Admin routes live in routes/admin2_merch.ts.
-//   Influencer: GET catalog | GET quote | POST art | GET ai | POST ai/generate | DELETE ai/pictures/:artId | POST art/:id/remove-bg | GET art/:id/file | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
+//   Influencer: GET catalog | GET quote | POST art | GET ai | POST ai/generate | DELETE ai/pictures/:artId | POST art/:id/remove-bg | POST art/:id/upscale | GET art/:id/file | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
 //   Public:     GET public/:host | GET public/:host/:product | GET pincode/:pin | GET sitemap
 //   Fan:        POST checkout | GET my-orders(/:id) | POST my-orders/:id/problem(-photo) | GET addresses | DELETE addresses/:id
 //   Gateway:    POST webhook/cashfree
@@ -36,6 +36,7 @@ import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt
 import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
 import { AI_UNAVAILABLE, aiState, aiTableOk, deleteAiPicture, generateAiPicture, removeBackground } from "../lib/hf_merch_ai";
 import { merchPublicCategory } from "../lib/hf_merch_public_category"; // [HF-CHANNEL-CORE-1]
+import { upscaleMerchArt } from "../lib/hf_merch_upscale"; // [HF-MERCH-AI-HIRES-1]
 
 const APP = "hf_merch";
 const SELLER_STATUSES = ["new", "processing", "shipped", "delivered", "cancelled"];
@@ -161,6 +162,12 @@ async function removeBgRoute(env: Env, s: SellerCtx, artId: string): Promise<Res
   const limited = await rateLimit(env, `merch:bgrm:${s.uid}`, 60, 3600); if (limited) return limited;
   const r = await removeBackground(env, s.uid, artId);
   return r.ok ? out({ art: r.art }) : failOf(r);
+}
+
+/** [HF-MERCH-AI-HIRES-1] Free "Make it sharper": a new, bigger copy of the picture (10 a day, limited inside upscaleMerchArt). */
+async function upscaleRoute(env: Env, s: SellerCtx, artId: string): Promise<Response> {
+  const r = await upscaleMerchArt(env, s.uid, artId);
+  return r.ok ? out({ art: r.art, fromW: r.fromW, toW: r.toW }) : failOf(r);
 }
 
 /** Products made before the breakdown was frozen need today's reference shipping to show a split; fetched only when one is present. */
@@ -523,6 +530,7 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
       if (rest.length === 3 && b2 === "pictures" && m === "DELETE") return await aiDeleteRoute(env, s, c2);
     }
     if (a === "art" && rest.length === 3 && c2 === "remove-bg" && m === "POST") return await removeBgRoute(env, s, b2);
+    if (a === "art" && rest.length === 3 && c2 === "upscale" && m === "POST") return await upscaleRoute(env, s, b2);
     if (a === "art" && rest.length === 3 && c2 === "file" && m === "GET") return await artFileRoute(env, s, b2);
     if (a === "art" && rest.length === 1 && m === "POST") return await artRoute(req, env, s);
     if (a === "print-file" && m === "POST") return await printFileRoute(req, env, s);

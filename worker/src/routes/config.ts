@@ -840,6 +840,8 @@ export interface PlatformConfig {
   hfMerchHoldDays: number;                   // days after delivery before the earning is withdrawable
   hfMerchAiEnabled: boolean;                 // [HF-MERCH-STUDIO-2] "Create with AI" pictures in the merch studio (public: the UI hides the button)
   hfMerchAiChargeRupees: number;             // [HF-MERCH-STUDIO-2] fixed rupees per AI picture, 0-500 (numericKeys; public: the UI shows the price)
+  hfMerchUpscaleEnabled: boolean;            // [HF-MERCH-AI-HIRES-1] kill switch: server upscale of small AI pictures + the free "Make it sharper" button
+  hfMerchUpscaleModel: string;               // [HF-MERCH-AI-HIRES-1] Vertex Imagen upscaler model id (stringKeys), called on us-central1
   // [HF-MERCH-GST-1] The platform is the seller; fan prices are GST-inclusive at a per-category rate (rules HF-MERCH-17/18). All server-only.
   hfMerchGstRateBps: number;                 // FALLBACK GST included in the fan price, basis points (500 = 5%), for a category the table lacks / an old product
   hfMerchPriceCapRupees: number;             // max fan price of ONE piece, any size, in categories where the table says the cap applies (clothing; 2500 keeps the 5% rate valid)
@@ -2483,6 +2485,8 @@ const DEFAULTS: PlatformConfig = {
   hfMerchHoldDays: 7,
   hfMerchAiEnabled: true,
   hfMerchAiChargeRupees: 10,
+  hfMerchUpscaleEnabled: true,
+  hfMerchUpscaleModel: "imagen-4.0-upscale-preview",
   hfMerchGstRateBps: 500,
   hfMerchPriceCapRupees: 2500,
   hfMerchHsn: "6109",
@@ -3211,7 +3215,7 @@ export async function getConfig(env: Env): Promise<Response> {
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
-  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchGstRateBps", "hfMerchPriceCapRupees", "hfMerchHsn", "hfMerchGstTable", "hfMerchRequireGstin"]) delete merged[k]; // [HF-MERCH-CORE-1] [HF-MERCH-GST-1] server-only
+  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchGstRateBps", "hfMerchPriceCapRupees", "hfMerchHsn", "hfMerchGstTable", "hfMerchRequireGstin", "hfMerchUpscaleModel"]) delete merged[k]; // [HF-MERCH-CORE-1] [HF-MERCH-GST-1] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfBookingRemindersEnabled; // [HF-APPT-REMIND-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
@@ -3401,6 +3405,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-POD-CORE-1] 'manual' | 'printrove' — string config.
     "shopPodProvider",
     "hfMerchHsn", // [HF-MERCH-GST-1] HSN code on the merch invoice (string)
+    "hfMerchUpscaleModel", // [HF-MERCH-AI-HIRES-1] Imagen upscaler model id (string)
     "hfMerchGstTable", // [HF-MERCH-GST-1] per-category GST table (JSON string)
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",

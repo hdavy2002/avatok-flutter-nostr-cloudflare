@@ -18,7 +18,7 @@ import type { ProductMerch } from "./hf_merch_types";
 import { merchFail, merchPush, merchTrack } from "./hf_merch_notify";
 import { sendAdminAlert } from "./saathum_upi3";
 import { BRAND } from "./brand";
-import { SCAN_MAX_BYTES, scanDesignImage } from "./hf_merch_scan";
+import { SCAN_MAX_BYTES, scanDesignImage, type ScanOutcome } from "./hf_merch_scan";
 
 export type PFail = { ok: false; status: number; error: string; message: string; extra?: Record<string, unknown> };
 const fail = (status: number, error: string, message: string, extra?: Record<string, unknown>): PFail => ({ ok: false, status, error, message, extra });
@@ -37,13 +37,15 @@ async function putPublic(env: Env, uid: string, sub: string, bytes: Uint8Array, 
   await env.BLOBS.put(key, bytes, { httpMetadata: { contentType: mime, cacheControl: "public, max-age=31536000, immutable" } });
   return `${env.BLOSSOM_BASE_URL}/${key}`;
 }
+/** [HF-MERCH-AI-HIRES-1] The same public upload for the upscaler (hf_merch_upscale.ts). */
+export const putMerchPublic = putPublic;
 
 // ---------------------------------------------------------------------------
 // Art
 // ---------------------------------------------------------------------------
 export type ArtResult = { ok: true; artId: string; url: string; width: number; height: number; checks: { ok: boolean; dpiAtFullWidth: number; warnings: string[] } };
 
-export async function saveMerchArt(env: Env, uid: string, bytes: Uint8Array, declaredMime: string, fileName: string): Promise<ArtResult | PFail> {
+export async function saveMerchArt(env: Env, uid: string, bytes: Uint8Array, declaredMime: string, fileName: string, bigScan: (env: Env, uid: string, url: string) => Promise<ScanOutcome> = (e, u, url) => scanDesignImage(e, u, [url])): Promise<ArtResult | PFail> {
   if (declaredMime !== "image/png" && declaredMime !== "image/jpeg") return fail(415, "unsupported_type", "Upload your art as a PNG or JPEG.");
   if (!bytes.byteLength) return fail(400, "empty", "No file received.");
   if (bytes.byteLength > MERCH_ART_MAX_BYTES) return fail(413, "too_large", "The art must be 15 MB or smaller.");
@@ -66,6 +68,17 @@ export async function saveMerchArt(env: Env, uid: string, bytes: Uint8Array, dec
   const key = `merch/${uid}/${id}/art-${sha8}.${ext}`;
   await env.DIGITAL.put(key, bytes, { httpMetadata: { contentType: info.mime }, customMetadata: { file_name: encodeURIComponent(fileName.slice(0, 200)) } });
   const url = await putPublic(env, uid, `${id}/art-`, bytes, info.mime);
+  if (moderation === "unscanned" && bytes.byteLength > SCAN_MAX_BYTES) {
+    // [HF-MERCH-AI-HIRES-1] Big art (4K AI pictures, sharper copies, big uploads): scan a small JPEG copy made by Cloudflare Images (same as product create).
+    let big: ScanOutcome = { moderation: "unscanned", blocked: false, reason: "scan_error" };
+    try { big = await bigScan(env, uid, url); } catch { /* stays unscanned; product create scans again */ }
+    if (big.blocked) {
+      try { await env.DIGITAL.delete(key); await env.BLOBS.delete(url.slice(env.BLOSSOM_BASE_URL.length + 1)); } catch { /* best effort */ }
+      await merchTrack(env, uid, "merch_art_blocked", { label: big.label, stage: "upload_big" });
+      return fail(422, "art_blocked", "We cannot print this image. Please use different art.");
+    }
+    if (big.moderation === "ok") moderation = "ok";
+  }
   const now = Date.now();
   const dpiAtFullWidth = Math.round(info.w / FULL_WIDTH_IN);
   const warnings: string[] = [];

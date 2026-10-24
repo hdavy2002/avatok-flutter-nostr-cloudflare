@@ -2,7 +2,7 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Dialog, Ic } from '../v3/ui';
 import { rupees, type AiInfo } from './api';
-import { artSrc, uploadMany } from './artUpload';
+import { uploadMany, artThumb } from './artUpload';
 import type { StudioArt } from './studio/types';
 
 const REVIEW = /checked by our team/i;
@@ -49,9 +49,10 @@ function Choices({ ai, up, onAi, compact }: { ai: AiInfo | null; up: ReturnType<
 /** [HF-MERCH-ART-REUSE-1] A tray picture: falls back from the local copy to the public file; an earlier AI picture that cannot load at all is dropped, not shown blank. */
 function TileImg({ a, onDead }: { a: StudioArt; onDead: () => void }) {
   const [useUrl, setUseUrl] = useState(false);
-  const src = useUrl ? a.url : artSrc(a);
+  const first = artThumb(a); // [HF-MERCH-AI-HIRES-1] a small copy of a remote picture; the full file if the copy cannot load
+  const src = useUrl ? a.url : first;
   return <img src={src} alt={a.label || 'Your picture'} draggable={false}
-    onError={() => { if (!useUrl && a.localUrl && a.url) setUseUrl(true); else onDead(); }} />;
+    onError={() => { if (!useUrl && a.url && first !== a.url) setUseUrl(true); else onDead(); }} />;
 }
 
 export default function StartStep({ arts, sel, setSel, remove, addArt, ai, openAi, own, setOwn, needOwn, onNext }: {

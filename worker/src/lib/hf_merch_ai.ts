@@ -14,6 +14,7 @@ import { paiseToMicro, RUPEE_LOT_VALUE_PAISE } from "./hf_token_math";
 import { parseImageInfo } from "./studio_logic";
 import { saveMerchArt, type ArtResult, type PFail } from "./hf_merch_products";
 import { merchFail, merchTrack } from "./hf_merch_notify";
+import { upscaleConfig, upscaleForPrint, type UpscaleOut } from "./hf_merch_upscale";
 
 export const AI_MODEL = "gemini-3.1-flash-image";
 export const AI_ASPECTS = ["1:1", "3:4", "4:3", "9:16"] as const;
@@ -157,7 +158,26 @@ export async function refundWalletForAi(env: Env, uid: string, genId: string): P
 // Model call (Vertex Nano Banana 2)
 // ---------------------------------------------------------------------------
 export type AiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
-export type ModelOut = { ok: true; bytes: Uint8Array; mime: string; ms: number } | { ok: false; blocked: boolean; message: string; ms: number };
+export type ModelOut = { ok: true; bytes: Uint8Array; mime: string; ms: number; imageSize?: string | null } | { ok: false; blocked: boolean; message: string; ms: number };
+
+/**
+ * [HF-MERCH-AI-HIRES-1] What we ask the model for, best first. gemini-3.1-flash-image makes 512 / 1K / 2K / 4K (4K is GA on Vertex since
+ * 2026-08-31, ~16 MP, 2,520 output tokens vs 1,680 for 2K). 4K comes back as a quality-92 JPEG (imageConfig.imageOutputOptions) so the file stays
+ * well under the 15 MB art limit; a PNG 4K would not. Each step is tried only when the one before answered 400 (an option not accepted).
+ */
+export const IMAGE_SIZE_CHAIN: ReadonlyArray<{ imageSize: "4K" | "2K" | null; jpeg: boolean }> = [
+  { imageSize: "4K", jpeg: true },
+  { imageSize: "2K", jpeg: true },
+  { imageSize: "2K", jpeg: false },
+  { imageSize: null, jpeg: false },
+];
+export function imageConfigFor(aspect: string, step: { imageSize: string | null; jpeg: boolean }): Record<string, unknown> {
+  return {
+    aspectRatio: aspect,
+    ...(step.imageSize ? { imageSize: step.imageSize } : {}),
+    ...(step.jpeg ? { imageOutputOptions: { mimeType: "image/jpeg", compressionQuality: 92 } } : {}),
+  };
+}
 
 export function b64Of(bytes: Uint8Array): string {
   let s = "";
@@ -169,13 +189,15 @@ const BLOCK_REASON = /SAFETY|PROHIBITED|BLOCKLIST|SPII|IMAGE_SAFETY|BLOCKED/i;
 
 export async function callImageModel(env: Env, parts: AiPart[], aspect: string): Promise<ModelOut> {
   const t0 = Date.now();
-  const run = (withSize: boolean) => vertexMediaRequest(env, `/publishers/google/models/${AI_MODEL}:generateContent`, {
+  const run = (step: (typeof IMAGE_SIZE_CHAIN)[number]) => vertexMediaRequest(env, `/publishers/google/models/${AI_MODEL}:generateContent`, {
     contents: [{ role: "user", parts }],
-    generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: withSize ? { aspectRatio: aspect, imageSize: "2K" } : { aspectRatio: aspect } },
+    generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: imageConfigFor(aspect, step) },
   }, { timeoutMs: VERTEX_TIMEOUT_MS });
-  let r = await run(true);
-  // The size option is not accepted everywhere: one retry without it, nothing else is retried.
-  if (!r.ok && r.status === 400 && /imageSize|invalid argument/i.test(String(r.out?.error?.message ?? ""))) r = await run(false);
+  // [HF-MERCH-AI-HIRES-1] 4K JPEG -> 2K JPEG -> 2K -> no size. Only a 400 (an option this endpoint does not accept) moves down the chain;
+  // timeouts, 5xx and safety blocks are never retried (one charge = at most one real picture).
+  let used: (typeof IMAGE_SIZE_CHAIN)[number] = IMAGE_SIZE_CHAIN[0];
+  let r = await run(used);
+  for (let i = 1; i < IMAGE_SIZE_CHAIN.length && !r.ok && r.status === 400; i++) { used = IMAGE_SIZE_CHAIN[i]; r = await run(used); }
   const ms = Date.now() - t0;
   const cand = r.out?.candidates?.[0];
   const imagePart = (cand?.content?.parts ?? []).find((p: any) => p?.inlineData?.data || p?.inline_data?.data);
@@ -183,7 +205,7 @@ export async function callImageModel(env: Env, parts: AiPart[], aspect: string):
   if (r.ok && data) {
     const bytes = bytesOfB64(String(data));
     const info = parseImageInfo(bytes);
-    if (info && (info.mime === "image/png" || info.mime === "image/jpeg")) return { ok: true, bytes, mime: info.mime, ms };
+    if (info && (info.mime === "image/png" || info.mime === "image/jpeg")) return { ok: true, bytes, mime: info.mime, ms, imageSize: used.imageSize };
     return { ok: false, blocked: false, message: "unreadable_image", ms };
   }
   const block = String(r.out?.promptFeedback?.blockReason ?? "") || String(cand?.finishReason ?? "");
@@ -195,11 +217,20 @@ export type AiDeps = {
   moderatePrompt: (env: Env, text: string) => Promise<{ safe: boolean }>;
   callModel: (env: Env, parts: AiPart[], aspect: string) => Promise<ModelOut>;
   saveArt: (env: Env, uid: string, bytes: Uint8Array, mime: string, fileName: string) => Promise<ArtResult | PFail>;
+  /** [HF-MERCH-AI-HIRES-1] Makes a small picture print-sized. Left out = no upscale step. */
+  upscale?: (env: Env, bytes: Uint8Array) => Promise<UpscaleOut>;
 };
+/** [HF-MERCH-AI-HIRES-1] The upscale step after a generation: time-limited (45 s), never throws. */
+export async function upscaleAfterGenerate(env: Env, bytes: Uint8Array): Promise<UpscaleOut> {
+  const c = await upscaleConfig(env);
+  if (!c.enabled) return { ok: false, reason: "switched_off", fromW: 0, fromH: 0, ms: 0 };
+  return upscaleForPrint(env, bytes, { model: c.model, timeoutMs: 45_000 });
+}
 export const DEFAULT_AI_DEPS: AiDeps = {
   moderatePrompt: async (env, text) => { const v = await moderate(env, { text, field: "vertex_image_prompt" }); return { safe: v.safe }; },
   callModel: callImageModel,
   saveArt: saveMerchArt,
+  upscale: upscaleAfterGenerate,
 };
 
 // ---------------------------------------------------------------------------
@@ -214,7 +245,7 @@ async function setStatus(env: Env, id: string, status: string, error: string | n
     .bind(id, status, error ? error.slice(0, 300) : null, resultArtId ?? null, Date.now()).run();
 }
 
-type ArtOut = { artId: string; url: string; width: number; height: number; checks: { ok: boolean; dpiAtFullWidth: number; warnings: string[] } };
+export type ArtOut = { artId: string; url: string; width: number; height: number; checks: { ok: boolean; dpiAtFullWidth: number; warnings: string[] } };
 async function artOf(env: Env, uid: string, artId: string): Promise<ArtOut | null> {
   const d = await metaDb(env).prepare("SELECT id, art_preview_url AS url, art_w AS w, art_h AS h FROM studio_designs WHERE id=?1 AND created_by=?2 AND step='merch'").bind(artId, uid).first<{ id: string; url: string | null; w: number | null; h: number | null }>();
   if (!d || !d.url) return null;
@@ -266,8 +297,9 @@ export async function aiState(env: Env, uid: string): Promise<Record<string, unk
     ).bind(uid).all<{ id: string; art_id: string; prompt: string; style: string | null; created_at: number; url: string; w: number; h: number }>()).results ?? [];
     recent = rows.map((r) => ({ genId: r.id, artId: r.art_id, url: r.url, width: Number(r.w), height: Number(r.h), prompt: r.prompt, style: r.style, createdAt: Number(r.created_at) }));
   }
+  const up = await upscaleConfig(env);
   return {
-    enabled, chargePaise: cfg.chargePaise, chargeRupees: cfg.chargeRupees, balancePaise: bal.availablePaidPaise, testCreditPaise: bal.availableTestPaise,
+    enabled, upscaleEnabled: up.enabled, chargePaise: cfg.chargePaise, chargeRupees: cfg.chargeRupees, balancePaise: bal.availablePaidPaise, testCreditPaise: bal.availableTestPaise,
     canAfford: cfg.chargePaise === 0 || bal.availablePaidPaise >= cfg.chargePaise, recent,
   };
 }
@@ -399,14 +431,28 @@ export async function generateAiPicture(env: Env, uid: string, b: Record<string,
       await merchFail(env, new Error(`merch_ai_provider: ${m.message}`), "ai_generate", uid, { gen_id: genId, latency_ms: m.ms });
       return await closeFail(502, "generation_failed", "We could not make that picture.", `provider:${m.message}`, "provider");
     }
-    const saved = await deps.saveArt(env, uid, m.bytes, m.mime, `ai-${genId.slice(4)}.${m.mime === "image/jpeg" ? "jpg" : "png"}`);
+    // [HF-MERCH-AI-HIRES-1] A picture smaller than ~4000 px on the long side is upscaled on the server (Imagen) so it can fill a T-shirt front sharply.
+    // Any upscale problem keeps the original; the reason goes to telemetry. Same charge either way.
+    let artBytes = m.bytes; let artMime = m.mime;
+    let upInfo: UpscaleOut | null = null;
+    if (deps.upscale) {
+      try { upInfo = await deps.upscale(env, m.bytes); } catch (e) { upInfo = { ok: false, reason: `error:${String((e as Error)?.message ?? e).slice(0, 80)}`, fromW: 0, fromH: 0, ms: 0 }; }
+      if (upInfo.ok) { artBytes = upInfo.bytes; artMime = upInfo.mime; }
+      if (upInfo.ok || (upInfo.reason !== "not_needed" && upInfo.reason !== "switched_off")) {
+        await merchTrack(env, uid, "merch_art_upscaled", { ok: upInfo.ok, from_w: upInfo.fromW, to_w: upInfo.ok ? upInfo.w : upInfo.fromW, ms: upInfo.ms, stage: "generate", gen_id: genId, image_size: m.imageSize ?? null, ...(upInfo.ok ? { factor: upInfo.factor } : { reason: upInfo.reason }) });
+      }
+    }
+    const fileFor = (mime: string) => `ai-${genId.slice(4)}.${mime === "image/jpeg" ? "jpg" : "png"}`;
+    let saved = await deps.saveArt(env, uid, artBytes, artMime, fileFor(artMime));
+    // The bigger copy could not be stored (not a safety block): keep the original picture instead.
+    if (!saved.ok && saved.error !== "art_blocked" && artBytes !== m.bytes) saved = await deps.saveArt(env, uid, m.bytes, m.mime, fileFor(m.mime));
     if (!saved.ok) {
       if (saved.error === "art_blocked") return await closeFail(422, "art_blocked", "The picture did not pass our safety check, so we did not keep it.", "art_blocked", "art_blocked");
       await merchFail(env, new Error(`merch_ai_save: ${saved.error}`), "ai_save", uid, { gen_id: genId });
       return await closeFail(502, "generation_failed", "We could not make that picture.", `save:${saved.error}`, "save");
     }
     await setStatus(env, genId, "done", null, saved.artId);
-    await merchTrack(env, uid, "merch_ai_generate", { status: "done", gen_id: genId, charge_paise: chargePaise, latency_ms: Date.now() - t0, provider_ms: m.ms, bytes: m.bytes.byteLength, art_id: saved.artId });
+    await merchTrack(env, uid, "merch_ai_generate", { status: "done", gen_id: genId, charge_paise: chargePaise, latency_ms: Date.now() - t0, provider_ms: m.ms, bytes: artBytes.byteLength, art_id: saved.artId, image_size: m.imageSize ?? null, w: saved.width, upscaled: !!upInfo?.ok });
     await merchTrack(env, uid, "$ai_generation", { "$ai_model": AI_MODEL, "$ai_provider": "vertex", "$ai_latency": m.ms / 1000, "$ai_span_name": "merch_ai_picture", "$ai_is_error": false, gen_id: genId });
     const art: ArtOut = { artId: saved.artId, url: saved.url, width: saved.width, height: saved.height, checks: saved.checks };
     return { ok: true, body: { gen: { genId, chargedPaise: chargePaise }, art, balancePaise: (await balanceSummary(env, uid)).availablePaidPaise, ...(warnings.length ? { warnings } : {}) } };

@@ -110,7 +110,7 @@ export const uploadMockup = (blob: Blob) => rawUpload<{ url: string }>(`${B}/moc
 
 /* ── [HF-MERCH-STUDIO-2] AI pictures + background remover (worker routes/hf_merch.ts, Specs/SPEC-2026-10-23-HF-MERCH-STUDIO-2.md §3) ── */
 export interface AiGen { genId: string; artId: string; url: string; width: number; height: number; prompt: string; style: string | null; createdAt: number }
-export interface AiInfo { enabled: boolean; chargePaise: number; chargeRupees: number; balancePaise: number; testCreditPaise: number; canAfford: boolean; recent: AiGen[] }
+export interface AiInfo { enabled: boolean; /** [HF-MERCH-AI-HIRES-1] small AI pictures are upscaled and "Make it sharper" works */ upscaleEnabled?: boolean; chargePaise: number; chargeRupees: number; balancePaise: number; testCreditPaise: number; canAfford: boolean; recent: AiGen[] }
 export interface AiGenerateBody {
   requestKey: string; prompt: string; style?: string; refArtIds?: string[]; baseArtId?: string; plainBackground?: boolean; aspect?: '1:1' | '3:4' | '4:3' | '9:16';
 }
@@ -120,6 +120,10 @@ export const generateAi = (b: AiGenerateBody) => hfCall<{ ok: boolean; gen: { ge
 /** [HF-MERCH-AI-DELETE-1] Take an AI picture off "earlier pictures" for good (the server marks it deleted; a reload does not bring it back). */
 export const deleteAiPicture = (artId: string) => hfCall<{ ok: boolean; removed: number }>('DELETE', `${B}/ai/pictures/${encodeURIComponent(artId)}`);
 export const removeBackground = (artId: string) => hfCall<{ ok: boolean; art: ArtUpload }>('POST', `${B}/art/${encodeURIComponent(artId)}/remove-bg`, {}, { timeoutMs: 90_000 });
+/** [HF-MERCH-AI-HIRES-1] Free "Make it sharper": the server makes a NEW, bigger copy of the picture (Imagen upscale, 10 a day). The original is never changed. */
+export const upscaleArt = (artId: string) => hfCall<{ ok: boolean; art: ArtUpload; fromW: number; toW: number }>('POST', `${B}/art/${encodeURIComponent(artId)}/upscale`, {}, { timeoutMs: 90_000 });
+/** [HF-MERCH-AI-HIRES-1] Pictures with a long side under this can be made sharper (the server's target; mirrors hf_merch_upscale.ts). */
+export const SHARPEN_TARGET_PX = 4000;
 /** The influencer's own art bytes through the API (CORS-safe for canvas work; the public media host sends no CORS headers). */
 export async function fetchArtFile(artId: string): Promise<Blob | null> {
   const { getActiveTokenWaited } = await import('../../../lib/clerk');

@@ -4,14 +4,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { capture, captureException } from '../../../../lib/analytics';
 import { dpiQuality } from '../../../../lib/studioGeometry';
-import { removeBackground, uploadArt, uploadMockup, uploadPrintFile } from '../api';
+import { SHARPEN_TARGET_PX, fetchArtFile, removeBackground, upscaleArt, uploadArt, uploadMockup, uploadPrintFile } from '../api';
 import { StudioEngine } from './engine';
 import { ExportError, UNREADABLE, exportDesign, loadPicture, renderMockup, sourceFor } from './exportPrint';
 import { DEFAULT_FONT, loadMerchFonts } from './fonts';
 import { History } from './history';
 import { SI } from './icons';
 import { designBounds, dpiOf, getKonva, layerBoundsIn, type KonvaLib } from './nodes';
-import { ArrangePanel, EditPanel, LayersPanel, PicturesPanel, TextPanel, type AlignHow, type BgState, type StudioCtx } from './panels';
+import { ArrangePanel, EditPanel, LayersPanel, PicturesPanel, TextPanel, type AlignHow, type BgState, type SharpState, type StudioCtx } from './panels';
 import { familyOf } from './silhouettes';
 import type { DesignerProps, ImageLayer, Layer, StudioArt, TextLayer } from './types';
 import './studio.css';
@@ -69,6 +69,7 @@ export default function Designer(props: DesignerProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [bg, setBg] = useState<BgState>(null);
+  const [sharp, setSharp] = useState<SharpState>(null);
   const [broken, setBroken] = useState<Record<string, string>>({});
   const [fontTick, setFontTick] = useState(0);
   const [K, setK] = useState<KonvaLib | null>(null);
@@ -239,6 +240,31 @@ export default function Designer(props: DesignerProps) {
     swapArt(l.id, art); setBg(null);
   }
 
+  /** [HF-MERCH-AI-HIRES-1] Only pictures smaller than the server's target can be made sharper. */
+  const canSharpen = (l: ImageLayer): boolean => Math.max(l.pxW, l.pxH) < SHARPEN_TARGET_PX;
+  /** [HF-MERCH-AI-HIRES-1] "Make it sharper (free)": the server returns a NEW bigger copy; the layer keeps its size on the product and swaps to it. */
+  async function sharpen(l: ImageLayer): Promise<void> {
+    if (sharp?.state === 'working') return;
+    setSharp({ id: l.id, state: 'working' }); setProblem(null);
+    capture('merch_studio_step', { step: 'design_sharpen', from_w: l.pxW, dpi: dpiOf(l) });
+    const r = await upscaleArt(l.artId);
+    if (!liveRef.current) return;
+    if (!r.ok) {
+      setSharp({ id: l.id, state: 'failed', message: r.message || 'We could not make this picture sharper. Please try again.' });
+      if (r.status >= 500 || r.status === 0) captureException(new Error(`merch_upscale_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: STEP });
+      return;
+    }
+    const a = r.data.art;
+    let localUrl: string | undefined;
+    try { const blob = await fetchArtFile(a.artId); if (blob) localUrl = URL.createObjectURL(blob); } catch (e) { captureException(e, { area: 'hf_merch_creator', step: STEP, note: 'sharp_local_copy' }); }
+    if (!liveRef.current) { if (localUrl) URL.revokeObjectURL(localUrl); return; }
+    const was = arts.find(x => x.artId === l.artId);
+    const art: StudioArt = { ...a, localUrl, source: was?.source ?? 'upload', label: `${l.name} (sharper)` };
+    propsRef.current.onArtAdded(art);
+    swapArt(l.id, art); setSharp(null);
+    capture('merch_studio_step', { step: 'design_sharpen_ok', from_w: r.data.fromW, to_w: r.data.toW });
+  }
+
   async function applyErase(l: ImageLayer, blob: Blob, w: number, h: number): Promise<string | null> {
     capture('merch_studio_step', { step: 'design_erase_colour' });
     const up = await uploadArt(blob, 'erased.png');
@@ -284,12 +310,17 @@ export default function Designer(props: DesignerProps) {
   const blurry = images.find(l => dpiQuality(dpiOf(l)).blocks);
   if (!K) blocked = null;
   else if (!bounds) blocked = layers.some(l => l.visible) ? 'Nothing is inside the dashed box yet. Move your picture or text into it.' : 'Add a picture or some text to begin.';
-  else if (blurry) blocked = `“${blurry.name}” is too blurry to print (${dpiOf(blurry)} DPI). Make it smaller on the product, or add a bigger picture.`;
+  else if (blurry) blocked = `“${blurry.name}” is too blurry to print (${dpiOf(blurry)} DPI). Make it sharper, make it smaller on the product, or add a bigger picture.`;
   else if (brokenHere) blocked = 'A picture could not be loaded. Delete it and add it again.';
+  // [HF-MERCH-AI-HIRES-1] The picture to offer "Make it sharper" for: the blocked one, else the shown one when it is only "OK — slightly soft".
+  const softPic = blurry ?? (shownPic && q && q.tone === 'warn' ? shownPic : null);
+  const sharpTarget = K && softPic && canSharpen(softPic) ? softPic : null;
+  const sharpWorking = sharp?.state === 'working';
+  const sharpFailed = sharp && sharp.state === 'failed' && sharpTarget && sharp.id === sharpTarget.id ? sharp.message : null;
 
   /* ── Looks good ─────────────────────────────────────────────────────── */
   async function looksGood(): Promise<void> {
-    if (busy || blocked || !K) return;
+    if (busy || blocked || !K || sharp?.state === 'working') return;
     setProblem(null); setBusy('Making your print file…');
     capture('merch_studio_step', { step: 'design_export_start', layers: layersRef.current.length });
     try {
@@ -339,7 +370,7 @@ export default function Designer(props: DesignerProps) {
   const ctx: StudioCtx = {
     layers: shown, sel: shown.find(l => l.id === selId) ?? null, area: areaIn, arts, busy: !!busy, bg,
     select: setSelId, patch: patchLayer, addText, addArt, wantMoreArt: () => propsRef.current.onWantMoreArt(),
-    remove, duplicate, order, reorder, align, removeBg,
+    remove, duplicate, order, reorder, align, removeBg, sharp, canSharpen, sharpen,
     loadPicture: async l => { const temp: string[] = []; try { return await loadPicture(sourceFor(l, arts) || l.src, temp); } finally { temp.forEach(u => URL.revokeObjectURL(u)); } },
     applyErase,
   };
@@ -354,7 +385,7 @@ export default function Designer(props: DesignerProps) {
       <div className="ms-head-actions">
         <button type="button" className="ms-ibtn big" aria-label="Undo" onClick={undo} disabled={!hist2?.canUndo || !!busy}><SI name="undo" /></button>
         <button type="button" className="ms-ibtn big" aria-label="Redo" onClick={redo} disabled={!hist2?.canRedo || !!busy}><SI name="redo" /></button>
-        <button type="button" className="ms-btn rani" disabled={!K || !!blocked || !!busy} onClick={() => void looksGood()}>{busy ? 'Please wait…' : 'Looks good →'}</button>
+        <button type="button" className="ms-btn rani" disabled={!K || !!blocked || !!busy || sharpWorking} onClick={() => void looksGood()}>{busy ? 'Please wait…' : 'Looks good →'}</button>
       </div>
     </header>
 
@@ -364,6 +395,11 @@ export default function Designer(props: DesignerProps) {
       <span className="ms-chip soft">Print area {areaIn.w.toFixed(1)} × {areaIn.h.toFixed(1)} in</span>
     </div>
     {blocked && !busy && <p className="ms-note warn" role="status">{blocked}</p>}
+    {sharpTarget && !busy && <div className="ms-sharp" role="group" aria-label="Make the picture sharper">
+      <button type="button" className="ms-btn rani" onClick={() => void sharpen(sharpTarget)} disabled={sharpWorking}><SI name="sparkle" /> {sharpWorking ? 'Making it sharper…' : 'Make it sharper (free)'}</button>
+      <span className="ms-hint">{sharpWorking ? 'This takes about 20 seconds.' : `We make a bigger copy of “${sharpTarget.name}” so it prints crisp.`}</span>
+      {sharpFailed && <p role="alert" className="ms-err">{sharpFailed}</p>}
+    </div>}
     {loadFail && <p className="ms-note bad" role="alert">The design studio could not start. Please reload the page.</p>}
     {problem && <p className="ms-note bad" role="alert">{problem === UNREADABLE ? UNREADABLE : problem}</p>}
     {busy && <p className="ms-note busy" role="status"><span className="ms-spin" /> {busy}</p>}

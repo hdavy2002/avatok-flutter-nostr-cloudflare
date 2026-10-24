@@ -12093,5 +12093,16 @@
         "note": "A channel passing the 20 followers + 1,000 views bar."
       }
     ]
+  },
+  "HF-MERCH-AI-HIRES-1": {
+    "description": "[HF-MERCH-AI-HIRES-1 2026-10-24] Sharp AI merch art. AI pictures are requested at 4K as a quality-92 JPEG (fallback chain on 400: 4K JPEG -> 2K JPEG -> 2K -> no size); a result under ~4000 px long side is upscaled on the server with Vertex imagen-4.0-upscale-preview (us-central1, x2/x3/x4 within its 17 MP cap, 45 s limit, never fails the generation; the original is kept and the reason recorded). New free POST /api/hf/merch/art/:id/upscale ('Make it sharper (free)' in the web studio for blocked or slightly-soft pictures): new bigger design row, moderation carried over, original never changed, 10 a day per user. Art over 4 MB is now scanned at upload from a 1024 px Cloudflare Images copy (blocked -> 422, files removed). Web and app print export redraw a PNG over 14 MB smaller (never under 200 DPI) to stay under the 15 MB limit (the app change needs a build). Help + FAQ line on picture sharpness.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchAiEnabled",
+      "hfMerchUpscaleEnabled"
+    ],
+    "no_telemetry": "merch_art_upscaled {ok, from_w, to_w, ms, stage generate|button, factor | reason} fires on every upscale attempt; merch_ai_generate status=done carries image_size, w and upscaled. Verified by making an AI picture (art_w >= 4000 in studio_designs) and pressing Make it sharper on a 2048 px upload (new row with art_checks_json.upscaled_from)."
   }
 }

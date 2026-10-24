@@ -1,6 +1,7 @@
 /* [HF-MERCH-STUDIO-2] One picture upload (check, trim, send to /art) shared by the Start step, the AI panel and the "add a picture" dialog. */
 import { captureException } from '../../../lib/analytics';
 import { uploadArt } from './api';
+import { cfImage } from '../../../lib/config';
 import type { StudioArt } from './studio/types';
 
 export const MAX_ART_BYTES = 15 * 1024 * 1024;
@@ -43,3 +44,5 @@ export async function uploadMany(files: File[], step: string, onArt: (a: StudioA
 }
 
 export const artSrc = (a: { localUrl?: string; url: string }): string => a.localUrl ?? a.url;
+/** [HF-MERCH-AI-HIRES-1] A small copy for tray tiles: AI pictures are now ~4000 px files of several MB, so a tile asks Cloudflare Images for ~420 px. */
+export const artThumb = (a: { localUrl?: string; url: string }): string => a.localUrl ?? cfImage(a.url, { width: 420, fit: 'scale-down', format: 'auto', quality: 75 });

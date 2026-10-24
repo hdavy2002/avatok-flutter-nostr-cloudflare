@@ -9,6 +9,8 @@ import type { ImageLayer, Layer, StudioArt, TextLayer } from './types';
 
 export type AlignHow = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom';
 export type BgState = { id: string; state: 'working' } | { id: string; state: 'failed'; message: string; offerErase: boolean } | null;
+/** [HF-MERCH-AI-HIRES-1] "Make it sharper" progress for one picture layer. */
+export type SharpState = { id: string; state: 'working' } | { id: string; state: 'failed'; message: string } | null;
 
 export interface StudioCtx {
   layers: Layer[]; sel: Layer | null; area: { w: number; h: number }; arts: StudioArt[]; busy: boolean; bg: BgState;
@@ -19,6 +21,7 @@ export interface StudioCtx {
   order(id: string, how: 'up' | 'down' | 'front' | 'back'): void; reorder(fromIdx: number, toIdx: number): void;
   align(how: AlignHow): void;
   removeBg(l: ImageLayer): Promise<void>;
+  /** [HF-MERCH-AI-HIRES-1] */ sharp: SharpState; canSharpen(l: ImageLayer): boolean; sharpen(l: ImageLayer): Promise<void>;
   loadPicture(l: ImageLayer): Promise<HTMLImageElement>;
   applyErase(l: ImageLayer, blob: Blob, w: number, h: number): Promise<string | null>;
 }
@@ -195,6 +198,17 @@ function EraseCard({ c, l }: { c: StudioCtx; l: ImageLayer }) {
   </Card>;
 }
 
+/** [HF-MERCH-AI-HIRES-1] Shown when a picture is too blurry or only just OK at its size on the product. */
+export function SharpenCard({ c, l }: { c: StudioCtx; l: ImageLayer }) {
+  const working = c.sharp?.id === l.id && c.sharp.state === 'working';
+  const failed = c.sharp?.id === l.id && c.sharp.state === 'failed' ? c.sharp : null;
+  return <Card title="Make it sharper" hint="We make a bigger copy of this picture so it prints crisp, even across the whole shirt. Free, up to 10 a day.">
+    <button type="button" className="ms-btn rani wide" onClick={() => void c.sharpen(l)} disabled={c.busy || working}><SI name="sparkle" /> {working ? 'Making it sharper…' : 'Make it sharper (free)'}</button>
+    {working && <div className="ms-progress" role="status"><i /><span>Making it sharper… this takes about 20 seconds</span></div>}
+    {failed && <p role="alert" className="ms-err">{failed.message}</p>}
+  </Card>;
+}
+
 export function EditPanel({ c }: { c: StudioCtx }) {
   const l = c.sel?.type === 'image' ? c.sel : null;
   if (!l) return <div className="ms-panel-in"><p className="ms-empty">Tap a picture on the product to edit it. You can remove its background, flip it or fade it.</p></div>;
@@ -206,6 +220,7 @@ export function EditPanel({ c }: { c: StudioCtx }) {
       <p className={`ms-q ${q.tone}`}>{q.text} · {dpiOf(l)} DPI</p>
       <p className="ms-hint">Printed {l.w.toFixed(1)} × {l.h.toFixed(1)} in</p>
     </Card>
+    {q.tone !== 'ok' && q.tone !== 'info' && c.canSharpen(l) && <SharpenCard c={c} l={l} />}
     <Card title="Remove background" hint="Cuts out the main subject for you. Takes 10 to 20 seconds. Free.">
       <button type="button" className="ms-btn rani wide" onClick={() => void c.removeBg(l)} disabled={c.busy || working}><SI name="sparkle" /> {working ? 'Removing…' : 'Remove background'}</button>
       {working && <div className="ms-progress" role="status"><i /><span>Removing the background… please wait</span></div>}
