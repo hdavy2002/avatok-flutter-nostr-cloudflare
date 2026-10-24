@@ -369,7 +369,7 @@ export default function HostCallActions(props: ActionsProps) {
     <>
       <SessionBridge on={gate.needsBridge} />
       {gate.state === 'ok' ? <HostCallActionsInner {...props} />
-        : <SpaceLock lane={space} wait={gate.state === 'loading'} signedOut={gate.state === 'signedout'} missing={gate.missing} />}
+        : <SpaceLock lane={space} compact={props.variant === 'bar'} wait={gate.state === 'loading'} signedOut={gate.state === 'signedout'} missing={gate.missing} />}
     </>
   );
 }

@@ -29,3 +29,9 @@
 .hv-note svg{width:20px;height:20px;flex:none}
 .hv-err{margin:0;color:var(--bad);font-weight:800}
 .hv-reason{margin:0;padding:12px 14px;border-radius:16px;background:var(--blush);color:var(--rani);font-weight:800}
+/* [HF-CREATOR-BADGES-1] Phone: the status pill drops under the title so the text gets the full card width (no narrow word-per-line column). */
+@media (max-width:640px){
+  .hv-head{flex-wrap:wrap}
+  .hv-head > :nth-child(2){flex:1 1 0;min-width:0}
+  .hv-status{order:3;flex-basis:100%;margin-left:66px}
+}

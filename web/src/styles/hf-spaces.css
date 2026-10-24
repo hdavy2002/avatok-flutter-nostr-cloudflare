@@ -27,3 +27,13 @@
 .xp .frow-space{display:inline-flex;gap:10px;flex:none;align-items:center}
 .xp .fbtn.space-chip[aria-pressed=true]{background:var(--hf-space-bg);border-color:var(--hf-space-ink);box-shadow:3px 3px 0 var(--hf-space-ink)}
 .xp .hf-sb{margin-top:8px}
+
+/* [HF-CREATOR-BADGES-1] One-line lock for the sticky phone bar: just the button, no panel. */
+.hf-space-lock.is-compact { background: none; border: 0; padding: 0; margin: 0; box-shadow: none; display: flex; justify-content: flex-end; }
+.hf-space-lock.is-compact .hf-space-lock-btn { margin: 0; min-height: 56px; white-space: nowrap; }
+/* [HF-CREATOR-BADGES-1] Small cards (Explore grid on phones): badges never spill past the card edge. */
+.hf-sb{max-width:100%;min-width:0}
+.hf-sb:not(.hf-sb-lg) .hf-kyc-pill,.hf-sb:not(.hf-sb-lg) .hf-space-tag,.hf-sb:not(.hf-sb-lg) .hf-ch-pill{max-width:100%;white-space:normal;text-align:left}
+@media (max-width:480px){
+  .hf-sb:not(.hf-sb-lg) .hf-kyc-pill,.hf-sb:not(.hf-sb-lg) .hf-space-tag,.hf-sb:not(.hf-sb-lg) .hf-ch-pill{padding:4px 10px;gap:5px;font-size:.875rem}
+}
