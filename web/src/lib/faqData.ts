@@ -26,7 +26,7 @@ export const faqSections: FaqSection[] = [
     items: [
       { q: 'Is it free to join?', a: 'Yes. Creating an account is free for callers and influencers. Callers only pay for connected call minutes. There is no subscription.' },
       { q: 'Who can use it?', a: 'Only adults aged 18 or over. See our <a href="/age-policy">age policy</a>.' },
-      { q: 'How do I sign up?', a: 'Sign up with a one-time code sent to your WhatsApp or email. We never ask for a password, and we will never ask you to read an OTP out to anyone.' },
+      { q: 'How do I sign up?', a: 'Tap Create an account and enter your name, email and WhatsApp number. We send one code to your email and one on WhatsApp, and you type both. After that you log in with just a code on WhatsApp. We never ask for a password, and we will never ask you to read an OTP out to anyone.' },
       { q: 'Do I need to install an app?', a: 'No. Calls come to your normal phone number like any other call. You manage your wallet, favourites and history on the website.' },
       { q: 'What do I need?', a: 'An Indian mobile number, a phone with normal network coverage, and a way to pay to add money to your wallet.' },
       { q: 'Can I be a caller and an influencer?', a: 'Yes, on the same account. Create your account, then upgrade to influencer for free from your dashboard.' },

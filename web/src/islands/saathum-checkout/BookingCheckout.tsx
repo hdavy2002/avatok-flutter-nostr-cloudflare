@@ -6,7 +6,7 @@
  * island unchanged.
  *
  * Reuses, rather than reinvents: ClerkIsland/getActiveToken (lib/clerk),
- * EmailCodeSignIn + passwordless.ts's phone OTP calls (islands/auth), the
+ * the WhatsApp login + passwordless.ts's phone OTP calls (islands/auth), the
  * UPI QR/app-link building in islands/checkout/upiAppLinks.ts, and the
  * existing /api/me/profile GET/PUT shape for prefill.
  */

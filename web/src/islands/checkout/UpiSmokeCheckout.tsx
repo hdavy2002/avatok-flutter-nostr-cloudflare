@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SignInButton, useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 import type { ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { ClerkIsland } from '../../lib/clerk';
@@ -166,7 +166,7 @@ function AuthenticatedSmoke() {
   }),[]);
   return <SmokeSession identity={userId && sessionId ? userId+':'+sessionId : null}
     isLoaded={isLoaded} isSignedIn={Boolean(isSignedIn)} deps={deps}
-    signIn={<SignInButton mode="modal"><button>Sign in</button></SignInButton>}/>;
+    signIn={<a href={`/sign-in?redirect_url=${encodeURIComponent(window.location.pathname)}`}>Sign in</a>}/>;
 }
 export default function UpiSmokeCheckout() {
   if (!CLERK_PUBLISHABLE_KEY) return <p>Administrator sign-in is not configured.</p>;

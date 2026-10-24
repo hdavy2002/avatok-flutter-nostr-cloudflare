@@ -32,7 +32,7 @@ const Tick = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1f7a45" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
 );
 
-export function SignInGate({ signInHref, onClick }: { signInHref: string; onClick: (method: 'whatsapp' | 'google') => void }) {
+export function SignInGate({ signInHref, onClick }: { signInHref: string; onClick: (method: 'whatsapp') => void }) {
   return (
     <section className="pd-gate" aria-labelledby="pd-gate-h">
       <PanditAvatar size={112} className="pd-gate-avatar" />
@@ -48,7 +48,6 @@ export function SignInGate({ signInHref, onClick }: { signInHref: string; onClic
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 21l1.6-4.7A8.5 8.5 0 1 1 8 19.6z" /></svg>
           Continue with WhatsApp
         </a>
-        <a className="pd-btn pd-btn-outline" href={signInHref} onClick={() => onClick('google')}>Continue with Google</a>
       </div>
       <p className="pd-gate-fine">Uses your existing {BRAND.name} account. Guidance is spiritual and traditional, not a guarantee.</p>
     </section>

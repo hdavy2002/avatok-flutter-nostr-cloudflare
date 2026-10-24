@@ -49,7 +49,13 @@ export interface WaVerifyNeedsEmail {
   proof: string;
   phone_masked: string;
 }
-export type WaVerifyResult = WaVerifySignedIn | WaVerifyNeedsEmail;
+/** [HF-AUTH-WA-ONLY-1] The website never creates an account from the sign-in page: a number with no account answers this. */
+export interface WaVerifyNoAccount {
+  ok: boolean;
+  status: 'no_account';
+  phone_masked: string;
+}
+export type WaVerifyResult = WaVerifySignedIn | WaVerifyNeedsEmail | WaVerifyNoAccount;
 
 /** The Worker's short error code ("invalid_phone", "not_on_whatsapp", …) or ''. */
 export function waApiCode(e: unknown): string {
@@ -79,9 +85,19 @@ export async function sendWhatsAppCode(phone: string): Promise<WaSendResult> {
 }
 
 /** POST /api/auth/whatsapp/verify — no auth. */
-export async function verifyWhatsAppCode(phone: string, code: string): Promise<WaVerifyResult> {
+export async function verifyWhatsAppCode(
+  phone: string,
+  code: string,
+  /** [HF-AUTH-WA-ONLY-1] Sign-up only: the typed name + the proof from verifySignupEmailCode. Creates the account. */
+  signup?: { name: string; email_proof: string; age_confirmed?: boolean },
+): Promise<WaVerifyResult> {
   try {
-    const r = await request<WaVerifyResult>('/api/auth/whatsapp/verify', { method: 'POST', body: { phone, code, client: 'web' } });
+    const body: Record<string, unknown> = { phone, code, client: 'web' };
+    if (signup) {
+      body.signup = { name: signup.name, email_proof: signup.email_proof };
+      if (signup.age_confirmed) body.age_confirmed = true;
+    }
+    const r = await request<WaVerifyResult>('/api/auth/whatsapp/verify', { method: 'POST', body });
     capture('auth_whatsapp_verify', { status: r.status });
     return r;
   } catch (e) {
@@ -168,4 +184,31 @@ export async function confirmAge18(auth: string): Promise<void> {
   await request<{ ok: boolean }>('/api/hf/account/age-confirm', {
     method: 'POST', auth, body: { confirmed: true, client: 'web' },
   });
+}
+
+/* ── [HF-AUTH-WA-ONLY-1] Sign-up email code (server-side OTP, routes/signup_email_otp.ts) ──
+ * email_otp_sent / _verified / _failed are captured by the Worker (single source), not here. */
+
+export interface EmailSendResult { ok: boolean; expires_in_s: number; resend_after_s: number }
+
+/** POST /api/auth/signup/email/send — no auth. Throws ApiError (code "email_taken" when the address already has an account). */
+export async function sendSignupEmailCode(email: string): Promise<EmailSendResult> {
+  try {
+    const r = await request<EmailSendResult>('/api/auth/signup/email/send', { method: 'POST', body: { email } });
+    return r;
+  } catch (e) {
+    if (!(e instanceof ApiError)) captureException(e, { where: 'signup_email_send' });
+    throw e;
+  }
+}
+
+/** POST /api/auth/signup/email/verify — no auth. Returns the single-use proof the WhatsApp verify step redeems. */
+export async function verifySignupEmailCode(email: string, code: string): Promise<string> {
+  try {
+    const r = await request<{ ok: boolean; proof: string }>('/api/auth/signup/email/verify', { method: 'POST', body: { email, code } });
+    return r.proof;
+  } catch (e) {
+    if (!(e instanceof ApiError)) captureException(e, { where: 'signup_email_verify' });
+    throw e;
+  }
 }

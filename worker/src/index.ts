@@ -67,6 +67,7 @@ import { ingestCallTelemetry } from "./routes/telemetry_calls";
 import { presenceBeat } from "./routes/presence"; // [CALL-PRESENCE-1] device heartbeat
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
+import { signupEmailSend, signupEmailVerify } from "./routes/signup_email_otp";
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote, walletActivity } from "./routes/wallet_statement";
@@ -1695,6 +1696,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // attaches a phone to an account. See routes/whatsapp_auth.ts.
       if (p === "/api/auth/whatsapp/send" && req.method === "POST") return await whatsappAuthSend(req, env);
       if (p === "/api/auth/whatsapp/verify" && req.method === "POST") return await whatsappAuthVerify(req, env);
+      if (p === "/api/auth/signup/email/send" && req.method === "POST") return await signupEmailSend(req, env);
+      if (p === "/api/auth/signup/email/verify" && req.method === "POST") return await signupEmailVerify(req, env);
       if (p === "/api/account/phone/claim" && req.method === "POST") return await accountPhoneClaim(req, env);
       // [WEB-APP-ONBOARD-1] The app reporting that a web-born account has now
       // been through onboarding. This is the only thing that lifts the gate.

@@ -32,8 +32,8 @@ import { setLocaleAccount } from './i18n/localeStore';
  * a live stream, entering a consult room, publishing an agent. Six call sites, all
  * silently broken for anyone without an existing Clerk session.
  *
- * `requireGuestAuth()` now resolves a REAL Clerk session via email + 6-digit code
- * (islands/auth/EmailCodeSignIn). Same signature, same call sites, a token the Worker
+ * `requireGuestAuth()` now sends the visitor to the WhatsApp-code /sign-in
+ * (HF-AUTH-WA-ONLY-1; it was an email-code modal before). Same signature, same call sites, a token the Worker
  * actually accepts. The HMAC guest token keeps its one real job — handle reservation —
  * and is no longer passed off as authentication.
  */
@@ -50,7 +50,6 @@ import { request, ApiError } from './apiClient';
 import { capture, identify, reset as resetAnalytics } from './analytics';
 import type { GuestCreated } from './types';
 import { Modal } from '../components/Modal';
-import { EmailCodeSignIn } from '../islands/auth/EmailCodeSignIn';
 import { Field } from '../components/Field';
 import { Button } from '../components/Button';
 import { installEmbedBridge } from './embed';
@@ -416,9 +415,9 @@ type Step = 'email' | 'code';
  *
  * Still exported because components/index.ts and the README reference it, and because
  * `guestCreate` (the handle reservation in step 1) remains a real thing. The GATE that
- * `requireGuestAuth()` opens is now EmailCodeSignIn.
+ * `requireGuestAuth()` opens is now a link to the WhatsApp-code /sign-in.
  *
- * Use `<EmailCodeSignIn>` or `requireGuestAuth()`. If nothing references this by the
+ * Use `requireGuestAuth()`. If nothing references this by the
  * next cleanup pass, delete it.
  */
 export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
@@ -590,14 +589,12 @@ function GuestGateHost() {
       cbRef.current?.reject(new Error('cancelled'));
       cbRef.current = null;
     }}>
-      <EmailCodeSignIn
-        onAuthed={() => void settle()}
-        onCancel={() => {
-          setOpen(false);
-          cbRef.current?.reject(new Error('cancelled'));
-          cbRef.current = null;
-        }}
-      />
+      {/* [HF-AUTH-WA-ONLY-1 2026-10-24] Sign-in is a WhatsApp code on /sign-in (no email or Google), so the gate
+          sends the visitor there and brings them back to this page afterwards. */}
+      <div style={{ display: 'grid', gap: 12, padding: 8 }}>
+        <p>Log in with a code on WhatsApp to continue.</p>
+        <a href={`/sign-in?redirect_url=${encodeURIComponent(location.pathname + location.search)}`}>Log in</a>
+      </div>
     </Modal>
   );
 }

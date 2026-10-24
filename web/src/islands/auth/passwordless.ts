@@ -274,24 +274,3 @@ export async function verifyPasswordlessCode(opts: {
   await opts.setActive({ session: res.createdSessionId });
   return { created: false };
 }
-
-/**
- * Hand off to Google. Returns only if the redirect could not be started.
- *
- * `oauth_google` is the one social provider enabled on the instance (verified
- * against /v1/environment). `/sso-callback` is the page that completes it — see
- * pages/sso-callback.astro; without that page Clerk lands the user on a route
- * that cannot finish the handshake and the sign-in silently evaporates.
- */
-export async function continueWithGoogle(
-  signIn: PwlSignIn | null | undefined,
-  next: string,
-): Promise<void> {
-  if (!signIn) throw new PasswordlessError('Sign-in is still loading. Try again in a moment.', 'signin_unavailable');
-  capture('auth_signin_start', { method: 'oauth_google' });
-  await signIn.authenticateWithRedirect({
-    strategy: 'oauth_google',
-    redirectUrl: `/sso-callback?next=${encodeURIComponent(next)}`,
-    redirectUrlComplete: next,
-  });
-}

@@ -1,114 +1,66 @@
+
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* /sign-up — Saa Thum create account.
+/* /sign-up — create an account: Name, Email, WhatsApp number, and a code for EACH.
  *
- * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow via `useSignUp()`.
+ * [HF-AUTH-WA-ONLY-1 2026-10-24, owner decision] Sign-in is WhatsApp-only, and an account is
+ * only created once BOTH the email and the WhatsApp number have been proven by a 6-digit code.
+ * No Google, no Clerk sign-up resource, no session until the very end:
  *
- * TWO THINGS THE DESIGN DOES NOT COVER, both verified against the live Clerk
- * instance (public environment endpoint) and both hard blockers:
+ *   1. details  — name, email, WhatsApp number, the 18+/terms box. "Send codes" emails a code
+ *                 (POST /api/auth/signup/email/send) and sends one on WhatsApp.
+ *   2. codes    — both codes on one screen. "Verify and create my account" checks the email code
+ *                 (-> single-use email proof), then posts the WhatsApp code WITH the proof, name
+ *                 and 18+ tick (POST /api/auth/whatsapp/verify). Only that call creates the
+ *                 account, with the name and the verified email on it, and answers a Clerk ticket
+ *                 that redeemWhatsAppTicket turns into the session.
+ * A wrong WhatsApp code leaves the email proof usable (30 min), so only the bad code is retyped.
+ * An email that already has an account is refused at step 1 with "sign in with your WhatsApp".
  *
- * 1. EMAIL VERIFICATION IS MANDATORY. ([WEB-PHONE-OTP-1] It is now an inline
- *    slide-out box on the same screen, not a second step — see below.) `email_address.verify_at_sign_up` is true
- *    and the strategy is `email_code`. `signUp.create()` therefore returns
- *    status 'missing_requirements', NOT 'complete', and the account does not
- *    exist until a 6-digit code is confirmed. The handoff has no such screen, so
- *    the second step below is an addition — without it sign-up cannot finish at
- *    all. It reuses the same tokens so it reads as part of the set.
+ * RESUME / FINISH MODE (?finish=1 or a signed-in account with no verified WhatsApp): the older
+ * accounts made by email. They are signed in already, so the page only asks them to verify a
+ * WhatsApp number (the authed /api/account/phone/* routes) and then opens the account. Nobody is
+ * locked out by this change.
  *
- * 2. BOT PROTECTION IS ON (`captcha_enabled`, smart widget). A custom flow must
- *    provide a mount point with id="clerk-captcha" or Clerk falls back to an
- *    invisible challenge and can reject the attempt. The empty <div> on the
- *    details screen is that mount point — it is not dead markup, do not remove
- *    it (it only needs to exist for the one screen that calls `signUp.create`).
- *
- * NAME: one "Your name" field, split on the first space into first/last for
- * Clerk (which requires both non-empty on this instance) — see `splitName`.
- * A single word is reused as both, rather than sending an empty required field.
- *
- * [WEB-PWLESS-1 2026-09-06] NO PASSWORD. `password` is disabled instance-wide
- * (owner decision 2026-09-06) — a password box here would fail at Clerk rather
- * than in the browser, which reads as a broken site. Verification by emailed
- * code IS the credential now, so the code step below is the whole of
- * authentication rather than a confirmation on top of one.
- *
- * ROLE: [SIGNUP-EMAIL-STEPS-1 2026-09-28, owner decision] Every web sign-up is
- * a customer — creators sign up in the app. The role picker is gone from this
- * screen; `role` stays 'friend' (AuthKit's id for "Customer") unless resume
- * mode finds an existing creator account, in which case it is left alone.
- * Stored as `unsafeMetadata.role`. "unsafe" is Clerk's name for
- * client-writable metadata, not a security warning about the value — it is the
- * only metadata a browser may set during sign-up. It is readable everywhere
- * immediately (app included) via the session claims. If the role ever gates
- * money or permissions, promote it to publicMetadata from the Worker, because a
- * determined client can set unsafeMetadata to anything.
+ * Brand names come from the central config, never typed here.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-react';
+import { useAuth, useSignIn, useUser } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
-import { capture, captureException, withTrace } from '../../lib/analytics';
+import { capture, captureException } from '../../lib/analytics';
 import {
-  Field, Button, CheckRow, Divider, GoogleButton, GOOGLE_AUTH_ENABLED,
-  validateEmail, validateRequired, clerkError,
+  Field, Button, CheckRow,
+  validateEmail, validateRequired,
   useClerkStalled, STALLED_MESSAGE,
-  type FieldErrors, type Role,
+  type FieldErrors,
 } from './AuthKit';
 import {
-  bootstrapAccount, continueWithGoogle, pwlError, finishUrl, clerkErrors,
-  sendPhoneCode, verifyPhoneCode, getPhoneStatus, apiMessage, apiCode,
+  bootstrapAccount, getPhoneStatus, sendPhoneCode, verifyPhoneCode, apiMessage, apiCode,
   type PwlSignIn,
 } from './passwordless';
 import {
-  sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
-  storeWaProof, readWaProof, claimWhatsAppProof, confirmAge18,
+  sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage, waApiCode,
+  sendSignupEmailCode, verifySignupEmailCode,
 } from './whatsappAuth';
 import { WhatsAppNumberInput } from './WhatsAppNumberInput';
 import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
-import { getActiveTokenWaited } from '../../lib/clerk';
 import { DEFAULT_LANDING, safeSameOriginPath } from '../../lib/authRedirect';
-
-/* [SIGNUP-EMAIL-STEPS-1 2026-09-28, owner decision "Short steps"] The email
- * path is now four short screens, one thing per screen, same feel as the
- * WhatsApp path in this same file:
- *   1. details      — name, email, the 18+/terms box, "Email me a code".
- *   2. email_code    — the 6-digit email code, "Verify and continue".
- *   3. whatsapp      — the WhatsApp number, "Send code on WhatsApp".
- *   4. whatsapp_code — the 6-digit WhatsApp code, "Verify and finish".
- * Screens 3-4 are skipped when a WhatsApp proof is already pending (someone
- * who tried "Continue with WhatsApp" first and got bounced to email because
- * the number was new) — verifyEmail claims that proof and finishes straight
- * away. FINISH MODE (?finish=1, reached after an email/Google login whose
- * account has no verified WhatsApp) is just screens 3-4, reworded.
- * The old long form (role picker, both fields verified inline on one scrolling
- * page) is gone; `sendPhone`/`verifyPhone` below are unchanged — only the
- * screens around them are new.
- */
 
 type Step = 'idle' | 'sending' | 'code' | 'verifying' | 'verified';
 
-/** [DASH2-FOUNDATION 2026-09-25, owner decision] Everyone lands on /dashboard
- * (Book events). Customers used to go to /marketplace; `role` is kept in the
- * signature so the Google hand-off still carries it through finishUrl. */
-function landingFor(_role: Role): string {
-  return DEFAULT_LANDING;
-}
-
-function readParams(): { finish: boolean; next: string | null; role: Role | null; country: string | null } {
+function readParams(): { next: string | null; country: string | null } {
   try {
     const q = new URLSearchParams(location.search);
-    const n = q.get('next');
-    const r = q.get('role');
     return {
-      finish: q.get('finish') === '1',
       // [DASH2-FOUNDATION] redirect_url (preferred) or next; same-origin only.
-      next: safeSameOriginPath(q.get('redirect_url')) ?? safeSameOriginPath(n),
-      role: r === 'creator' || r === 'friend' ? r : null,
+      next: safeSameOriginPath(q.get('redirect_url')) ?? safeSameOriginPath(q.get('next')),
       country: (q.get('country') || '').toUpperCase() || null,
     };
   } catch {
-    return { finish: false, next: null, role: null, country: null };
+    return { next: null, country: null };
   }
 }
 
@@ -123,50 +75,37 @@ function useCountdown(at: number): number {
   return Math.max(0, Math.ceil((at - now) / 1000));
 }
 
-/** Split "Your name" on the first space. A single word is reused for both —
- * Clerk requires first AND last name non-empty on this instance, so an empty
- * required field is worse than a repeated one. */
-function splitName(full: string): { first: string; last: string } {
-  const trimmed = full.replace(/\s+/g, ' ').trim();
-  const idx = trimmed.indexOf(' ');
-  if (idx === -1) return { first: trimmed, last: trimmed };
-  const first = trimmed.slice(0, idx);
-  const last = trimmed.slice(idx + 1).trim() || first;
-  return { first, last };
-}
-
 function Inner() {
   const {t:uiT}=useUiTranslation("web-auth");
 
-  const { isLoaded, signUp, setActive } = useSignUp();
-  // Google lives on the sign-in resource even when the person has no account —
-  // Clerk creates one from the OAuth identity on the way through.
-  const { signIn } = useSignIn();
+  const { signIn, setActive } = useSignIn();
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const params = useMemo(readParams, []);
 
   const [boot, setBoot] = useState<'checking' | 'form' | 'leaving'>('checking');
+  /** Signed-in account that still needs a verified WhatsApp number (older email accounts). */
   const [resume, setResume] = useState(false);
 
-  // [SIGNUP-EMAIL-STEPS-1] No role picker on the web any more — every sign-up
-  // here is a customer ('friend' is AuthKit's id for that). Resume mode may
-  // still correct this from an existing creator account (see the prefill
-  // effect below); `role` only otherwise affects the Google hand-off URL.
-  const [role, setRole] = useState<Role>('friend');
+  // New-account form
   const [name, setName] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [country, setCountry] = useState(DEFAULT_COUNTRY.code);
+  const [national, setNational] = useState('');
   const [agreed, setAgreed] = useState(false);
-
-  // Email verification (Clerk).
-  const [emailStep, setEmailStep] = useState<Step>('idle');
+  const [stage, setStage] = useState<'details' | 'codes'>('details');
   const [emailCode, setEmailCode] = useState('');
+  const [waCode, setWaCode] = useState('');
+  const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
+  const [emailProof, setEmailProof] = useState<{ email: string; proof: string } | null>(null);
   const [emailResendAt, setEmailResendAt] = useState(0);
+  const [waResendAt, setWaResendAt] = useState(0);
+  const [waMasked, setWaMasked] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Phone verification (Worker -> 2Factor). Any country; +91 is the default.
+  // Resume mode (WhatsApp only)
   const [phone, setPhone] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY.code);
   const [phoneStep, setPhoneStep] = useState<Step>('idle');
   const [phoneCode, setPhoneCode] = useState('');
   const [phoneResendAt, setPhoneResendAt] = useState(0);
@@ -174,35 +113,16 @@ function Inner() {
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const stalled = useClerkStalled(isLoaded);
+  const stalled = useClerkStalled(authLoaded);
   const startRef = useRef<number>(Date.now());
   const decided = useRef(false);
 
-  // [WA-WEB-1 2026-09-28] Method choice for a fresh sign-up (not shown in
-  // finish/resume mode — that screen exists only to collect the WhatsApp
-  // number of an account that already exists).
-  // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp first and default.
-  const [method, setMethod] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
-  const [waStage, setWaStage] = useState<'number' | 'code' | 'age'>('number');
-  // [HF-AUTH-WA-1] A brand-new phone-only account holds its ticket here until the 18+ tick is given.
-  const [waTicket, setWaTicket] = useState<string | null>(null);
-  const [waAgree, setWaAgree] = useState(false);
-  const [waCountry, setWaCountry] = useState(DEFAULT_COUNTRY.code);
-  const [waNational, setWaNational] = useState('');
-  const [waCode, setWaCode] = useState('');
-  const [waResendAt, setWaResendAt] = useState(0);
-  const [waPhoneMasked, setWaPhoneMasked] = useState('');
-
   const emailResendIn = useCountdown(emailResendAt);
+  const waResendIn = useCountdown(waResendAt);
   const phoneResendIn = useCountdown(phoneResendAt);
 
-  const destination = () => {
-    // [DASH2-FOUNDATION 2026-09-25] No more IN-country detour to /india: the
-    // owner rule is "login always lands on /dashboard unless sent from a page".
-    if (params.next) return params.next;
-    return landingFor(role);
-  };
+  const destination = () => params.next ?? DEFAULT_LANDING;
+  const waE164 = () => toE164(country, national);
 
   function clearErr(...keys: string[]) {
     setErrors((e) => {
@@ -213,8 +133,7 @@ function Inner() {
     });
   }
 
-  /* ── First load: already signed in? Decide ONCE — the session this page
-   *    itself creates on email verification must not re-trigger it. ──────── */
+  /* ── First load: already signed in? Decide ONCE. ──────────────────────── */
   useEffect(() => {
     if (!authLoaded || decided.current) return;
     decided.current = true;
@@ -224,36 +143,15 @@ function Inner() {
       try { st = await getPhoneStatus(); } catch { st = null; }
       capture('auth_phone_gate', {
         outcome: st == null ? 'status_failed' : st.needs_phone ? 'resume' : 'pass',
-        finish: params.finish, has_account: st?.has_account, verified: st?.verified,
+        has_account: st?.has_account, verified: st?.verified,
       });
-      // A failed status read lets the person in rather than trapping a signed-in
-      // user on a form; bootstrap still refuses an unverified phone server-side.
-      // [WA-CLAIM-RACE-1] A WhatsApp number verified moments ago (needs_email
-      // hand-off) whose claim didn't land: claim it here instead of asking again.
-      if (st && st.needs_phone) {
-        const pending = readWaProof();
-        if (pending) {
-          try {
-            const token = await getActiveTokenWaited();
-            if (token) {
-              await claimWhatsAppProof(pending.proof, token);
-              capture('auth_phone_gate', { outcome: 'claimed_pending_proof' });
-              setBoot('leaving');
-              location.href = destination();
-              return;
-            }
-          } catch (e) {
-            captureException(e, { where: 'signup_finish_claim' });
-          }
-        }
-      }
+      // A failed status read lets the person in rather than trapping a signed-in user on a form.
       if (!st || !st.needs_phone) {
         setBoot('leaving');
         location.href = destination();
         return;
       }
       setResume(true);
-      setEmailStep('verified');
       if (st.verified && st.phone) {
         setVerifiedPhone(st.phone);
         setPhone(st.phone.replace(/^\+91/, ''));
@@ -264,138 +162,158 @@ function Inner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoaded, isSignedIn]);
 
-  // Resume mode: prefill from the Clerk user (Google gives us name + email).
-  useEffect(() => {
-    if (!resume || !user) return;
-    setEmail((v) => v || user.primaryEmailAddress?.emailAddress || '');
-    setFirstName((v) => v || user.firstName || '');
-    setLastName((v) => v || user.lastName || '');
-    const r = (user.unsafeMetadata as { role?: unknown } | undefined)?.role;
-    if (r === 'creator' || r === 'friend') setRole(r);
-  }, [resume, user]);
+  /* ── New account: step 1 — send both codes ─────────────────────────────── */
+  async function sendCodes() {
+    if (submitting) return;
+    const digits = national.replace(/\D/g, '');
+    const next: FieldErrors = {
+      name: validateRequired(name, 'Your name'),
+      email: validateEmail(email),
+      phone: digits.length < 4 ? 'Enter your WhatsApp number.' : undefined,
+      terms: agreed ? undefined : 'Please accept the terms to continue.',
+    };
+    setErrors(next);
+    if (Object.values(next).some(Boolean)) return;
 
-  /** Hand off to Google. Comes back through the phone gate on this page. */
-  async function google() {
-    if (!isLoaded || submitting) return;
-    setFormError(null);
-    try {
-      capture('login_method_chosen', { method: 'google', surface: 'sign_up' });
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(params.next ?? landingFor(role), role));
-    } catch (err) {
-      setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
-    }
-  }
-
-  /* ── WhatsApp sign-up (owner decision 2026-09-28) ────────────────────── */
-  function chooseMethod(m: 'email' | 'whatsapp') {
-    setMethod(m);
-    setFormError(null);
-    capture('login_method_chosen', { method: m, surface: 'sign_up' });
-  }
-  const waE164 = () => toE164(waCountry, waNational);
-  const waResendIn = Math.max(0, Math.ceil((waResendAt - Date.now()) / 1000));
-
-  async function sendWa() {
-    if (submitting || waNational.replace(/\D/g, '').length < 4) return;
+    const cleanEmail = email.trim().toLowerCase();
     setSubmitting(true);
     setFormError(null);
+    startRef.current = Date.now();
+    try {
+      // Email first: it is the one that can be refused ("already has an account").
+      if (emailSentTo !== cleanEmail) {
+        const r = await sendSignupEmailCode(cleanEmail);
+        setEmailSentTo(cleanEmail);
+        setEmailProof(null);
+        setEmailCode('');
+        setEmailResendAt(Date.now() + (r.resend_after_s ?? 60) * 1000);
+      }
+    } catch (err) {
+      setErrors((e) => ({ ...e, email: waApiMessage(err, 'We couldn’t email a code just now. Please try again.') }));
+      capture('auth_signup_result', { outcome: 'error', stage: 'email_send', reason: waApiCode(err) || 'unknown' });
+      setSubmitting(false);
+      return;
+    }
     try {
       const r = await sendWhatsAppCode(waE164());
-      setWaPhoneMasked(r.phone_masked);
+      setWaMasked(r.phone_masked);
       setWaCode('');
-      setWaStage('code');
+      setWaResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
+      setStage('codes');
+      capture('signup_step', { method: 'whatsapp_email', step: 'codes' });
+    } catch (err) {
+      // The email code is already out; the person fixes the number and presses again (the email is not re-sent).
+      setErrors((e) => ({ ...e, phone: waApiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.') }));
+      capture('auth_signup_result', { outcome: 'error', stage: 'phone_send', reason: waApiCode(err) || 'unknown' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function resendEmailCode() {
+    if (submitting || emailResendIn > 0) return;
+    setSubmitting(true);
+    clearErr('emailCode');
+    try {
+      const r = await sendSignupEmailCode(email.trim().toLowerCase());
+      setEmailResendAt(Date.now() + (r.resend_after_s ?? 60) * 1000);
+    } catch (err) {
+      setErrors((e) => ({ ...e, emailCode: waApiMessage(err, 'We couldn’t email a code just now. Please try again.') }));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function resendWaCode() {
+    if (submitting || waResendIn > 0) return;
+    setSubmitting(true);
+    clearErr('waCode');
+    try {
+      const r = await sendWhatsAppCode(waE164());
       setWaResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
     } catch (err) {
-      setFormError(waApiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.'));
+      setErrors((e) => ({ ...e, waCode: waApiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.') }));
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function verifyWa() {
-    if (submitting || waCode.trim().length < 4) return;
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      const r = await verifyWhatsAppCode(waE164(), waCode.trim());
-      if (r.status === 'signed_in' && r.needs18Plus) {
-        // [HF-AUTH-WA-1] New phone-only account: ask for the 18+ tick before opening the session.
-        setWaTicket(r.ticket);
-        setWaStage('age');
-        return;
-      }
-      if (r.status === 'signed_in') {
-        await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, r.ticket);
-        location.href = destination();
-        return;
-      }
-      // needs_email: a brand-new number. Keep the proof for after the email
-      // step (verifyEmail claims it), and switch to the ordinary sign-up form.
-      storeWaProof(r.proof, r.phone_masked);
-      setWaPhoneMasked(r.phone_masked);
-      setMethod('email');
-    } catch (err) {
-      setFormError(waApiMessage(err, 'That code didn’t work. Check it and try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  /* ── New account: step 2 — check both codes, create the account ───────── */
+  async function createAccount() {
+    if (submitting) return;
+    const cleanEmail = email.trim().toLowerCase();
+    const next: FieldErrors = {
+      emailCode: emailProof?.email === cleanEmail || /^\d{6}$/.test(emailCode.trim()) ? undefined : 'Enter the 6-digit code from your email.',
+      waCode: waCode.trim().length >= 4 ? undefined : 'Enter the 6-digit code from WhatsApp.',
+    };
+    setErrors(next);
+    if (Object.values(next).some(Boolean)) return;
 
-  /** [HF-AUTH-WA-1] The 18+ tick for a phone-only account: open the session, record the tick, go. */
-  async function confirmWaAge() {
-    if (submitting || !waTicket) return;
-    if (!waAgree) { setFormError('Please confirm that you are 18 or over to continue.'); return; }
     setSubmitting(true);
     setFormError(null);
     try {
-      await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, waTicket);
-      const token = await getActiveTokenWaited();
-      if (!token) throw new Error('no_token');
-      await confirmAge18(token);
+      let proof = emailProof && emailProof.email === cleanEmail ? emailProof.proof : null;
+      if (!proof) {
+        try {
+          proof = await verifySignupEmailCode(cleanEmail, emailCode.trim());
+          setEmailProof({ email: cleanEmail, proof });
+        } catch (err) {
+          setEmailCode('');
+          setErrors((e) => ({ ...e, emailCode: waApiMessage(err, 'That email code didn’t work. Check it and try again.') }));
+          return;
+        }
+      }
+      let r;
+      try {
+        r = await verifyWhatsAppCode(waE164(), waCode.trim(), { name: name.trim(), email_proof: proof, age_confirmed: true });
+      } catch (err) {
+        const c = waApiCode(err);
+        if (c === 'email_proof_invalid') {
+          setEmailProof(null);
+          setEmailCode('');
+          setErrors((e) => ({ ...e, emailCode: 'Your email check has expired. Ask for a new email code and enter it again.' }));
+        } else if (c === 'email_taken') {
+          setErrors((e) => ({ ...e, email: waApiMessage(err, 'This email already has an account. Sign in with your WhatsApp number instead.') }));
+          setStage('details');
+        } else {
+          setWaCode('');
+          setErrors((e) => ({ ...e, waCode: waApiMessage(err, 'That WhatsApp code didn’t work. Check it and try again.') }));
+        }
+        capture('auth_signup_result', { outcome: 'error', stage: 'create', reason: c || 'unknown', ms: Date.now() - startRef.current });
+        return;
+      }
+      if (r.status !== 'signed_in') {
+        setFormError('We couldn’t create your account just now. Please try again.');
+        return;
+      }
+      await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive as unknown as (p: { session: string }) => Promise<unknown>, r.ticket);
+      // Country is cosmetic profile data — never blocks the redirect.
+      capture('auth_signup_result', { outcome: 'ok', stage: 'create', is_new: r.isNew !== false, ms: Date.now() - startRef.current });
+      capture('signup_step', { method: 'whatsapp_email', step: 'done' });
       location.href = destination();
     } catch (err) {
-      setFormError(waApiMessage(err, 'We couldn’t finish that. Please try again.'));
+      captureException(err, { where: 'signup_create' });
+      setFormError('We couldn’t finish creating your account. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  /* ── Open the account — the finishing move for every path (fresh email +
-   *    phone, a claimed WhatsApp proof, or finish/resume mode). Terms are
-   *    already accepted on the details screen, so a verified phone is the
-   *    only remaining gate; nothing else asks the person to press "submit"
-   *    a second time. ───────────────────────────────────────────────────── */
+  /* ── Resume mode: verify a WhatsApp number on a signed-in older account ─ */
   async function finishAccount(phoneForBootstrap: string) {
     setSubmitting(true);
     setFormError(null);
-    // Names or role may have been edited after the email code was sent (or come
-    // from Google in finish mode) — best effort, never blocks opening the account.
-    try {
-      if (user) {
-        await user.update({
-          firstName: firstName.trim() || user.firstName || '',
-          lastName: lastName.trim() || user.lastName || '',
-          unsafeMetadata: { ...(user.unsafeMetadata ?? {}), role, country: params.country ?? (user.unsafeMetadata as { country?: string } | undefined)?.country ?? 'GLOBAL' },
-        });
-      }
-    } catch { /* cosmetic */ }
-
     try {
       const res = await bootstrapAccount({
         phone: phoneForBootstrap,
-        display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        display_name: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
       });
-      capture('auth_signup_result', {
-        outcome: res.ok ? 'ok' : 'error', stage: 'bootstrap', reason: res.message,
-        finish: resume, email: (user?.primaryEmailAddress?.emailAddress ?? email).toLowerCase(),
-        ms: Date.now() - startRef.current,
-      });
+      capture('auth_signup_result', { outcome: res.ok ? 'ok' : 'error', stage: 'bootstrap', reason: res.message, finish: true, ms: Date.now() - startRef.current });
       if (!res.ok) {
         setFormError(res.message ?? 'We couldn’t open your account just now. Please try again.');
         setSubmitting(false);
         return;
       }
-      capture('signup_step', { method: 'email', step: 'done' });
       location.href = destination();
     } catch (err) {
       captureException(err, { where: 'signup_finish' });
@@ -404,108 +322,10 @@ function Inner() {
     }
   }
 
-  /* ── Email ─────────────────────────────────────────────────────────────── */
-  async function sendEmail() {
-    if (!isLoaded || !signUp || emailStep === 'sending' || emailStep === 'verifying') return;
-    const { first, last } = splitName(name);
-    const next: FieldErrors = {
-      name: validateRequired(name, 'Your name'),
-      email: validateEmail(email),
-      terms: agreed ? undefined : 'Please accept the terms to continue.',
-    };
-    setErrors((e) => ({ ...e, ...next, emailCode: undefined }));
-    if (Object.values(next).some(Boolean)) return;
-
-    setFirstName(first);
-    setLastName(last);
-    setFormError(null);
-    setEmailStep('sending');
-    try {
-      await withTrace(async () => {
-        await signUp.create({
-          emailAddress: email.trim(),
-          firstName: first,
-          lastName: last,
-          unsafeMetadata: { role, country: params.country ?? 'GLOBAL', signedUpVia: 'web' },
-        });
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      });
-      setEmailCode('');
-      setEmailStep('code');
-      setEmailResendAt(Date.now() + 30_000);
-      capture('auth_code_sent', { surface: 'sign_up', channel: 'email' });
-    } catch (err) {
-      setEmailStep('idle');
-      const exists = clerkErrors(err).some((x) => x.code === 'form_identifier_exists');
-      setErrors((e) => ({
-        ...e,
-        email: exists ? 'This email already has an account — log in instead.' : clerkError(err),
-      }));
-      capture('auth_signup_result', { outcome: 'error', stage: 'email_send', reason: clerkError(err) });
-    }
-  }
-
-  async function resendEmail() {
-    if (!signUp) return;
-    try {
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      setEmailResendAt(Date.now() + 30_000);
-      clearErr('emailCode');
-    } catch (err) {
-      setErrors((e) => ({ ...e, emailCode: clerkError(err) }));
-    }
-  }
-
-  async function verifyEmail(code: string) {
-    if (!signUp || emailStep !== 'code') return;
-    setEmailStep('verifying');
-    clearErr('emailCode');
-    try {
-      const res = await withTrace(() => signUp.attemptEmailAddressVerification({ code }));
-      if (res.status === 'complete' && res.createdSessionId) {
-        await setActive({ session: res.createdSessionId });
-        setEmailStep('verified');
-        capture('auth_email_verified', { surface: 'sign_up', email: email.trim().toLowerCase() });
-        // [WA-WEB-1 2026-09-28] "Continue with WhatsApp" -> needs_email left a
-        // proof waiting: attach it now and skip screens 3-4 entirely — the
-        // person is never asked for a second WhatsApp code.
-        const pending = readWaProof();
-        if (pending) {
-          try {
-            const token = await getActiveTokenWaited();
-            if (token) {
-              const claimed = await claimWhatsAppProof(pending.proof, token);
-              setVerifiedPhone(claimed.phone);
-              setPhoneStep('verified');
-              await finishAccount(claimed.phone);
-              return;
-            }
-          } catch (err) {
-            captureException(err, { where: 'signup_wa_proof_claim' });
-            /* falls through to the ordinary WhatsApp screen below */
-          }
-        }
-        return;
-      }
-      setEmailStep('code');
-      setErrors((e) => ({ ...e, emailCode: 'That didn’t complete. Check the code and try again.' }));
-    } catch (err) {
-      setEmailStep('code');
-      setEmailCode('');
-      setErrors((e) => ({ ...e, emailCode: clerkError(err) }));
-    }
-  }
-
-  /* ── Phone (screens 3-4, and finish/resume mode) ─────────────────────────
-   * Shared by a fresh sign-up (once email is verified) and finish/resume mode
-   * (which lands here directly — its session already exists). Unchanged from
-   * the long form except that verifying now finishes the account itself. ── */
-  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY.code);
   function onPhoneChange(v: string, c: string) {
     setPhone(v);
     setPhoneCountry(c);
     clearErr('phone', 'phoneCode');
-    // Editing the number after a code was sent (or after verifying) starts over.
     if (phoneStep === 'code' || phoneStep === 'verified') {
       setPhoneStep('idle');
       setPhoneCode('');
@@ -515,10 +335,6 @@ function Inner() {
 
   async function sendPhone() {
     if (phoneStep === 'sending' || phoneStep === 'verifying') return;
-    if (emailStep !== 'verified') {
-      setErrors((e) => ({ ...e, phone: 'Verify your email first.' }));
-      return;
-    }
     if (phone.replace(/\D/g, '').length < 4) {
       setErrors((e) => ({ ...e, phone: 'Enter your WhatsApp number.' }));
       return;
@@ -539,8 +355,6 @@ function Inner() {
       setPhoneResendAt(Date.now() + (r.resend_after_s ?? 30) * 1000);
       capture('auth_code_sent', { surface: 'sign_up', channel: 'whatsapp' });
     } catch (err) {
-      // A resend that fails keeps the open code box; a first send that fails closes it.
-      // too_soon means a code already went out moments ago, so show the box for it.
       setPhoneStep(prevStep === 'code' || apiCode(err) === 'too_soon' ? 'code' : 'idle');
       setErrors((e) => ({ ...e, phone: apiMessage(err, 'We couldn’t send the code on WhatsApp. Please try again.') }));
       capture('auth_signup_result', { outcome: 'error', stage: 'phone_send', reason: apiCode(err) || 'unknown' });
@@ -556,7 +370,7 @@ function Inner() {
       setVerifiedPhone(r.phone);
       setPhoneStep('verified');
       clearErr('phone', 'phoneCode');
-      capture('auth_phone_verified', { surface: resume ? 'sign_up_finish' : 'sign_up' });
+      capture('auth_phone_verified', { surface: 'sign_up_finish' });
       await finishAccount(r.phone);
     } catch (err) {
       const c = apiCode(err);
@@ -572,34 +386,13 @@ function Inner() {
     }
   }
 
-  /* [SIGNUP-EMAIL-STEPS-1] Fires once per screen actually shown to a person on
-   * the email path (the WhatsApp-first tab has its own events already). */
-  const emailScreen: 'details' | 'email_code' | 'whatsapp' | 'whatsapp_code' | null = (() => {
-    if (!resume && method !== 'email') return null;
-    if (!resume) {
-      if (emailStep === 'idle' || emailStep === 'sending') return 'details';
-      if (emailStep === 'code' || emailStep === 'verifying') return 'email_code';
-    }
-    if (phoneStep === 'code' || phoneStep === 'verifying') return 'whatsapp_code';
-    if (phoneStep === 'verified') return null; // finishing or done
-    return 'whatsapp';
-  })();
-  useEffect(() => {
-    if (!emailScreen) return;
-    capture('signup_step', { method: 'email', step: emailScreen });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailScreen]);
-
   if (boot === 'checking' || boot === 'leaving') {
     return <p className="auth-footline">{boot === 'leaving' ? uiT("web-auth.02d310528cc61f61","You’re signed in — taking you through…") : uiT("web-auth.4152c1296fa27021","One sec…")}</p>;
   }
 
-  /* ── Screens 3-4: WhatsApp number, then its code. Shared by the email path
-   *    (once the email is verified) and finish/resume mode. ──────────────── */
+  /* ── Resume mode screens ──────────────────────────────────────────────── */
   function phoneScreens(eyebrow: string, heading: string): ReactNode {
     if (phoneStep === 'verified') {
-      // Bootstrap is in flight, or failed and can be retried — there is
-      // nothing else to fill in, terms were accepted on the details screen.
       return (
         <div className="auth-form auth-form--signup">
           <div className="auth-desktop-head">
@@ -663,163 +456,102 @@ function Inner() {
     );
   }
 
-  // [SIGNUP-EMAIL-STEPS-1] Finish/resume mode is JUST the WhatsApp screens,
-  // reworded — no name, email or role fields, that account already exists.
   if (resume) {
     return <>{phoneScreens(uiT("web-auth.be98b10d2db32b3f","One last step"), "Verify your WhatsApp")}</>;
   }
 
-  // [WA-WEB-1 2026-09-28] The WhatsApp-first sign-up path — only offered on a
-  // fresh sign-up, never in finish/resume mode.
-  if (method === 'whatsapp') {
+  /* ── Screen 2: both codes ─────────────────────────────────────────────── */
+  if (stage === 'codes') {
+    const emailDone = !!emailProof && emailProof.email === email.trim().toLowerCase();
     return (
-      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void (waStage === 'number' ? sendWa() : waStage === 'age' ? confirmWaAge() : verifyWa()); }} noValidate>
+      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void createAccount(); }} noValidate>
         <div className="auth-desktop-head">
-          <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
-          <h1 className="auth-h2">Create my account</h1>
-        </div>
-        <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ink" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
-          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('email')}>Continue with email</button>
+          <p className="auth-eyebrow">Almost there</p>
+          <h1 className="auth-h2">Enter your two codes</h1>
         </div>
         {(formError || stalled) && (
           <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
         )}
-        {waStage === 'number' && (
+        {emailDone ? (
+          <p className="auth-footline" style={{ textAlign: 'left' }}>Email <strong>{email.trim()}</strong> is verified.</p>
+        ) : (
           <>
-            <WhatsAppNumberInput
-              value={waNational} countryCode={waCountry}
-              onChange={(n, c) => { setWaNational(n); setWaCountry(c); }}
-              label="WhatsApp number" autoFocus
+            <p className="auth-footline" style={{ textAlign: 'left' }}>We emailed a 6-digit code to <strong>{email.trim()}</strong>.</p>
+            <Field
+              label="Email code" name="emailCode" inputMode="numeric" maxLength={6}
+              autoComplete="one-time-code" placeholder="123456"
+              value={emailCode} onChange={(v) => { setEmailCode(v); clearErr('emailCode'); }} error={errors.emailCode}
             />
-            <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to create your account.</p>
-            <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
+            <p className="auth-footline" style={{ textAlign: 'left' }}>
+              {emailResendIn > 0 ? `Resend email code in ${emailResendIn}s` : (
+                <a href="#resend-email" onClick={(ev) => { ev.preventDefault(); void resendEmailCode(); }}>Resend email code</a>
+              )}
+            </p>
           </>
         )}
-        {waStage === 'age' && (
-          <>
-            <CheckRow className="auth-terms" large checked={waAgree} onChange={setWaAgree}>
-              I’m 18 or over and I agree to the <a href="/terms">terms</a> and <a href="/community-guidelines">safety rules</a>.
-            </CheckRow>
-            <Button type="submit" loading={submitting}>Continue</Button>
-          </>
-        )}
-        {waStage === 'code' && (
-          <>
-            <p className="auth-footline" style={{ textAlign: 'left' }}>We sent a 6-digit code on WhatsApp to <strong>{waPhoneMasked}</strong>.</p>
-            <Field label="Verification code" name="waCode" inputMode="numeric" maxLength={6}
-              autoComplete="one-time-code" placeholder="123456" value={waCode} onChange={setWaCode} />
-            <Button type="submit" loading={submitting}>Verify and continue</Button>
-            <div className="auth-foot">
-              <p className="auth-footline">
-                {waResendIn > 0 ? `Resend in ${waResendIn}s` : (
-                  <a href="#resend" onClick={(ev) => { ev.preventDefault(); void sendWa(); }}>Resend code</a>
-                )}
-              </p>
-            </div>
-          </>
-        )}
-        {GOOGLE_AUTH_ENABLED && <>
-          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-          <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
-        </>}
-        <div className="auth-foot">
-          <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
-          </p>
-        </div>
-      </form>
-    );
-  }
-
-  // [SIGNUP-EMAIL-STEPS-1] method === 'email': screen 1, "details" — name,
-  // email, terms, one button. Nothing else — the long form's role picker and
-  // inline-verify fields are gone.
-  if (emailStep === 'idle' || emailStep === 'sending') {
-    return (
-      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void sendEmail(); }} noValidate>
-        <div className="auth-desktop-head">
-          <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
-          <h1 className="auth-h2">{uiT("web-auth.862d3b2696cfbc19","Create my account")}</h1>
-        </div>
-        <div className="auth-row" role="tablist" aria-label="Sign-up method" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-          <button type="button" role="tab" aria-selected={false} className="auth-btn auth-btn--ghost" onClick={() => chooseMethod('whatsapp')}>Continue with WhatsApp</button>
-          <button type="button" role="tab" aria-selected className="auth-btn auth-btn--ink" onClick={() => chooseMethod('email')}>Continue with email</button>
-        </div>
-        {(formError || stalled) && (
-          <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
-        )}
+        <p className="auth-footline" style={{ textAlign: 'left' }}>We sent a 6-digit code on WhatsApp to <strong>{waMasked}</strong>.</p>
         <Field
-          label="Your name" name="name" autoComplete="name"
-          placeholder={uiT("web-auth.d82e5fe24eed3db4","What should we call you?")}
-          value={name} onChange={(v) => { setName(v); clearErr('name'); }} error={errors.name}
-        />
-        <Field
-          label={uiT("web-auth.969ccbd3cf6300ec","Email")} name="email" type="email" inputMode="email" autoComplete="email"
-          placeholder={uiT("web-auth.8d12b7f58c0d3fc8","you@email.com")}
-          value={email} onChange={(v) => { setEmail(v); clearErr('email'); }} error={errors.email}
-        />
-
-        {/* Clerk smart-CAPTCHA mount point — required for custom sign-up flows.
-            Only this screen calls signUp.create, so only this screen needs it. */}
-        <div id="clerk-captcha" />
-
-        <CheckRow
-          className="auth-terms" large checked={agreed}
-          onChange={(v) => { setAgreed(v); clearErr('terms'); }}
-          error={errors.terms}
-        ><UiText id="web-auth.4dca6ceb76d0fbcf" source="I’m 18 or over and I agree to the" />{" "}<a href="/terms"><UiText id="web-auth.51d2361f4faea3bc" source="terms" /></a>{" "}<UiText id="web-auth.6201111b83a0cb5b" source="and" />{' '}
-          <a href="/community-guidelines"><UiText id="web-auth.1ce806cb5268307a" source="safety rules" /></a>.
-        </CheckRow>
-
-        <Button type="submit" loading={emailStep === 'sending' || (!isLoaded && !stalled)} disabled={stalled}>
-          Email me a code
-        </Button>
-
-        {GOOGLE_AUTH_ENABLED && <>
-          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-          <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
-        </>}
-        <div className="auth-foot">
-          <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
-          </p>
-        </div>
-      </form>
-    );
-  }
-
-  // Screen 2, "email_code" — the 6-digit email code, mirroring the WhatsApp
-  // code screen: one field, one button, a countdown resend link.
-  if (emailStep === 'code' || emailStep === 'verifying') {
-    return (
-      <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void verifyEmail(emailCode); }} noValidate>
-        <div className="auth-desktop-head">
-          <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
-          <h1 className="auth-h2">{uiT("web-auth.862d3b2696cfbc19","Create my account")}</h1>
-        </div>
-        {(formError || stalled) && (
-          <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
-        )}
-        <p className="auth-footline" style={{ textAlign: 'left' }}>We sent a 6-digit code to <strong>{email.trim()}</strong>.</p>
-        <Field
-          label={uiT("web-auth.3ee75029c70e284c","Verification code")} name="emailCode" inputMode="numeric" maxLength={6}
+          label="WhatsApp code" name="waCode" inputMode="numeric" maxLength={6}
           autoComplete="one-time-code" placeholder="123456"
-          value={emailCode} onChange={(v) => { setEmailCode(v); clearErr('emailCode'); }} error={errors.emailCode}
+          value={waCode} onChange={(v) => { setWaCode(v); clearErr('waCode'); }} error={errors.waCode}
         />
-        <Button type="submit" loading={emailStep === 'verifying'}>Verify and continue</Button>
+        <p className="auth-footline" style={{ textAlign: 'left' }}>
+          {waResendIn > 0 ? `Resend WhatsApp code in ${waResendIn}s` : (
+            <a href="#resend-wa" onClick={(ev) => { ev.preventDefault(); void resendWaCode(); }}>Resend WhatsApp code</a>
+          )}
+        </p>
+        <Button type="submit" loading={submitting}>Verify and create my account</Button>
         <div className="auth-foot">
           <p className="auth-footline">
-            {emailResendIn > 0 ? `Resend in ${emailResendIn}s` : (
-              <a href="#resend" onClick={(ev) => { ev.preventDefault(); void resendEmail(); }}>Resend code</a>
-            )}
+            <a href="#back" onClick={(ev) => { ev.preventDefault(); setStage('details'); setFormError(null); setErrors({}); }}>Change my details</a>
           </p>
         </div>
       </form>
     );
   }
 
-  // Screens 3-4: email is verified, the account exists — only the WhatsApp
-  // number (and its code) stand between here and the dashboard.
-  return <>{phoneScreens(uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all"), uiT("web-auth.862d3b2696cfbc19","Create my account"))}</>;
+  /* ── Screen 1: details ────────────────────────────────────────────────── */
+  return (
+    <form className="auth-form auth-form--signup" onSubmit={(e) => { e.preventDefault(); void sendCodes(); }} noValidate>
+      <div className="auth-desktop-head">
+        <p className="auth-eyebrow">{uiT("web-auth.6b6ad3ba72651b98","Two minutes, that’s all")}</p>
+        <h1 className="auth-h2">{uiT("web-auth.862d3b2696cfbc19","Create my account")}</h1>
+      </div>
+      {(formError || stalled) && (
+        <p className="auth-formerr" role="alert"><UiMessage namespace="web-auth" value={formError ?? STALLED_MESSAGE} /></p>
+      )}
+      <Field
+        label="Your name" name="name" autoComplete="name"
+        placeholder={uiT("web-auth.d82e5fe24eed3db4","What should we call you?")}
+        value={name} onChange={(v) => { setName(v); clearErr('name'); }} error={errors.name}
+      />
+      <Field
+        label={uiT("web-auth.969ccbd3cf6300ec","Email")} name="email" type="email" inputMode="email" autoComplete="email"
+        placeholder={uiT("web-auth.8d12b7f58c0d3fc8","you@email.com")}
+        value={email} onChange={(v) => { setEmail(v); clearErr('email'); }} error={errors.email}
+      />
+      <WhatsAppNumberInput
+        value={national} countryCode={country}
+        onChange={(n, c) => { setNational(n); setCountry(c); clearErr('phone'); }}
+        label="WhatsApp number" error={errors.phone}
+      />
+      <p className="auth-hint">We’ll send one code to your email and one on WhatsApp. You need both to create your account.</p>
+      <CheckRow
+        className="auth-terms" large checked={agreed}
+        onChange={(v) => { setAgreed(v); clearErr('terms'); }}
+        error={errors.terms}
+      ><UiText id="web-auth.4dca6ceb76d0fbcf" source="I’m 18 or over and I agree to the" />{" "}<a href="/terms"><UiText id="web-auth.51d2361f4faea3bc" source="terms" /></a>{" "}<UiText id="web-auth.6201111b83a0cb5b" source="and" />{' '}
+        <a href="/community-guidelines"><UiText id="web-auth.1ce806cb5268307a" source="safety rules" /></a>.
+      </CheckRow>
+      <Button type="submit" loading={submitting || (!authLoaded && !stalled)} disabled={stalled}>
+        Send my codes
+      </Button>
+      <div className="auth-foot">
+        <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
+        </p>
+      </div>
+    </form>
+  );
 }
 
 export function SignUpIsland() {

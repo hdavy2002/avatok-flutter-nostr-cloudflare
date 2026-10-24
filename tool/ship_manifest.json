@@ -12033,5 +12033,35 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "merch_art_forked (design_id, from_design_id) fires on each copy; merch_studio_step step=print_file carries forked_from. Verified by making a product from an earlier AI picture that was already used, and reading studio_designs (new row with art_checks_json.forked_from)."
+  },
+  "HF-AUTH-WA-ONLY-1": {
+    "description": "[HF-AUTH-WA-ONLY-1] Owner: website log-in is WhatsApp code only (email + Google removed); sign-up = name + email + WhatsApp number with an email code (new routes/signup_email_otp.ts, KV, hashed, 10 min, 5 tries, 60 s gap, per-email/IP limits) AND a WhatsApp code; routes/whatsapp_auth.ts verify takes {signup:{name,email_proof}} (client web) and creates the account with name + verified email in one move; web sign-in with an unknown number answers no_account and never creates one.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "email_otp_sent",
+        "property": "surface",
+        "equals": "sign_up",
+        "min_events": 1,
+        "note": "A sign-up email code actually going out (server-side track in routes/signup_email_otp.ts). email_otp_failed with reason send_failed/rate_limited instead means the email path is failing."
+      },
+      {
+        "event": "email_otp_verified",
+        "property": "surface",
+        "equals": "sign_up",
+        "min_events": 1,
+        "note": "A person typing the right email code (server-side). Sent without verified means nobody gets past the email step."
+      },
+      {
+        "event": "auth_whatsapp_verify",
+        "property": "outcome",
+        "equals": "signed_in",
+        "min_events": 1,
+        "note": "A WhatsApp code accepted and the session issued; created_here/with_email on the same event shows the new-account (name + email) path completing."
+      }
+    ],
+    "_verified_at": "worker/src/routes/signup_email_otp.ts and worker/src/routes/whatsapp_auth.ts track() call sites, read directly from the code, 2026-10-24"
   }
 }

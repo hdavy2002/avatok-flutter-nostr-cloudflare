@@ -1,9 +1,10 @@
 /* [SAATHUM-CHECKOUT-UI 2026-09-26, updated WA-WEB-1 2026-09-28] Step 1 — "You".
  * Reuses the SAME building blocks as the rest of the site rather than
  * inventing new auth code:
- *   - sign-in: <EmailCodeSignIn> (email + 6-digit code, no password) or the
- *     new WhatsApp-as-login flow (islands/auth/whatsappAuth.ts), same choice
- *     as /sign-in and /sign-up.
+ *   - sign-in: the WhatsApp-code login (islands/auth/whatsappAuth.ts), the only
+ *     way in. [HF-AUTH-WA-ONLY-1 2026-10-24, owner] Email and Google sign-in are
+ *     gone; a number with no account is sent to /sign-up (name + email + WhatsApp,
+ *     both verified) and comes back here afterwards.
  *   - WhatsApp verification for an already-signed-in account: sendPhoneCode/
  *     verifyPhoneCode from islands/auth/passwordless.ts (the authed
  *     /api/account/phone/{send,verify} routes, which now accept any
@@ -20,16 +21,13 @@
  * meditation session, …) — owner rule.
  */
 import { useEffect, useRef, useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/clerk-react';
-import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
-import { sendPhoneCode, verifyPhoneCode, apiMessage, apiCode, continueWithGoogle, finishUrl } from '../auth/passwordless';
+import { useSignIn } from '@clerk/clerk-react';
+import { sendPhoneCode, verifyPhoneCode, apiMessage, apiCode } from '../auth/passwordless';
 import {
   sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage,
-  storeWaProof, readWaProof, claimWhatsAppProof,
 } from '../auth/whatsappAuth';
 import { WhatsAppNumberInput, type WhatsAppNumberInputClasses } from '../auth/WhatsAppNumberInput';
 import { DEFAULT_COUNTRY, toE164 } from '../../lib/countries';
-import { getActiveTokenWaited } from '../../lib/clerk';
 import { capture, captureException } from '../../lib/analytics';
 import type { EventType, EventTypeCopy } from '../../lib/eventTypes';
 import type { PwlSignIn } from '../auth/passwordless';
@@ -60,12 +58,8 @@ export function YouStep({
   totalSteps: number;
 }) {
   const { signIn, setActive } = useSignIn();
-  useSignUp(); // keeps the Clerk sign-up resource warm for EmailCodeSignIn's own hook usage
 
-  // [CHECKOUT-LOGIN-CHOICE-1 2026-09-28, owner] WhatsApp is the default; email second, Google third.
-  // A pending WhatsApp proof (needs_email hand-off) reopens on email.
-  const [method, setMethod] = useState<'email' | 'whatsapp'>(() => (readWaProof() ? 'email' : 'whatsapp'));
-  const [googleBusy, setGoogleBusy] = useState(false);
+  const [noAccount, setNoAccount] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'sending' | 'code' | 'verifying'>('idle');
   const [country, setCountry] = useState(DEFAULT_COUNTRY.code);
   const [phone, setPhone] = useState('');
@@ -79,27 +73,6 @@ export function YouStep({
     if (!shop) capture('saathum_checkout_step', { step: 'you', listing_id: listingId, event_type: eventType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function google() {
-    setErr(null);
-    setGoogleBusy(true);
-    capture('login_method_chosen', { method: 'google', surface: 'checkout' });
-    try {
-      // Back to this checkout after Google; finishUrl sends an account without a
-      // verified WhatsApp through the WhatsApp gate first.
-      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(window.location.pathname + window.location.search));
-    } catch (e) {
-      setGoogleBusy(false);
-      setErr('Couldn’t open Google sign-in. Please try again.');
-      captureException(e, { where: 'saathum_checkout_google' });
-    }
-  }
-
-  function chooseMethod(m: 'email' | 'whatsapp') {
-    setMethod(m);
-    setErr(null);
-    capture('login_method_chosen', { method: m, surface: 'checkout' });
-  }
 
   /* ── Signed OUT: pre-auth WhatsApp login (needs_email hands off to email) ── */
   async function sendWaLogin() {
@@ -133,36 +106,14 @@ export function YouStep({
         onVerified(); // this number is already verified for the account — nothing left to do here
         return;
       }
-      // needs_email: keep the proof, fall through to the email flow — the
-      // person is never asked for a second WhatsApp code once they sign in.
-      storeWaProof(r.proof, r.phone_masked);
+      // no_account: this number has no account yet — /sign-up makes one (name + email + WhatsApp, both verified).
       setPhase('idle');
-      chooseMethod('email');
+      setNoAccount(true);
     } catch (e) {
       setPhase('code');
       setErr(waApiMessage(e, 'That code didn’t work. Please try again.'));
       captureException(e, { where: 'saathum_checkout_wa_verify' });
     }
-  }
-
-  /** After the email step produces a session, attach a pending WhatsApp proof if one is waiting. */
-  async function afterEmailSignedIn() {
-    const pending = readWaProof();
-    if (pending) {
-      try {
-        const token = await getActiveTokenWaited();
-        if (token) {
-          await claimWhatsAppProof(pending.proof, token);
-          onSignedIn();
-          onVerified();
-          return;
-        }
-      } catch (e) {
-        // Proof expired/taken — fall through to the normal WhatsApp step below.
-        captureException(e, { where: 'saathum_checkout_wa_claim' });
-      }
-    }
-    onSignedIn();
   }
 
   /* ── Signed IN: verify the WhatsApp number on the account ────────────── */
@@ -211,23 +162,11 @@ export function YouStep({
         <div className="sthc-kick">{shop ? 'You' : `Step ${stepIndex} of ${totalSteps} · You`}</div>
         <h3 className="sthc-h3">{shop ? 'Sign in to continue' : 'Sign in to book'}</h3>
         {!shop && <div className="sthc-dots">{dots}</div>}
-        <div className="sthc-choice" role="tablist" aria-label="How do you want to sign in?">
-          <button type="button" role="tab" aria-selected={method === 'whatsapp'} className={`sthc-btn${method === 'whatsapp' ? '' : ' sthc-btn--ghost'}`} onClick={() => chooseMethod('whatsapp')}>
-            WhatsApp
-          </button>
-          <button type="button" role="tab" aria-selected={method === 'email'} className={`sthc-btn${method === 'email' ? '' : ' sthc-btn--ghost'}`} onClick={() => chooseMethod('email')}>
-            Email
-          </button>
-          <button type="button" className="sthc-btn sthc-btn--ghost" disabled={googleBusy} onClick={() => void google()}>
-            {googleBusy ? 'Opening…' : 'Google'}
-          </button>
-        </div>
-        {method === 'email' ? (
+        {noAccount ? (
           <>
-          {readWaProof() && (
-            <p className="sthc-hint">Your WhatsApp number {readWaProof()?.phone_masked} is verified. Now add your email — we send your {shop ? 'order updates' : 'booking'} and receipts there.</p>
-          )}
-          <EmailCodeSignIn reason={shop ? 'so we can send your order updates' : 'so we can send your booking'} onAuthed={() => void afterEmailSignedIn()} />
+            <p className="sthc-hint">There is no account for {phoneMasked}. Create one first, then come back here.</p>
+            <a className="sthc-btn" href={`/sign-up?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}>Create an account →</a>
+            <button className="sthc-btn sthc-btn--link" onClick={() => { setNoAccount(false); setPhase('idle'); setCode(''); }}>Try a different number</button>
           </>
         ) : (
           <>

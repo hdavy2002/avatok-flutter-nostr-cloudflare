@@ -278,37 +278,9 @@ export function Divider({ label }: { label: string }) {
 }
 
 /* ── Social buttons ───────────────────────────────────────────────────── */
-/*
- * [Owner decision 2026-08-26] Apple is REMOVED (it was never enabled on the
- * Clerk instance and would have failed on click); Facebook was to replace it.
- *
- * [WEB-PWLESS-1 2026-09-06] GOOGLE IS NOW LIVE; FACEBOOK IS STILL NOT.
- * `oauth_google` is the only provider enabled on the instance — verified against
- * https://clerk.saathum.com/v1/environment (`user_settings.social`). Rendering a
- * Facebook button would produce a visibly dead control that fails at Clerk on
- * click, which is worse than no button; that is why this is one button and not a
- * pair, and why `SOCIAL_ENABLED` is gone rather than flipped (a single boolean
- * for "social" hid the fact that the two providers were in different states).
- *
- * TO ADD FACEBOOK: enable it in the Clerk dashboard first, then add it here.
- */
-/** [HF-IDV-WHATSAPP-1 2026-10-24] Owner: no "Continue with Google" on sign-in / sign-up. Accounts are email code +
- *  WhatsApp OTP only. (YouTube channel linking has its own Google consent and is unaffected.) Flip to true to restore. */
-export const GOOGLE_AUTH_ENABLED = false;
-
-export function GoogleButton({
-  onClick, disabled, label = 'Continue with Google',
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  label?: string;
-}) {
-  return (
-    <div className="auth-social">
-      <Button variant="ghost" onClick={onClick} disabled={disabled}>{label}</Button>
-    </div>
-  );
-}
+/* [HF-AUTH-WA-ONLY-1 2026-10-24, owner] No social sign-in anywhere on the web: sign-in is a WhatsApp code, sign-up is
+ * name + email code + WhatsApp code. The Google button, its flag and the OAuth hand-off are deleted (YouTube channel
+ * linking has its own Google consent and is unaffected). Do not add a social button without a new owner decision. */
 
 /* ── Code step ────────────────────────────────────────────────────────── */
 /**

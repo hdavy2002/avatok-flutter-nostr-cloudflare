@@ -34,6 +34,13 @@
 // described below. `client` ("web"|"android"|...) is a telemetry hint only.
 // Contract for native clients: Specs/HF-NATIVE-AUTH.md.
 //
+// [HF-AUTH-WA-ONLY-1 2026-10-24] The WEBSITE (client:"web") is WhatsApp-only now:
+//   * sign-in with an unknown number answers {status:"no_account"} — it NEVER creates an account;
+//   * sign-up posts {phone, code, client:"web", age_confirmed, signup:{name, email_proof}} where email_proof
+//     came from routes/signup_email_otp.ts (the email code). Only then is the account created — with the
+//     name and the already-verified email — in one move, independent of hfPhoneOnlySignupEnabled.
+// Native clients (client != "web") keep the exact behaviour described below.
+//
 // A number with no live account gets a single-use PROOF (not a session) instead
 // of a ticket: the browser still has to complete a real sign-up (email code or
 // Google) before that phone can attach to an account. Redeemed by:
@@ -61,6 +68,8 @@ import {
   OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
 import { placeholderEmailFor } from "../lib/placeholder_email";
+import { readEmailProof, burnEmailProof } from "./signup_email_otp";
+import { attachVerifiedClerkEmail } from "../lib/clerk_verified_email";
 
 import { reserveAndSendOtp } from "../lib/otp_send_reservation";
 
@@ -128,10 +137,21 @@ export async function whatsappAuthVerify(req: Request, env: Env): Promise<Respon
   if (!otpProvider(env)) {
     return json({ error: "otp_unavailable", message: "WhatsApp sign-in isn’t available right now. Please try again shortly." }, 503);
   }
-  const b = (await req.json().catch(() => ({}))) as { phone?: unknown; code?: unknown; client?: unknown; age_confirmed?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { phone?: unknown; code?: unknown; client?: unknown; age_confirmed?: unknown; signup?: unknown };
   const e164 = normalizeE164(b?.phone);
   if (!e164) return json({ error: "invalid_phone", message: INVALID_PHONE_MESSAGE, field: "phone" }, 400);
   const client = clientHint(b?.client);
+  // [HF-AUTH-WA-ONLY-1] Sign-up payload: checked BEFORE the WhatsApp code is touched, so a stale email proof
+  // never burns a WhatsApp attempt.
+  let signup: SignupPayload | null = null;
+  if (b?.signup && typeof b.signup === "object") {
+    const sp = b.signup as { name?: unknown; email_proof?: unknown };
+    const name = typeof sp.name === "string" ? sp.name.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+    const email = await readEmailProof(env, sp.email_proof);
+    if (!name) return json({ error: "invalid_name", message: "Enter your name.", field: "name" }, 400);
+    if (!email) return json({ error: "email_proof_invalid", message: "Your email check has expired. Please verify your email again.", field: "email" }, 400);
+    signup = { name, email, proof: String(sp.email_proof) };
+  }
   const ageConfirmed = b?.age_confirmed === true;
   const code = String(b?.code ?? "").replace(/\D/g, "");
   if (!/^\d{4,6}$/.test(code)) return json({ error: "invalid_code", message: "Enter the 6-digit code we sent you.", field: "code" }, 400);
@@ -209,6 +229,14 @@ export async function whatsappAuthVerify(req: Request, env: Env): Promise<Respon
     return json({ ok: true, status: "signed_in", ticket: mint.ticket, isNew: false, needs18Plus: await needs18PlusFor(db, existingUid) });
   }
 
+  // [HF-AUTH-WA-ONLY-1] Website sign-up: both codes are proven, create the account with name + email.
+  if (signup) return await phoneOnlySignup(env, { e164: row.e164, hash, client, ageConfirmed, attempts: row.attempts + 1, now, otpRowId: row.id, signup });
+  // [HF-AUTH-WA-ONLY-1] Website sign-in with a number that has no account: never create one here.
+  if (client === "web") {
+    void track(env, "anon_wa_login", "auth_whatsapp_verify", APP, { outcome: "no_account", attempts: row.attempts + 1, phone_masked: mask(row.e164), client });
+    return json({ ok: true, status: "no_account", phone_masked: mask(row.e164) });
+  }
+
   if (phoneOnly) return await phoneOnlySignup(env, { e164: row.e164, hash, client, ageConfirmed, attempts: row.attempts + 1, now, otpRowId: row.id });
 
   // No account has this number yet — a single-use PROOF the browser redeems at
@@ -231,6 +259,17 @@ export async function whatsappAuthVerify(req: Request, env: Env): Promise<Respon
 // ---------------------------------------------------------------------------
 // [HF-AUTH-WA-1] Phone-only sign-up helpers (used only while hfPhoneOnlySignupEnabled is on)
 // ---------------------------------------------------------------------------
+type SignupPayload = { name: string; email: string; proof: string };
+
+/** "Asha Rao" -> Asha / Rao. One word is reused for both (Clerk requires both names on this instance). */
+function splitName(full: string): { first: string; last: string } {
+  const t = full.replace(/\s+/g, " ").trim();
+  const i = t.indexOf(" ");
+  if (i === -1) return { first: t, last: t };
+  const first = t.slice(0, i);
+  return { first, last: t.slice(i + 1).trim() || first };
+}
+
 /** Telemetry hint only ("web", "android", ...). Anything odd is dropped to "unknown". */
 function clientHint(v: unknown): string {
   const c = typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -306,7 +345,7 @@ async function releaseClaim(db: Env["DB_META"], hash: string): Promise<void> {
  * usernames on — google_auth.ts relies on it); external_id = the unguessable ext_id, which makes a retry after a
  * crash find the SAME Clerk user. No email, no phone_number (SMS stays off in Clerk), no password.
  */
-async function createClerkPhoneUser(env: Env, extId: string): Promise<{ ok: true; uid: string } | { ok: false; detail: string }> {
+async function createClerkPhoneUser(env: Env, extId: string, signup?: SignupPayload): Promise<{ ok: true; uid: string } | { ok: false; detail: string; emailTaken?: boolean }> {
   if (!env.CLERK_SECRET_KEY) return { ok: false, detail: "unconfigured" };
   const headers = { authorization: `Bearer ${env.CLERK_SECRET_KEY}`, "content-type": "application/json" };
   const res = await fetch(`${CLERK_API}/users`, {
@@ -315,10 +354,11 @@ async function createClerkPhoneUser(env: Env, extId: string): Promise<{ ok: true
       external_id: extId,
       username: `hf${extId.slice(5, 29)}`,
       // [HF-WIRE-17] Clerk keeps "Require email address" on, so give it an internal placeholder (never mailed, filtered everywhere).
-      email_address: [placeholderEmailFor(extId)],
-      first_name: "New", last_name: "User", // the instance requires names (2026-06-23 config); the person edits them later
+      // [HF-AUTH-WA-ONLY-1] A website sign-up carries the real, already-verified email and the typed name.
+      email_address: [signup ? signup.email : placeholderEmailFor(extId)],
+      first_name: signup ? splitName(signup.name).first : "New", last_name: signup ? splitName(signup.name).last : "User", // the instance requires names (2026-06-23 config); the person edits them later
       skip_password_checks: true, skip_password_requirement: true,
-      public_metadata: { signup: "whatsapp_only" },
+      public_metadata: { signup: signup ? "whatsapp_email" : "whatsapp_only" },
     }),
   });
   if (res.ok) {
@@ -333,21 +373,22 @@ async function createClerkPhoneUser(env: Env, extId: string): Promise<{ ok: true
     const users = (await look.json().catch(() => [])) as Array<{ id?: string }>;
     if (Array.isArray(users) && users[0]?.id) return { ok: true, uid: users[0].id };
   }
-  return { ok: false, detail: `${res.status} ${detail}` };
+  return { ok: false, detail: `${res.status} ${detail}`, emailTaken: !!signup && /form_identifier_exists/.test(detail) };
 }
 
 async function phoneOnlySignup(
   env: Env,
-  a: { e164: string; hash: string; client: string; ageConfirmed: boolean; attempts: number; now: number; otpRowId: number },
+  a: { e164: string; hash: string; client: string; ageConfirmed: boolean; attempts: number; now: number; otpRowId: number; signup?: SignupPayload },
 ): Promise<Response> {
   const db = env.DB_META;
-  const fail = async (step: string, detail: string, status = 502) => {
+  const fail = async (step: string, detail: string, status = 502, emailTaken = false) => {
     await releaseClaim(db, a.hash);
     // Give the person their code back (attempts still count, 10-minute life unchanged) so a retry needs no new WhatsApp send.
     await db.prepare("UPDATE phone_otp SET status='sent', verified_at=NULL WHERE id=?1").bind(a.otpRowId).run().catch(() => {});
     void trackException(env, new Error(`whatsapp_auth_signup: ${step} ${detail}`.slice(0, 300)), {
       route: "/api/auth/whatsapp/verify", method: "POST", handled: true, app_name: APP,
     });
+    if (emailTaken) return json({ error: "email_taken", field: "email", message: "This email already has an account. Sign in with your WhatsApp number instead." }, 409);
     return json({ error: "signup_failed", message: "We couldn’t create your account just now. Please try again." }, status);
   };
 
@@ -358,16 +399,22 @@ async function phoneOnlySignup(
     if (!uid) return json({ error: "signup_in_progress", message: "Your account is being created. Please try again in a moment.", retry_after_s: 3 }, 409);
   } else {
     if (!uid) {
-      const made = await createClerkPhoneUser(env, claim.extId);
-      if (!made.ok) return await fail("clerk_create", made.detail);
+      const made = await createClerkPhoneUser(env, claim.extId, a.signup);
+      if (!made.ok) return await fail("clerk_create", made.detail, 502, made.emailTaken === true);
       uid = made.uid;
       await db.prepare("UPDATE hf_phone_signup SET uid=?2 WHERE phone_hash=?1").bind(a.hash, uid).run();
     }
+    const emailHash = a.signup ? await sha256Hex(a.signup.email) : null;
     try {
       // Mirrors webAccountBootstrap + accountPhoneClaim, idempotently (safe to re-run after a crash).
       await db.batch([
         db.prepare("INSERT INTO users (uid, created_at, updated_at, created_via) VALUES (?1,?2,?2,'web') ON CONFLICT(uid) DO NOTHING").bind(uid, a.now),
         db.prepare("UPDATE users SET phone_hash=?2, private_number=?3, show_private_number=0, updated_at=?4 WHERE uid=?1").bind(uid, a.hash, a.e164, a.now),
+        ...(a.signup ? [
+          // [HF-AUTH-WA-ONLY-1] Name + the email proven by code, stored on the user row and in the contact ledger.
+          db.prepare("UPDATE users SET display_name=COALESCE(NULLIF(display_name,''),?2), email_hash=?3, updated_at=?4 WHERE uid=?1")
+            .bind(uid, a.signup.name, emailHash, a.now),
+        ] : []),
         db.prepare(
           `INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at, verified_at)
            SELECT ?1,?2,?3,NULL,'verified',0,?4,?4 WHERE NOT EXISTS (SELECT 1 FROM phone_otp WHERE uid=?1 AND status='verified')`,
@@ -378,6 +425,14 @@ async function phoneOnlySignup(
            ON CONFLICT(uid) DO UPDATE SET phone_verified=1, phone_hash=excluded.phone_hash,
              phone_verified_at=excluded.phone_verified_at, updated_at=excluded.updated_at`,
         ).bind(uid, a.hash, a.now),
+        ...(a.signup ? [
+          db.prepare(
+            `INSERT INTO contact_verification (uid, email_verified, email_hash, email_verified_at, updated_at)
+             VALUES (?1, 1, ?2, ?3, ?3)
+             ON CONFLICT(uid) DO UPDATE SET email_verified=1, email_hash=excluded.email_hash,
+               email_verified_at=excluded.email_verified_at, updated_at=excluded.updated_at`,
+          ).bind(uid, emailHash, a.now),
+        ] : []),
         ...(a.ageConfirmed ? [db.prepare("INSERT OR IGNORE INTO hf_age_confirm (uid, confirmed_at, source) VALUES (?1,?2,?3)").bind(uid, a.now, a.client)] : []),
         db.prepare("UPDATE hf_phone_signup SET uid=?2, state='done' WHERE phone_hash=?1").bind(a.hash, uid),
       ]);
@@ -386,6 +441,17 @@ async function phoneOnlySignup(
     }
     // Never blocks sign-up; ensureHandle swallows its own failures.
     try { await ensureHandle(env, uid); } catch { /* */ }
+    if (a.signup) {
+      // Mark the email verified in Clerk too (a backend-created address can come back unverified). Best effort:
+      // the code was already proven here, so a Clerk hiccup must not undo a finished sign-up.
+      const linked = await attachVerifiedClerkEmail(env, uid, a.signup.email).catch(() => null);
+      if (!linked || !linked.ok) {
+        void trackException(env, new Error(`whatsapp_auth_signup: email_verify_link ${linked && !linked.ok ? linked.error : "threw"}`), {
+          uid, route: "/api/auth/whatsapp/verify", method: "POST", handled: true, app_name: APP,
+        });
+      }
+      await burnEmailProof(env, a.signup.proof);
+    }
   }
 
   const mint = await mintClerkSignInTicket(env, uid!);
@@ -393,7 +459,7 @@ async function phoneOnlySignup(
   if (a.ageConfirmed) await storeAgeConfirm(db, uid!, a.now, a.client);
   const needs18Plus = await needs18PlusFor(db, uid!);
   void trackUser(env, uid!, null, "auth_whatsapp_verify", APP, {
-    outcome: "signed_in", attempts: a.attempts, phone_masked: mask(a.e164), client: a.client, created_here: claim.owner,
+    outcome: "signed_in", attempts: a.attempts, phone_masked: mask(a.e164), client: a.client, created_here: claim.owner, with_email: !!a.signup,
   });
   // The winner created the account; a racing loser just signed into it, so only the owner reports is_new.
   void track(env, uid!, "auth_whatsapp_signup", APP, { is_new: claim.owner, client: a.client });

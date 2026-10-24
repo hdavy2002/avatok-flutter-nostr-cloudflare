@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { EmailCodeSignIn } from '../auth/EmailCodeSignIn';
-import { Modal } from '../../components/Modal';
 import QRCode from 'qrcode';
 import { ClerkIsland } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
@@ -171,16 +169,14 @@ export function CustomerSession({identity,isLoaded,isSignedIn,deps,invitation,si
     {!isLoaded || mountedIdentity!==identity ? <p>Loading account…</p> : !isSignedIn ? <>
       <p>Sign in with your normal {BRAND.name} account to use your private invitation.</p>
       {signIn}
-      <p>If signing in opens a new page, reopen your original invitation link afterward.</p>
+      <p>After you sign in with the WhatsApp code you come back to this page.</p>
     </> : <UpiCustomerTestCheckoutView key={identity} deps={deps} invitation={invitation} signIn={signIn}/>}
   </section>;
 }
 function CustomerSignIn() {
-  const [open,setOpen]=useState(false);
-  return <><button onClick={()=>setOpen(true)}>Sign in</button>
-    <Modal open={open} onClose={()=>setOpen(false)} title="Sign in to your test booking" className="ph-no-capture ph-mask">
-      <EmailCodeSignIn reason="to use your private test invitation" onAuthed={()=>setOpen(false)} onCancel={()=>setOpen(false)}/>
-    </Modal></>;
+  // [HF-AUTH-WA-ONLY-1] Sign-in is a WhatsApp code on /sign-in now; it returns here afterwards.
+  const back = typeof window === 'undefined' ? '/' : window.location.pathname + window.location.search;
+  return <a href={`/sign-in?redirect_url=${encodeURIComponent(back)}`}>Sign in</a>;
 }
 function AuthenticatedCustomer({invitation}:{invitation:InvitationHandle}) {
   const {userId,sessionId,isLoaded,isSignedIn,getToken}=useAuth();
