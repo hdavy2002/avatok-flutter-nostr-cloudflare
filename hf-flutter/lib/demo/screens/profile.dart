@@ -352,7 +352,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               if (!eligible)
                 const Expanded(child: ChannelCallsUnavailable())
-              else if (spaceLocked && spaceLane != null && prof != null)
+              else if (spaceLocked && spaceLane != null)
                 Expanded(
                   child: SpaceLockedBar(
                     lane: spaceLane,

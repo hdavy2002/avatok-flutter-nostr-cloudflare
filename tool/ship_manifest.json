@@ -12153,5 +12153,9 @@
       }
     ],
     "_verified_at": "worker/src/routes/whatsapp_auth.ts phoneOnlySignup trackUser call (client + with_email props), read directly from the code, 2026-10-24"
+  },
+  "HF-APP-ANALYZE-FIX-2": {
+    "description": "[HF-APP-ANALYZE-FIX-2] Remove an always-true null check in profile.dart (from HF-CREATOR-SPACES-1) that failed the hf-flutter Analyze step.",
+    "no_telemetry": "Build fix only."
   }
 }
