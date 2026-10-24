@@ -70,7 +70,7 @@ const [firstName] = splitName(host?.displayName ?? '');
           <div>
             <p class="by"><i aria-hidden="true">{host!.avatarUrl && <img src={publicImage(host!.avatarUrl, { width: 96 })} alt="" width="36" height="36" />}</i>By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
             <h1 class="ptitle">{p!.title}</h1>
-            <ProductBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty, fromPricePaise: p!.fromPricePaise, category: p!.category || 'other', gstRateBps: p!.gstRateBps }} checkoutEnabled={ok.checkoutEnabled} />
+            <ProductBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, photos, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty, fromPricePaise: p!.fromPricePaise, category: p!.category || 'other', gstRateBps: p!.gstRateBps }} checkoutEnabled={ok.checkoutEnabled} />
             <div class="trust">
               <div><b>Free delivery</b>Anywhere in India</div>
               <div><b>Made for you</b>Printed after you order</div>

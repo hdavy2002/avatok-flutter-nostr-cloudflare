@@ -181,7 +181,9 @@ export async function getBookingSummary(): Promise<BookingSummary> {
 export function bookingError(error: unknown): { status: number; code: string; message: string } {
   if (error instanceof ApiError) {
     const body = (error.body && typeof error.body === 'object' ? error.body : {}) as Record<string, unknown>;
-    return { status: error.status, code: error.error, message: typeof body.message === 'string' ? body.message : error.error };
+    // [HF-CHANNEL-QA-1] Never show a raw code ("no_session") to a fan.
+    const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : 'Something went wrong. Please try again.';
+    return { status: error.status, code: error.error, message: typeof body.message === 'string' ? body.message : friendly };
   }
   return { status: 0, code: 'network', message: 'We could not reach the server. Check your connection and try again.' };
 }

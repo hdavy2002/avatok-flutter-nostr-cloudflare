@@ -288,7 +288,7 @@ const navItems = [
 
       <div class="pbar" aria-label="Call options">
         <div class="rate">{rateBig}{rateSmall && <small>{rateSmall}</small>}</div>
-        <div class="acts3">{callHost ? <HostCallActions client:idle variant="bar" host={callHost} callLabel="Call now" bookHref="#book" /> : <span style="font-size:14px;color:var(--muted)">Calls unavailable</span>}</div>
+        <div class="acts3">{callHost ? <HostCallActions client:idle variant="bar" refresh host={callHost} callLabel="Call now" bookHref="#book" /> : <span style="font-size:14px;color:var(--muted)">Calls unavailable</span>}</div>
       </div>
       <BagDrawer client:load checkoutEnabled={merch?.checkoutEnabled === true} />
     </div>

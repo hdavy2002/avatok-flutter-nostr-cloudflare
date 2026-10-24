@@ -128,7 +128,7 @@ export default function Orders() {
   })();
 
   return <>
-    <PageHead eyebrow="My orders" title="Aapka merch, raste mein" sub="T-shirts you bought from influencers. Printed to order, so it takes a few days to reach you." art={<Sticker name="swag" w={110} rot={6} />} />
+    <PageHead eyebrow="My orders" title="Aapka merch, raste mein" sub="Merch you bought from influencers. Printed to order, so it takes a few days to reach you." art={<Sticker name="swag" w={110} rot={6} />} />
     {failed ? <Failed onRetry={() => void load()} /> : !orders && !group && !(openId && detail[openId]) ? <Skel h={220} /> : list.length === 0 ?
       <Empty text="You have not bought any merch yet. Find an influencer you like and look for their Merch."><a className="h3-btn rani" href="/marketplace"><Ic name="search" className="" />Find influencers</a></Empty> :
       <div className="hfo hfo-list">

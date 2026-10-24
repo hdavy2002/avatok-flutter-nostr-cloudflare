@@ -284,6 +284,7 @@
 .gp .step{display:flex;align-items:center;gap:10px;font-family:Nunito;font-weight:900;font-size:17px;color:var(--muted)}
 .gp .step .n{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#fff;border:1.5px solid var(--line);color:var(--ink)}
 .gp .step.on{color:var(--ink)}.gp .step.on .n{background:var(--ink);color:#fff;border-color:var(--ink)}
+.gp .step.done{background:none;color:var(--ink);display:flex;padding:0}
 .gp .step.done .n{background:var(--yel);border-color:var(--yel)}
 .gp .step-l{width:48px;height:2px;background:var(--line)}
 .gp .panel{background:#fff;border-radius:24px;padding:24px;margin-bottom:20px}

@@ -11,7 +11,7 @@ import { gstText, rupees, type MerchColour, type MerchSize } from '../../lib/mer
 
 export interface BuyProps {
   host: { slug: string; displayName: string };
-  product: { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; maxQty: number; fromPricePaise: number; category: string; gstRateBps?: number };
+  product: { id: string; slug: string; title: string; imageUrl: string | null; photos?: string[]; colours: MerchColour[]; sizes: MerchSize[]; maxQty: number; fromPricePaise: number; category: string; gstRateBps?: number };
   checkoutEnabled: boolean;
 }
 
@@ -21,6 +21,15 @@ export default function ProductBuy({ host, product, checkoutEnabled }: BuyProps)
   const base = hasSizes ? Math.min(...sizes.filter(s => s.inStock).map(s => s.pricePaise), ...(sizes.some(s => s.inStock) ? [] : [product.fromPricePaise])) : product.fromPricePaise;
   const firstSize = (sizes.find(s => s.inStock && s.size.toUpperCase() === 'M') ?? sizes.find(s => s.inStock))?.size ?? '';
   const [colour, setColour] = useState(product.colours[0]?.name ?? '');
+  // [HF-CHANNEL-QA-1] The studio saves one mockup per colour, in colour order: when the counts match, a colour shows its own photo (and the bag line keeps it).
+  const photoMatch = !!product.photos && product.colours.length > 1 && product.photos.length === product.colours.length;
+  const photoFor = (name: string) => { const i = product.colours.findIndex(c => c.name === name); return photoMatch && i >= 0 ? product.photos![i] : product.imageUrl; };
+  const pickColour = (name: string) => {
+    setColour(name);
+    if (!photoMatch) return;
+    const i = product.colours.findIndex(c => c.name === name);
+    document.querySelectorAll<HTMLButtonElement>('[data-hfm-thumb]')[i]?.click();
+  };
   const [size, setSize] = useState(firstSize);
   const [qty, setQty] = useState(1);
   const [pin, setPin] = useState('');
@@ -40,7 +49,7 @@ export default function ProductBuy({ host, product, checkoutEnabled }: BuyProps)
 
   const add = (source: 'add' | 'buy'): boolean => {
     if (!canBuy) return false;
-    const r = addToBag({ productId: product.id, hostSlug: host.slug, hostName: host.displayName, slug: product.slug, title: product.title, imageUrl: product.imageUrl, colour, size, qty, unitPaise: unit, category: product.category });
+    const r = addToBag({ productId: product.id, hostSlug: host.slug, hostName: host.displayName, slug: product.slug, title: product.title, imageUrl: photoFor(colour), colour, size, qty, unitPaise: unit, category: product.category });
     if (!r.ok) { setNote('Your bag is full (10 items). Open it and check out first.'); return false; }
     setNote('');
     capture('bag_added', { source: 'product', host_slug: host.slug, product_id: product.id, category: product.category, qty, price_paise: unit * qty, via: source });
@@ -82,7 +91,7 @@ export default function ProductBuy({ host, product, checkoutEnabled }: BuyProps)
     <div className="buy-stk"><Sticker k="product" /></div>
     {product.colours.length > 0 && <>
       <p className="lbl" id="lbl-colour">Colour: {colour}</p>
-      <div className="sw" role="group" aria-labelledby="lbl-colour">{product.colours.map(c => <button key={c.name} type="button" className={c.name === colour ? 'on' : ''} style={{ background: c.hex }} aria-label={c.name} aria-pressed={c.name === colour} onClick={() => setColour(c.name)} />)}</div>
+      <div className="sw" role="group" aria-labelledby="lbl-colour">{product.colours.map(c => <button key={c.name} type="button" className={c.name === colour ? 'on' : ''} style={{ background: c.hex }} aria-label={c.name} aria-pressed={c.name === colour} onClick={() => pickColour(c.name)} />)}</div>
     </>}
     {hasSizes && <>
       <p className="lbl" id="lbl-size">Size <a href="#size-guide" onClick={openGuide}>Size guide</a></p>
