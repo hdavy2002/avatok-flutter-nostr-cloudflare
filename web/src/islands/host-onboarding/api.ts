@@ -23,6 +23,8 @@ export const mockApi: OnboardingApi = {
   mode: 'mock',
   async getSpacesMe() { return null; },
   async setCreator() { await wait(300, 700); return { ok: true }; },
+  async setSpace() { await wait(300, 700); return { ok: true }; },
+  async setCallerLevel() { await wait(200, 500); return { ok: true }; },
   async listChannels() { return mockInfo(); },
   async addChannel(platform, handle) {
     await wait();

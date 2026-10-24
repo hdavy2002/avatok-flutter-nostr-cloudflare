@@ -60,6 +60,7 @@ async function me(req: Request, env: Env): Promise<Response> {
     lanes: {
       women: { eligible: laneEligible("women", kyc.aadhaarVerified, kyc.gender), granted: access.women },
       lgbtq: { declared: decl?.declared_at != null, granted: access.lgbtq, selfieStatus: selfie.status, selfieReason: selfie.reason },
+      kyc: { granted: kyc.aadhaarVerified && selfie.status === "approved" }, // [HF-CREATOR-BADGES-1] plain video KYC (Aadhaar + approved selfie), no join call
     },
   }, 200, { "cache-control": "private, no-store" });
 }

@@ -41,7 +41,7 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
   const [topUp, setTopUp] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [laneNeed, setLaneNeed] = useState<'women' | 'lgbtq' | null>(null); // [HF-CREATOR-SPACES-1]
+  const [laneNeed, setLaneNeed] = useState<'women' | 'lgbtq' | 'kyc' | null>(null); // [HF-CREATOR-SPACES-1] [HF-CREATOR-BADGES-1]
   const key = useRef('');
   const authEpoch = useRef(0);
   const quoteAuthEpoch = useRef(0);

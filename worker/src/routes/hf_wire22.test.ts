@@ -28,7 +28,7 @@ function makeEnv() {
     CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
-  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-19-hf-invite-votes.sql", "2026-10-19-hf-reels.sql", "2026-10-20-hf-invite-creators.sql", "hf_creator_spaces.sql"]) db.exec(mig(f));
+  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-19-hf-invite-votes.sql", "2026-10-19-hf-reels.sql", "2026-10-20-hf-invite-creators.sql", "hf_creator_spaces.sql", "hf_creator_badges.sql"]) db.exec(mig(f));
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),

@@ -57,7 +57,7 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
         const c = card(env, r, undefined, std, lines?.get(r.uid));
         // [HF-DASH-V3-1] + languages, topics and the price block so the dashboard card can start a real call (HostCallActions).
         return { slug: c.slug, displayName: c.displayName, photoUrl: c.avatarUrl, headline: c.tagline || null, presence: c.status, savedAt: saved.get(r.uid) ?? 0,
-          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly, videoKycVerified: c.videoKycVerified, space: c.space, ...(lines?.get(r.uid) ?? {}) };
+          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly, videoKycVerified: c.videoKycVerified, space: c.space, callerLevel: c.callerLevel, channelVerified: c.channelVerified, ...(lines?.get(r.uid) ?? {}) };
       }).sort((a, b) => b.savedAt - a.savedAt);
       return json({ ok: true, items, count: items.length }, 200, NO_STORE);
     }

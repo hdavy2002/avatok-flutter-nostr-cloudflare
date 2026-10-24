@@ -23,9 +23,10 @@ import '../widgets.dart';
 ///
 /// The Aadhaar number is only held in a text field until the code is sent, then cleared; it is never logged or sent to telemetry.
 class SpaceVerifyScreen extends StatefulWidget {
-  const SpaceVerifyScreen({super.key, required this.lane, this.creator = false, this.repo});
+  const SpaceVerifyScreen({super.key, this.lane, this.creator = false, this.repo});
 
-  final SpaceLane lane;
+  /// Null = plain video KYC ([HF-CREATOR-BADGES-1]): Aadhaar and selfie only, no gender rule, declaration or join.
+  final SpaceLane? lane;
 
   /// A creator starting a channel (role `host`, declaration already given when the path was chosen).
   final bool creator;
@@ -92,11 +93,11 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
 
   /// A customer's membership is recorded before the selfie is approved; do it once the Aadhaar (and declaration) are in.
   Future<void> _afterLoad(SpaceStatus st) async {
-    if (widget.creator || _joined) return;
+    if (widget.creator || _joined || widget.lane == null) return;
     final s = _stepFor(st);
     if (s != _Step.selfie && s != _Step.review && s != _Step.done) return;
     try {
-      await _repo.joinLane(widget.lane);
+      await _repo.joinLane(widget.lane!);
       _joined = true;
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.userMessage);
@@ -115,10 +116,13 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
     return _Step.selfie;
   }
 
+  String get _laneName => widget.lane?.name ?? 'kyc';
+
   void _track(_Step s) {
     if (_lastStep == s) return;
     _lastStep = s;
-    Telemetry.event('hf_space_verify_step', {'lane': widget.lane.name, 'step': s.name});
+    Telemetry.event('hf_space_verify_step', {'lane': _laneName, 'step': s.name});
+    if (s == _Step.done) Telemetry.event('hf_verify_badge_added', {'badge': 'video_kyc'}); // [HF-CREATOR-BADGES-1]
   }
 
   Future<void> _openWeb(String path) async {
@@ -131,7 +135,7 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
     if (!ok && mounted) toast(context, 'Could not open that page.');
   }
 
-  String get _webPath => widget.creator ? '/hosts/onboarding?step=aadhaar' : '/verify/lane?lane=${widget.lane.name}';
+  String get _webPath => widget.creator ? '/hosts/onboarding?step=aadhaar' : '/verify/lane?lane=$_laneName';
 
   void _fail(Object e) {
     if (!mounted) return;
@@ -208,7 +212,8 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
       _error = null;
     });
     try {
-      await _repo.joinLane(widget.lane);
+      final lane = widget.lane;
+      if (lane != null) await _repo.joinLane(lane);
       _joined = true;
       if (!mounted) return;
       setState(() => _busy = false);
@@ -219,10 +224,10 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
   }
 
   void _finish() {
-    if (widget.creator) {
-      context.go('/inf/home');
-    } else if (context.canPop()) {
+    if (context.canPop()) {
       context.pop(true);
+    } else if (widget.creator) {
+      context.go('/inf/home');
     } else {
       context.go('/reels');
     }
@@ -400,10 +405,12 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
           [
             _card([
               Row(children: [const VerifiedTick(), const SizedBox(width: 12), Expanded(child: _title('You are verified'))]),
-              _body(widget.creator ? 'Your channel can now go live once the rest of your details are in.' : 'You can now call, book and join the queue on this channel.'),
+              _body(widget.creator
+                  ? (widget.lane == null ? 'Your video KYC is done. You can go live once the rest of your details are in.' : 'Your channel can now go live once the rest of your details are in.')
+                  : (widget.lane == null ? 'You can now call, book and join the queue with creators who only take video-KYC callers.' : 'You can now call, book and join the queue on this channel.')),
             ]),
           ],
-          BookBottomButton(label: widget.creator ? 'GO TO MY DASHBOARD' : 'BACK TO THE CHANNEL', plum: true, onTap: _finish),
+          BookBottomButton(label: widget.creator ? 'CONTINUE' : (widget.lane == null ? 'DONE' : 'BACK TO THE CHANNEL'), plum: true, onTap: _finish),
         );
     }
   }
@@ -441,7 +448,7 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
       content = ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          Text(widget.lane.tagText.toUpperCase(), style: t(14, color: C.tan, w: FontWeight.w900, ls: 0.08)),
+          Text((widget.lane?.tagText ?? 'Video KYC').toUpperCase(), style: t(14, color: C.tan, w: FontWeight.w900, ls: 0.08)),
           const SizedBox(height: 10),
           _progress(st),
           const SizedBox(height: 14),
@@ -453,7 +460,7 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
       backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(children: [
-          ChannelHeader(widget.creator ? 'Verify your channel' : 'Verify to call'),
+          ChannelHeader(widget.creator ? (widget.lane == null ? 'Video KYC' : 'Verify your channel') : 'Verify to call'),
           Expanded(child: content),
           if (bottom != null) bottom,
         ]),

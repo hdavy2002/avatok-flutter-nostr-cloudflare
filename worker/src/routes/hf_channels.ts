@@ -24,6 +24,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { goLiveFacts, canGoLive } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES-1]
 import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
@@ -119,15 +120,17 @@ async function defaultRateRupees(env: Env): Promise<number> {
   return readInfluencerRate((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).defaultRupees;
 }
 
-/** Keep hf_hosts.status in step with the channels. Returns the host status afterwards (null = no row) and whether she qualifies. */
+/** Keep hf_hosts.status in step with the badges. Returns the host status afterwards (null = no row) and whether she qualifies.
+ *  [HF-CREATOR-BADGES-1] Qualifies = (approved channel OR video KYC) AND, for a space creator, her space qualification (lib/hf_spaces canGoLive).
+ *  A host who lost her channel but keeps her video KYC is NOT demoted. A host row is only created from a channel (video KYC alone never creates one). */
 export async function syncHostState(env: Env, uid: string, now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
-  const ok = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status='approved'").bind(uid).first<{ c: number }>())?.c ?? 0);
-  const host = await env.DB_META.prepare("SELECT status, creator_kind FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string; creator_kind: string | null }>();
+  const f = await goLiveFacts(env, uid);
+  const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
   const cur = host?.status ?? null;
-  // [HF-CREATOR-SPACES-1] Space creators (women / lgbtq) are qualified by video KYC, never by a channel: no approve, no demote here.
-  if (host && (host.creator_kind === "women" || host.creator_kind === "lgbtq")) return { hostStatus: cur, qualified: false };
-  if (ok > 0) {
+  const ok = canGoLive(f).ok;
+  if (ok) {
     if (cur === null) {
+      if (!f.channel) return { hostStatus: null, qualified: true }; // video KYC alone never creates a host row
       await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'approved', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
       await ensureInfluencerSlug(env, uid);
       return { hostStatus: "approved", qualified: true };
@@ -140,7 +143,7 @@ export async function syncHostState(env: Env, uid: string, now = Date.now()): Pr
     await ensureInfluencerSlug(env, uid); // [HF-WIRE-10] heals hosts approved before this fix
     return { hostStatus: cur, qualified: true };
   }
-  if (cur === "approved") {
+  if (cur === "approved" && !f.kycUnknown) {
     await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_check', updated_at=?2 WHERE uid=?1 AND status='approved'").bind(uid, now).run();
     return { hostStatus: "pending_check", qualified: false };
   }
@@ -287,6 +290,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       const result: CheckResult = th.result;
       emit("hf_channel_added", { platform: "youtube", ok: true, via: "signin", result, followers: row.followers, qualified: st.qualified });
       emit("hf_channel_threshold", { platform: "youtube", result, followers: row.followers, views: row.views });
+      if (result === "approved" && mine0?.status !== "approved") emit("hf_verify_badge_added", { badge: "channel" }); // [HF-CREATOR-BADGES-1]
       return json({ ok: true, result, message: RESULT_TEXT(min, minViews)[result], channel: channelJson(row), minFollowers: min, minViews, hostStatus: st.hostStatus, qualified: st.qualified, imported }, 200, NO_STORE);
     }
 
@@ -383,6 +387,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     }
     emit("hf_channel_check", { platform: ch.platform, action, ok: true, result: out.result, followers: out.row.followers, qualified: st.qualified });
     emit("hf_channel_threshold", { platform: ch.platform, result: out.result, followers: out.row.followers, views: out.row.views });
+    if (out.result === "approved" && ch.status !== "approved") emit("hf_verify_badge_added", { badge: "channel" }); // [HF-CREATOR-BADGES-1]
     return json({ ok: true, result: out.result, message: RESULT_TEXT(min, minViews)[out.result], channel: channelJson(out.row), minFollowers: min, minViews, hostStatus: st.hostStatus, qualified: st.qualified }, 200, NO_STORE);
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_channels", uid_set: !!uid } });

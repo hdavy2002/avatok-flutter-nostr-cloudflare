@@ -6,7 +6,7 @@
  * Spec: Specs/SPEC-2026-10-09-HF-HOST-ONBOARDING.md */
 
 export type StepKey =
-  | 'welcome' | 'path' | 'phone' | 'channel' | 'aadhaar' | 'declare' | 'selfie' | 'payout'
+  | 'welcome' | 'phone' | 'trust' | 'channel' | 'aadhaar' | 'selfie' | 'space' | 'caller' | 'payout'
   | 'avatar' | 'about' | 'languages' | 'topics' | 'price' | 'hours'
   | 'voice' | 'review' | 'generating' | 'preview' | 'done';
 
@@ -14,6 +14,9 @@ export type StepGroup = 'start' | 'verify' | 'profile' | 'voice' | 'finish';
 
 /** [HF-CREATOR-SPACES-1] Which kind of creator this person is becoming. */
 export type CreatorPath = 'channel' | 'women' | 'lgbtq';
+/** [HF-CREATOR-BADGES-1] A special space (one at a time, needs video KYC). */
+export type SpaceKind = 'women' | 'lgbtq';
+export type CallerLevel = 'everyone' | 'video_kyc';
 
 export type Gender = 'woman' | 'man';
 /** What the (mock) UIDAI record says; avatars stay woman/man. */
@@ -40,8 +43,13 @@ export interface GeneratedProfile {
 }
 
 export interface Draft {
-  /** [HF-CREATOR-SPACES-1] null until the path step. Never holds the private LGBTQ+ declaration itself, only that it was sent. */
-  path: CreatorPath | null;
+  /** [HF-CREATOR-BADGES-1] "How will fans trust you?" - both can be ticked, at least one. */
+  wantChannel: boolean;
+  wantKyc: boolean;
+  /** The space the creator joined (null = none). Never holds the private LGBTQ+ declaration itself, only that it was sent. */
+  space: SpaceKind | null;
+  callerLevel: CallerLevel;
+  callerLocked: boolean;
   lgbtqDeclared: boolean;      // the declare step was sent to the server
   channelQualified: boolean;   // GET /api/hf/channels said qualified
   phone: string;               // 10 digits, no +91
@@ -93,7 +101,10 @@ export interface KycOtpResult extends ApiResult { fallback?: 'digilocker'; attem
 
 /** [HF-CREATOR-SPACES-1] GET /api/hf/spaces/me */
 export interface SpacesMe {
-  kind: CreatorPath | null; whatsappVerified: boolean; aadhaarVerified: boolean; gender: 'F' | 'M' | 'T' | null;
+  kind?: CreatorPath | null;
+  /** [HF-CREATOR-BADGES-1] */
+  badges?: { phone: boolean; channel: boolean; videoKyc: boolean; space: SpaceKind | null };
+  canGoLive?: boolean; missing?: string[]; callerLevel?: CallerLevel; callerLevelLocked?: boolean; whatsappVerified: boolean; aadhaarVerified: boolean; gender: 'F' | 'M' | 'T' | null;
   selfie: { status: 'none' | 'pending' | 'approved' | 'rejected'; reason: string | null };
   lgbtqDeclared: boolean; videoKycVerified: boolean; qualified: boolean; hostStatus: string | null; minFollowers: number; minViews: number;
 }
@@ -147,6 +158,10 @@ export interface OnboardingApi {
   submitForReview(draft: Draft): Promise<ApiResult>;
   /** [HF-CREATOR-SPACES-1] What the server knows about the creator type. Null in mock or when the call fails. */
   getSpacesMe(): Promise<SpacesMe | null>;
+  /** [HF-CREATOR-BADGES-1] POST /api/hf/spaces/space (null = leave). */
+  setSpace(body: { space: SpaceKind | null; declare?: true; acceptTerms?: true; publicTagConsent?: true }): Promise<ApiResult>;
+  /** [HF-CREATOR-BADGES-1] POST /api/hf/spaces/caller-level. 409 space_locked for space creators. */
+  setCallerLevel(level: CallerLevel): Promise<ApiResult>;
   /** POST /api/hf/spaces/creator. Errors carry the worker message (not_eligible, consent_required, declare_required). */
   setCreator(body: { kind: CreatorPath; declare?: true; acceptTerms?: true; publicTagConsent?: true }): Promise<ApiResult>;
   /** GET /api/hf/channels. */

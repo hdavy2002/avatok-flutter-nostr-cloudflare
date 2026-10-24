@@ -105,6 +105,8 @@ export function queueJoinProblem(code: string, body: Record<string, unknown>, na
       const ln = body.lane === 'lgbtq' ? 'lgbtq' : 'women';
       return { text: ln === 'lgbtq' ? 'Only verified LGBTQ+ members can call this channel' : 'Only verified women can call this channel', link: { href: `/verify/lane?lane=${ln}&next=${encodeURIComponent(typeof location !== 'undefined' ? location.pathname + location.search : '/')}`, label: 'Verify to call' } };
     }
+    case 'video_kyc_required_caller': // [HF-CREATOR-BADGES-1]
+      return { text: 'This creator only takes calls from video-KYC verified customers', link: { href: `/verify/lane?lane=kyc&next=${encodeURIComponent(typeof location !== 'undefined' ? location.pathname + location.search : '/')}`, label: 'Verify to call' } };
     case 'not_verified': return { text: 'Please verify your WhatsApp number first. We use it to tell you when it is your turn.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
     default: return { text: fallback || 'We could not add you to the queue. Please try again.' };
   }

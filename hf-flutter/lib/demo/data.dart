@@ -25,11 +25,18 @@ class Influencer {
     this.queueWaiting = 0,
     this.space,
     this.videoKycVerified = false,
+    this.callerLevel = 'everyone',
+    this.channelVerified = false,
   });
 
   /// [HF-CREATOR-SPACES-1] `women` / `lgbtq` for a space channel, else null; and the green Video KYC badge.
   final String? space;
   final bool videoKycVerified;
+
+  /// [HF-CREATOR-BADGES-1] `everyone` or `video_kyc`; and the approved-channel badge.
+  final String callerLevel;
+  final bool channelVerified;
+  bool get kycCallersOnly => callerLevel == 'video_kyc';
 
   /// [HF-CALL-MODES-E2] What a fan sees (spec 2.1), when the server sent it. Null = behave as before (online / offline).
   final HostCallState? callState;

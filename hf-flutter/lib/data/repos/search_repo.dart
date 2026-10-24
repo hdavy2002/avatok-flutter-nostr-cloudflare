@@ -29,6 +29,7 @@ class SearchRepo {
         if (topic != null && topic.isNotEmpty) query['topic'] = topic;
         if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
         if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
+        if (space == 'kyc') query['kyc'] = '1'; // [HF-CREATOR-BADGES-1]
         return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false, store: true));
       });
 
@@ -38,6 +39,7 @@ class SearchRepo {
     if (topic != null && topic.isNotEmpty) query['topic'] = topic;
     if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
     if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
+    if (space == 'kyc') query['kyc'] = '1'; // [HF-CREATOR-BADGES-1]
     return _guard2(_api.watchJson('/api/hf/search', query: query, auth: false, policy: CachePolicy.list).map(SearchResult.fromJson));
   }
 

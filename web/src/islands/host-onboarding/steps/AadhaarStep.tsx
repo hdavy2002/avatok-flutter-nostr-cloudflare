@@ -22,7 +22,7 @@ const track = (event: string, props: Record<string, string>) => {
   try { capture(event, props as never); } catch { /* telemetry must never break the flow */ }
 };
 
-export default function AadhaarStep({ draft, update, api, setAction, goTo }: StepProps) {
+export default function AadhaarStep({ draft, update, api, setAction }: StepProps) {
   const [mockGender, setMockGender] = useState<KycGender>(draft.kycGender ?? 'woman');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState('');
@@ -42,9 +42,9 @@ export default function AadhaarStep({ draft, update, api, setAction, goTo }: Ste
   const via = useRef<Via>('direct');
   const real = api.mode === 'real';
   const done = draft.aadhaarDone;
-  // [HF-CREATOR-SPACES-1] A Women-only channel needs an Aadhaar that shows Female. Anything else cannot continue on this path.
-  const womenMismatch = done && draft.path === 'women' && draft.kycGender !== null && draft.kycGender !== 'woman';
-  const womenNote = draft.path === 'women' ? 'For a Women-only channel, your Aadhaar must show Female.' : '';
+  // [HF-CREATOR-BADGES-1] The Women-only check moved to the space step (it needs the gender read here).
+  const womenMismatch = false;
+  const womenNote = '';
   const ran = useRef(false);
   const autoRetried = useRef(false);
   const live = useRef(true);
@@ -198,13 +198,6 @@ export default function AadhaarStep({ draft, update, api, setAction, goTo }: Ste
           <div><dt>Gender</dt><dd>{draft.kycGender ? GENDER_LABEL[draft.kycGender] : '-'}</dd></div>
           <div><dt>Age</dt><dd>18 or older ✓</dd></div>
         </dl>
-        {womenMismatch && (
-          <div className="hob-card hob-s-gate" role="alert">
-            <p className="hob-v-strong">This Aadhaar does not show Female</p>
-            <p className="hob-help">A Women-only channel is only for women, so we cannot open one with this Aadhaar. This is nothing personal, it is how the space keeps everyone comfortable. You can start a different kind of channel instead.</p>
-            <button type="button" className="hob-btn hob-btn-primary" onClick={() => { update({ path: null }); goTo('path'); }}>Choose a different way to start</button>
-          </div>
-        )}
         <p className="hob-help">Your Aadhaar details and photo are stored encrypted and seen only by our verification team. We never keep your full Aadhaar number — only the last 4 digits. (With OTP, we use the full number only to request the OTP.)</p>
       </div>
     );

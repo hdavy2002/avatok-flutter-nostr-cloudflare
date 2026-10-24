@@ -7,6 +7,7 @@ import '../../data/api_exception.dart';
 import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
+import '../../data/models/spaces.dart'; // [HF-CREATOR-BADGES-1]
 import '../../data/presence_store.dart';
 import '../../data/repos/payouts_repo.dart';
 import '../../data/repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
@@ -16,6 +17,7 @@ import '../data.dart';
 import '../my_reels_section.dart';
 import '../presence_bridge.dart';
 import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
+import '../space_kit.dart'; // [HF-CREATOR-BADGES-1]
 import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../state.dart';
 import '../theme.dart';
@@ -26,6 +28,7 @@ import '../channel_kit.dart';
 import '../booking_kit.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'channels.dart';
+import 'my_verifications.dart'; // [HF-CREATOR-BADGES-1]
 import 'profile_photo.dart'; // [HF-CHANNEL-APP-1]
 
 // ---------------------------------------------------------------------------------------------- Join
@@ -56,8 +59,11 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
   /// confirms it. The dummy code ("type any 6 digits") and the fake sign-up exist in the demo build only.
   bool get _live => !DemoMode.on;
 
-  // [HF-CREATOR-SPACES-1] Which path: `channel` (YouTube / Instagram), `women` (Women-only channel) or `lgbtq` (LGBTQ+ channel).
-  String _kind = 'channel';
+  // [HF-CREATOR-BADGES-1] Badges stack: a channel and / or video KYC, an optional space, and who may call.
+  bool _viaChannel = true;
+  bool _viaKyc = false;
+  SpaceLane? _space; // one space at a time; a space needs video KYC
+  String _callerLevel = 'everyone'; // `everyone` | `video_kyc` (locked to video_kyc for a space)
   bool _publicTag = false;
   bool _declare = false;
   bool _terms = false;
@@ -84,49 +90,67 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     }
   }
 
-  /// A space path: records the creator type, then the native video KYC flow (WhatsApp, Aadhaar code, selfie video).
-  Future<void> _startSpacePath() async {
+  bool get _wantsKyc => _viaKyc || _space != null;
+
+  /// Saves the space and "who can call you", best effort for the older-server cases. False (with [_error] set) when the
+  /// server refuses, e.g. a space she is not eligible for.
+  Future<bool> _recordChoices() async {
     setState(() {
       _busy = true;
       _error = null;
     });
+    final repo = Services.instance.spacesRepo;
+    final space = _space;
     try {
-      await Services.instance.spacesRepo.chooseCreatorKind(_kind, declare: _declare, acceptTerms: _terms, publicTagConsent: _publicTag);
-      Telemetry.event('hf_space_creator_chosen', {'kind': _kind});
-      if (!mounted) return;
-      setState(() => _busy = false);
-      await context.push<bool>('/verify/space?lane=$_kind&creator=1');
+      if (space != null) {
+        await repo.setSpace(space, declare: _declare, acceptTerms: _terms, publicTagConsent: _publicTag);
+        Telemetry.event('hf_space_joined', {'space': space.name});
+      } else {
+        // best effort: no space (an older server answers 404, which changes nothing)
+        unawaited(repo.chooseCreatorKind('channel').then((_) => Telemetry.event('hf_space_creator_chosen', {'kind': 'channel'})).catchError((Object _) {}));
+        try {
+          final level = await repo.setCallerLevel(_callerLevel);
+          Telemetry.event('hf_caller_level_set', {'level': level});
+        } on ApiException {
+          // the setting can be changed later in My verifications
+        }
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _busy = false;
         _error = e is ApiException ? e.userMessage : ApiException.genericText;
       });
+      return false;
     }
+    if (!mounted) return false;
+    setState(() => _busy = false);
+    return true;
   }
 
-  Widget _pathCard(String kind, IconData icon, String title, String sub) {
-    final on = _kind == kind;
+  Widget _choiceCard({required bool selected, required IconData icon, required String title, required String sub, required VoidCallback onTap, bool locked = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Semantics(
         button: true,
-        selected: on,
+        selected: selected,
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          onTap: () => setState(() {
-            _kind = kind;
-            _error = null;
-          }),
+          onTap: locked
+              ? null
+              : () {
+                  setState(() => _error = null);
+                  onTap();
+                },
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: on ? C.lavtint : C.white,
+              color: selected ? C.lavtint : C.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: on ? C.maroon : C.line, width: on ? 2.5 : 1.5),
+              border: Border.all(color: selected ? C.maroon : C.line, width: selected ? 2.5 : 1.5),
             ),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: on ? C.maroon : C.muted, size: 28),
+              Icon(selected ? Icons.check_circle_rounded : icon, color: selected ? C.maroon : C.muted, size: 28),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -140,6 +164,80 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         ),
       ),
     );
+  }
+
+  void _pickSpace(SpaceLane? lane) => setState(() {
+        _space = lane;
+        if (lane != null) {
+          _viaKyc = true; // a space needs video KYC
+          _callerLevel = 'video_kyc'; // and only video-KYC callers
+        }
+      });
+
+  /// "How will fans trust you?", "Join a special space?" and "Who can call you?" (all on the first step).
+  List<Widget> _choices() {
+    final spaceLocked = _space != null;
+    return [
+      const SizedBox(height: 16),
+      Text('How will fans trust you?', style: t(20, color: C.maroon, w: FontWeight.w900)),
+      const SizedBox(height: 4),
+      Text('Pick one or both.', style: t(15, color: C.muted, w: FontWeight.w700)),
+      const SizedBox(height: 10),
+      _choiceCard(
+        selected: _viaChannel,
+        icon: Icons.smart_display_rounded,
+        title: 'My YouTube or Instagram channel',
+        sub: 'You need $_minFollowers+ followers or subscribers and $_minViews total views on YouTube. Instagram is checked on followers only.',
+        onTap: () => setState(() {
+          if (_viaChannel && !_wantsKyc) return; // keep at least one
+          _viaChannel = !_viaChannel;
+        }),
+      ),
+      _choiceCard(
+        selected: _wantsKyc,
+        icon: Icons.verified_user_rounded,
+        title: 'Video KYC',
+        sub: 'No channel needed. Chat, company, share your day. An Aadhaar code and a 10-second selfie video, checked by our team.',
+        locked: spaceLocked,
+        onTap: () => setState(() {
+          if (_viaKyc && !_viaChannel) return; // keep at least one
+          _viaKyc = !_viaKyc;
+        }),
+      ),
+      const SizedBox(height: 10),
+      Text('Join a special space?', style: t(20, color: C.maroon, w: FontWeight.w900)),
+      const SizedBox(height: 4),
+      Text('Optional. One space at a time. It needs video KYC.', style: t(15, color: C.muted, w: FontWeight.w700)),
+      const SizedBox(height: 10),
+      _choiceCard(selected: _space == null, icon: Icons.person_rounded, title: 'None', sub: 'A regular creator page.', onTap: () => _pickSpace(null)),
+      _choiceCard(selected: _space == SpaceLane.women, icon: Icons.female_rounded, title: 'Women-only space', sub: 'Only verified women can call you. Your Aadhaar record must show female.', onTap: () => _pickSpace(SpaceLane.women)),
+      _choiceCard(selected: _space == SpaceLane.lgbtq, icon: Icons.groups_rounded, title: 'LGBTQ+ space', sub: 'Only verified LGBTQ+ members can call you.', onTap: () => _pickSpace(SpaceLane.lgbtq)),
+      if (_space == SpaceLane.lgbtq) ...[
+        _tick(_publicTag, 'I am happy for the "LGBTQ+ channel" tag to be public on my profile, in search and on Google.', (v) => setState(() => _publicTag = v)),
+        _tick(_declare, 'This space is right for me. This stays private.', (v) => setState(() => _declare = v)),
+        _tick(_terms, 'I accept the LGBTQ+ space terms.', (v) => setState(() => _terms = v)),
+      ],
+      const SizedBox(height: 10),
+      Text('Who can call you?', style: t(20, color: C.maroon, w: FontWeight.w900)),
+      const SizedBox(height: 10),
+      _choiceCard(
+        selected: _callerLevel == 'everyone',
+        icon: Icons.phone_in_talk_rounded,
+        title: 'Everyone with a verified phone',
+        sub: 'The default.',
+        locked: spaceLocked,
+        onTap: () => setState(() => _callerLevel = 'everyone'),
+      ),
+      _choiceCard(
+        selected: _callerLevel == 'video_kyc',
+        icon: Icons.lock_rounded,
+        title: 'Only video-KYC customers',
+        sub: spaceLocked ? 'Locked: a space only takes video-KYC callers.' : 'Customers who finished a video KYC.',
+        locked: spaceLocked,
+        onTap: () => setState(() => _callerLevel = 'video_kyc'),
+      ),
+      Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('We never share any customer\'s details with anyone.', style: t(15, color: C.muted, w: FontWeight.w800, h: 1.35))),
+    ];
   }
 
   Widget _tick(bool value, String text, ValueChanged<bool> onChanged) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -163,8 +261,8 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         setState(() => _error = 'Please fill your name and a real email.');
         return;
       }
-      if (_live && _kind == 'lgbtq' && !(_publicTag && _declare && _terms)) {
-        setState(() => _error = 'Please tick all three boxes to start an LGBTQ+ channel.');
+      if (_live && _space == SpaceLane.lgbtq && !(_publicTag && _declare && _terms)) {
+        setState(() => _error = 'Please tick all three boxes to join the LGBTQ+ space.');
         return;
       }
       if (_live) {
@@ -179,12 +277,14 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         }
         if (!mounted) return;
         setState(() => _busy = false);
-        if (_kind != 'channel') {
-          await _startSpacePath();
-          return;
+        if (!await _recordChoices() || !mounted) return;
+        if (_wantsKyc) {
+          // Aadhaar code and selfie video; she can also finish it later in My verifications
+          await openSpaceVerify(context, _space, creator: true);
+          if (!mounted) return;
         }
-        // best effort: record the channel path (an older server answers 404, which changes nothing)
-        unawaited(Services.instance.spacesRepo.chooseCreatorKind('channel').then((_) => Telemetry.event('hf_space_creator_chosen', {'kind': 'channel'})).catchError((Object _) {}));
+        setState(() => _step = _viaChannel ? 1 : 2);
+        return;
       }
       setState(() => _step = 1);
     } else if (_step == 1) {
@@ -259,26 +359,10 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
                       field: TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: t(18, w: FontWeight.w800), decoration: const InputDecoration(hintText: 'you@example.com')),
                     ),
                     const SizedBox(height: 12),
-                    if (_live) ...[
-                      const SizedBox(height: 16),
-                      Text('How do you want to start?', style: t(20, color: C.maroon, w: FontWeight.w900)),
-                      const SizedBox(height: 10),
-                      _pathCard('channel', Icons.smart_display_rounded, 'I have a YouTube or Instagram channel',
-                          'You need $_minFollowers+ followers or subscribers and $_minViews total views on YouTube. Instagram is checked on followers only.'),
-                      _pathCard('women', Icons.female_rounded, 'Start a Women-only channel',
-                          'No channel needed. WhatsApp, an Aadhaar code and a 10-second selfie video. Only verified women can call you.'),
-                      _pathCard('lgbtq', Icons.groups_rounded, 'Start an LGBTQ+ channel',
-                          'No channel needed. WhatsApp, an Aadhaar code, a private declaration and a 10-second selfie video.'),
-                      if (_kind == 'lgbtq') ...[
-                        _tick(_publicTag, 'I am happy for the "LGBTQ+ channel" tag to be public on my profile, in search and on Google.', (v) => setState(() => _publicTag = v)),
-                        _tick(_declare, 'This space is right for me. This stays private.', (v) => setState(() => _declare = v)),
-                        _tick(_terms, 'I accept the LGBTQ+ space terms.', (v) => setState(() => _terms = v)),
-                      ],
-                      const SizedBox(height: 6),
-                    ],
-                    DesiTip(_kind == 'channel'
+                    if (_live) ..._choices(),
+                    DesiTip(!_live || (_viaChannel && !_wantsKyc)
                         ? 'Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.'
-                        : 'Next you verify yourself with a 10-second video. Only you and our team see it.'),
+                        : 'Next you verify yourself with a 10-second video. Only you and our team see it. Keep every chat friendly and respectful.'),
                   ],
                   if (_step == 1) ...[
                     ChannelsStep(onLoaded: (l) {
@@ -349,7 +433,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
               ),
             ),
             BookBottomButton(
-              label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? (_step == 0 && _live && _kind != 'channel' ? 'VERIFY NOW' : 'NEXT') : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
+              label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? (_step == 0 && _live && _wantsKyc ? 'VERIFY NOW' : 'NEXT') : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
               plum: true,
               onTap: _next,
             ),
@@ -619,6 +703,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                 ],
                 if (PresenceBridge.real) const SharePageCard(), // [HF-SHARE-APP-1]
                 if (PresenceBridge.real) const ProfilePhotoCard(), // [HF-CHANNEL-APP-1]
+                if (PresenceBridge.real) const VerificationsCard(), // [HF-CREATOR-BADGES-1]
                 const SizedBox(height: 16),
                 InfSectionHead(title: 'Today\'s bookings', action: 'All', onAction: () => StatefulNavigationShell.of(context).goBranch(1)),
                 if (BookingsBridge.real) const RealTodaysBookings() else ...[ // [HF-WIRE-8]

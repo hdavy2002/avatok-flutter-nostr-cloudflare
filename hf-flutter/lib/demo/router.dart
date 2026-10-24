@@ -16,6 +16,7 @@ import 'screens/call.dart';
 import 'screens/favourites.dart';
 import 'screens/feed.dart';
 import 'screens/influencer.dart';
+import 'screens/my_verifications.dart'; // [HF-CREATOR-BADGES-1]
 import 'screens/intro.dart';
 import 'screens/me.dart';
 import 'screens/merch_fan.dart'; // [HF-MERCH-APP-1]
@@ -247,9 +248,15 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/verify/space',
       builder: (_, s) => SpaceVerifyScreen(
-        lane: SpaceLane.parse(s.uri.queryParameters['lane']) ?? SpaceLane.women,
+        lane: SpaceLane.parse(s.uri.queryParameters['lane']), // null (`lane=kyc`) = plain video KYC [HF-CREATOR-BADGES-1]
         creator: s.uri.queryParameters['creator'] == '1',
       ),
+    ),
+    // [HF-CREATOR-BADGES-1] The creator's stacked badges, space and "who can call you".
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/verifications',
+      builder: (_, __) => const MyVerificationsScreen(),
     ),
     // [HF-WIRE-3] Channels. `?from=join` keeps the person inside "Join as influencer".
     GoRoute(

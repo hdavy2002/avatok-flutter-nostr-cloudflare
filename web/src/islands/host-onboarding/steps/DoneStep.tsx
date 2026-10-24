@@ -3,7 +3,7 @@ import Icon from '../Icon';
 import type { StepProps } from '../types';
 
 export default function DoneStep({ setAction, api, draft }: StepProps) {
-  const space = draft.path === 'women' || draft.path === 'lgbtq';
+  const spaceName = draft.space === 'women' ? 'Women-only' : draft.space === 'lgbtq' ? 'LGBTQ+' : null;
   useEffect(() => { setAction({ label: '', hidden: true }); }, [setAction]);
   const restart = () => {
     try { localStorage.removeItem('hf_host_onboarding_draft_v1'); } catch { /* ignore */ }
@@ -17,9 +17,25 @@ export default function DoneStep({ setAction, api, draft }: StepProps) {
         <span className="hob-f-badge"><Icon name="heart" /></span>
       </div>
       <h1 className="hob-h1">Sent for review!</h1>
-      {space
-        ? <p className="hob-lead">Our team is checking your video KYC now. Your {draft.path === 'women' ? 'Women-only' : 'LGBTQ+'} channel goes live once it is approved. We'll message you on WhatsApp.</p>
-        : <p className="hob-lead">Our team checks every new profile, usually within 24 hours. We'll message you on WhatsApp when you're live.</p>}
+      <p className="hob-lead">Our team checks every new profile, usually within 24 hours. We'll message you on WhatsApp when you're live.</p>
+      <section className="hob-card hob-f-next">
+        <h2 className="hob-f-h2">Still being checked</h2>
+        <ul className="hob-f-list">
+          {draft.wantKyc && <li><Icon name="id" /> Your video KYC: our team checks your Aadhaar and selfie video.</li>}
+          {draft.wantChannel && <li><Icon name="video" /> Your channel: {draft.channelQualified ? 'connected and checked.' : 'we are still checking it.'}</li>}
+          {spaceName && <li><Icon name="heart" /> Your {spaceName} space opens once your video KYC is approved.</li>}
+          <li><Icon name="user" /> Your profile and voice introduction.</li>
+        </ul>
+      </section>
+      <section className="hob-card hob-f-next">
+        <h2 className="hob-f-h2">What your profile will show</h2>
+        <ul className="hob-f-list">
+          {draft.wantKyc && <li><Icon name="check" /> A "Video KYC verified" badge once approved.</li>}
+          {draft.wantChannel && <li><Icon name="check" /> Your channel and its videos.</li>}
+          {spaceName && <li><Icon name="check" /> {draft.space === 'lgbtq' ? 'An "LGBTQ+ channel" tag.' : 'A "Women-only channel" tag.'}</li>}
+          <li><Icon name="check" /> Your avatar, languages and topics. Never your real photo or number.</li>
+        </ul>
+      </section>
       <section className="hob-card hob-f-next">
         <h2 className="hob-f-h2">What happens next</h2>
         <ul className="hob-f-list">

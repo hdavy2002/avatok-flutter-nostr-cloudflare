@@ -11,7 +11,11 @@ import { Card, Ic, PageHead, Skel, Sticker, fmtInt } from './ui';
 
 interface HostMe { host: { status: string; slug: string | null } | null; kyc: { aadhaar: { done: boolean }; selfie: { status: string }; payout: { done: boolean } } }
 /** [HF-CREATOR-SPACES-1] GET /api/hf/spaces/me (subset). kind tells which path this person chose in /hosts/onboarding. */
-interface SpacesMe { kind: 'channel' | 'women' | 'lgbtq' | null; aadhaarVerified: boolean; selfie: { status: 'none' | 'pending' | 'approved' | 'rejected' }; qualified: boolean; minFollowers?: number; minViews?: number }
+interface SpacesMe {
+  kind?: 'channel' | 'women' | 'lgbtq' | null; aadhaarVerified: boolean; selfie: { status: 'none' | 'pending' | 'approved' | 'rejected' }; qualified: boolean; minFollowers?: number; minViews?: number;
+  /** [HF-CREATOR-BADGES-1] */
+  badges?: { phone: boolean; channel: boolean; videoKyc: boolean; space: 'women' | 'lgbtq' | null }; canGoLive?: boolean; missing?: string[];
+}
 const PRICES = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
 /** Host earning per connected minute, in paise, for a price in rupees (rulebook HF-REEL-30: we keep ₹2 plus 40% of the rate above ₹2). */
 export const hostPaisePerMin = (rupees: number) => Math.max(0, Math.round((rupees * 100 - 200) * 0.6));
@@ -29,20 +33,22 @@ export default function Become({ account }: { account: DashboardAccount }) {
   }, []);
   const st = me?.host?.status ?? null;
   const profileDone = !!st && !['draft', 'generating'].includes(st);
-  const space = sp?.kind === 'women' || sp?.kind === 'lgbtq' ? sp.kind : null;
+  // [HF-CREATOR-BADGES-1] Badges stack: a channel, video KYC, or both. Go live needs either one; a space needs video KYC.
+  const space = sp?.badges?.space ?? (sp?.kind === 'women' || sp?.kind === 'lgbtq' ? sp.kind : null);
   const spaceName = space === 'women' ? 'Women-only' : 'LGBTQ+';
   const selfie = sp?.selfie?.status ?? 'none';
+  const chanDone = !!(sp?.badges?.channel ?? sp?.qualified);
+  const kycDone = !!(sp?.badges?.videoKyc ?? (sp?.aadhaarVerified && selfie === 'approved'));
+  const kycStarted = !!sp?.aadhaarVerified || selfie !== 'none';
+  const missing = sp?.missing ?? [];
+  const trustDone = chanDone || kycDone || profileDone;
   const steps: [string, string, boolean][] = [
     ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
-    ...(space ? [
-      ['Verify your Aadhaar', space === 'women' ? 'Aadhaar OTP or DigiLocker. For a Women-only channel it must show Female.' : 'Aadhaar OTP or DigiLocker, plus your LGBTQ+ channel details.', !!sp?.aadhaarVerified] as [string, string, boolean],
-      ['Video KYC', selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'A 10-second selfie video reading a code.', selfie === 'approved'] as [string, string, boolean],
-    ] : [
-      ['Connect your channel', sp ? `YouTube or Instagram with at least ${sp.minFollowers ?? 20} followers${sp.minViews ? ` and ${sp.minViews} views on YouTube` : ''}.` : 'YouTube or Instagram, checked automatically.', !!sp?.qualified || profileDone] as [string, string, boolean],
-    ]),
-    // [HF-IDV-WHATSAPP-1 2026-10-24] Channel creators need no Aadhaar or selfie video to go live. Withdrawal details (UPI + Aadhaar) come later, in the wallet.
+    ['Build trust: channel or video KYC', chanDone ? 'Your channel is connected.' : kycDone ? 'Your video KYC is verified.' : kycStarted ? (selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'Finish Aadhaar and your 10-second selfie video.') : sp ? `Connect YouTube or Instagram (${sp.minFollowers ?? 20}+ followers${sp.minViews ? `, ${sp.minViews}+ views on YouTube` : ''}), or do Aadhaar + a 10-second selfie video. You can add both.` : 'Connect YouTube or Instagram, or do Aadhaar + a 10-second selfie video.', trustDone],
+    ...(space ? [[`${spaceName} space`, kycDone ? `Your ${spaceName} space is set up.` : 'Needs your video KYC to be verified first.', kycDone]] as [string, string, boolean][] : []),
+    // Withdrawal details (UPI + Aadhaar) come later, in the wallet.
     ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', profileDone],
-    ['Review & go live', space ? `You approve your profile, our team approves it with your video KYC, and your ${spaceName} channel is live.` : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
+    ['Review & go live', sp?.canGoLive === false && missing.length ? 'Still needed: ' + missing.map(m => m === 'space_video_kyc' ? 'video KYC for your space' : 'a channel or video KYC').join(', ') + '.' : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
   ];
   const doneN = steps.filter(s => s[2]).length;
   const cur = steps.findIndex(s => !s[2]);
@@ -62,6 +68,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
             {st === 'live' ? <a className="h3-btn rani" href="/dashboard/host">Open my influencer profile</a>
               : account.closing ? <span className="small muted">Your account is closing, so you can’t start this now.</span>
               : <a className="h3-btn rani" href={profileDone ? '/dashboard/host' : '/hosts/onboarding'} onClick={() => capture('hf_dash3_become_start', { step: cur })}>{doneN ? 'Continue' : 'Start now'} <Ic name="right" className="" /></a>}
+            <a className="h3-btn ghost" href="/dashboard/verifications">My verifications</a>
             <a className="h3-btn ghost" href="/hosts/rules">Rules for influencers</a>
           </div></>}
       </Card>

@@ -11,7 +11,7 @@ import { bookingError, bookingsEnabled, getPublicSlotsInfo, offeredDurations, ty
 import { callModeFlags, lengthLabel, offeredLengths } from '../../lib/hfCallModes';
 import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
 import SessionBridge from '../calls/SessionBridge';
-import { spaceOf, useSpaceGate } from '../../lib/hfSpaces';
+import { gateOf, useSpaceGate } from '../../lib/hfSpaces';
 import { chargeForSeconds, type PriceTier } from '../../lib/hfStdPlan';
 import { formatPaise } from '../../lib/money';
 
@@ -23,13 +23,13 @@ const timeFmt = (iso: string) => new Intl.DateTimeFormat('en-IN', { hour: 'numer
 
 const money = (paise: number) => (paise % 100 === 0 ? `₹${(paise / 100).toLocaleString('en-IN')}` : formatPaise(paise));
 
-interface Props { hostSlug: string; hostName: string; paisePerMin: number; plan?: string; priceTiers?: PriceTier[]; space?: 'women' | 'lgbtq' | null }
+interface Props { hostSlug: string; hostName: string; paisePerMin: number; plan?: string; priceTiers?: PriceTier[]; space?: 'women' | 'lgbtq' | null; callerLevel?: 'everyone' | 'video_kyc' }
 
 const meterArt = artUrl('meterIcon');
 
 /** [HF-CREATOR-SPACES-1] Booking on a Women-only / LGBTQ+ channel is locked until the viewer's video KYC is approved (the server checks too). */
 export default function InlineBooking(props: Props) {
-  const space = spaceOf({ space: props.space });
+  const space = gateOf({ space: props.space, callerLevel: props.callerLevel });
   const gate = useSpaceGate(space);
   if (!space) return <InlineBookingInner {...props} />;
   return <>

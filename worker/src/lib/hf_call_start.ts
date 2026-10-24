@@ -2,6 +2,7 @@
 // through the same DO contract, booked calls. startTokenCall moved here from routes/hf_calls.ts (behaviour unchanged with hfCallChunkBillingEnabled off:
 // whole-call reserve, 60-minute cap). With the flag on only chunk 0 (300 s) is reserved and the call DO takes the rest 5 minutes ahead.
 // Spec: Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md sections 2.2 rule 4, 2.3.
+import { callerKycBlocked, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE } from "./hf_spaces"; // [HF-CREATOR-BADGES-1]
 import type { Env } from "../types";
 import type { CallSource } from "./hf_call_contracts";
 import { readConfig } from "../routes/config";
@@ -184,8 +185,8 @@ export async function startInstantCall(env: Env, input: StartInstantCallInput): 
     if (rawCfg.hfCallsEnabled !== true) return { ok: false, error: "not_enabled", status: 404 };
     if (!callsConfigured(env)) return { ok: false, error: "calls_not_ready", status: 503 };
     if (input.source === "queue" && !input.queueEntryId) return { ok: false, error: "queue_entry_required", status: 400 };
-    const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, status FROM hf_hosts WHERE uid=?1").bind(hostUid)
-      .first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; status: string }>();
+    const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, caller_level, creator_kind, status FROM hf_hosts WHERE uid=?1").bind(hostUid)
+      .first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null; status: string }>();
     if (!host || host.status !== "live" || host.uid === uid) return { ok: false, error: "host_unavailable", status: 409 };
     if (await isDemoHost(env, host.uid)) return { ok: false, error: "demo_host", status: 409 };
     if (await isClosing(env, uid)) return { ok: false, error: "account_closing", status: 409 };
@@ -194,6 +195,7 @@ export async function startInstantCall(env: Env, input: StartInstantCallInput): 
     if (!(await verifiedWhatsAppNumber(env, host.uid))) return { ok: false, error: "host_unavailable", status: 409 };
     if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return { ok: false, error: "lane_required", status: 403 };
     if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return { ok: false, error: "lane_required", status: 403 }; // [HF-CREATOR-SPACES-1]
+    if (await callerKycBlocked(env, uid, host)) return { ok: false, error: CALLER_KYC_ERROR, status: 403, message: CALLER_KYC_MESSAGE, extra: { level: "video_kyc" } }; // [HF-CREATOR-BADGES-1]
     const lane = host.women_lane === 1 ? "women" : host.lgbtq_lane === 1 ? "lgbtq" : null;
     const open = await env.DB_META.prepare(
       "SELECT 1 AS x FROM hf_calls WHERE caller_uid=?1 AND status IN ('ringing_host','ringing_caller','connected') AND created_at>?2 LIMIT 1",

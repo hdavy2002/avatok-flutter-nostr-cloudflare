@@ -12,7 +12,7 @@ import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
 import HostCallActions from '../calls/HostCallActions';
 import SpaceBadges from '../../components/hosts/SpaceBadges';
-import { spaceOf } from '../../lib/hfSpaces';
+import { gateOf, spaceOf } from '../../lib/hfSpaces';
 import SaveHostButton from '../../components/hosts/SaveHostButton';
 import { callsEnabled, type HostPresence } from '../../lib/hfCallsApi';
 import { chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
@@ -28,6 +28,8 @@ interface HostCard {
   womenOnly?: boolean;
   /** [HF-CREATOR-SPACES-1] Space channel tag and the green Video KYC badge flag. */
   space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean;
+  /** [HF-CREATOR-BADGES-1] */
+  channelVerified?: boolean; channelPlatform?: string | null; followers?: number | null; callerLevel?: 'everyone' | 'video_kyc';
   /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
   /** [HF-CALLS-1] From presence (online | busy | offline); rating is the average of approved reviews. */
@@ -128,7 +130,7 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
           {h.languages.length > 0 && <div><dt><Icon name="globe" size={25} />Languages</dt><dd>{h.languages.join(', ')}</dd></div>}
           {h.style && <div><dt><Icon name="sparkle" size={25} />Conversation style</dt><dd>{STYLE_LABEL[h.style] ?? h.style}</dd></div>}
         </dl>
-        <SpaceBadges videoKyc={h.videoKycVerified} space={spaceOf(h)} surface="host_card" />
+        <SpaceBadges videoKyc={h.videoKycVerified} space={spaceOf(h)} surface="host_card" channel={h.channelVerified ? { verified: true, platform: h.channelPlatform, followers: h.followers } : null} callerLevel={gateOf(h) === 'kyc' ? 'video_kyc' : 'everyone'} />
         {h.lgbtqFriendly && <ul className="person-moods"><li><Icon name="sparkle" size={18} /><span>LGBTQ+ friendly</span></li></ul>}
         {h.topics.length > 0 && (
           <div className="profile-card-topics">
@@ -139,7 +141,7 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
         <div className="profile-card-footer">
           <div className="person-actions">
             <div className="profile-card-price"><strong className="person-price">{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>
-            <HostCallActions variant="card" host={{ slug: h.slug, displayName: h.displayName, pricePerMin: h.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: h.priceTiers, plan: h.plan, status, womenOnly: h.womenOnly, space: spaceOf(h) }} />
+            <HostCallActions variant="card" host={{ slug: h.slug, displayName: h.displayName, pricePerMin: h.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: h.priceTiers, plan: h.plan, status, womenOnly: h.womenOnly, space: spaceOf(h), callerLevel: h.callerLevel }} />
           </div>
           <a className="profile-card-link" href={href}>View full profile <span aria-hidden="true">→</span></a>
         </div>

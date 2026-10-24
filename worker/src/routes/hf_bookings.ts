@@ -1,4 +1,5 @@
 import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
+import { callerKycBlocked, videoKycSql, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES-1]
 import type { Env } from "../types";
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
 import { callerHandle, capFirst } from "../lib/hf_call_math"; // [HF-FIX-BOOKING-NAMES-1]
@@ -211,7 +212,7 @@ type BookingQuoteRow = {
 };
 export type HfHostPricingRow = {
   uid: string; slug: string; status: string; price_per_min: number; category: string;
-  women_lane: number; lgbtq_lane: number;
+  women_lane: number; lgbtq_lane: number; caller_level?: string | null; creator_kind?: string | null;
 };
 const BOOKING_ACTIVE = "('confirming','confirmed','pending_approval','starting','active','settling')"; // [HF-BOOK-APPROVE-BE] a pending booking blocks the slot
 const BOOKING_APP = "hf_booking";
@@ -266,7 +267,7 @@ export function parseUtcIso(value: unknown): number | null {
   return Number.isFinite(ms) && new Date(ms).toISOString() === new Date(value).toISOString() ? ms : null;
 }
 
-function laneGuardSql(customerParam: number, hostParam: number, lane: string | null): string {
+export function laneGuardSql(customerParam: number, hostParam: number, lane: string | null): string {
   // [HF-CREATOR-SPACES-1] women host: customer joined + Aadhaar F + latest selfie approved. LGBTQ+ host (or an lgbtq booking): declared + Aadhaar verified + latest selfie approved.
   void lane;
   const selfieOk = `(SELECT s.review_status FROM hf_selfie s WHERE s.uid=?${customerParam} ORDER BY s.created_at DESC, s.id DESC LIMIT 1)='approved'`;
@@ -277,6 +278,8 @@ function laneGuardSql(customerParam: number, hostParam: number, lane: string | n
     `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND lgbtq_lane=1) OR (EXISTS (` +
       `SELECT 1 FROM hf_lane_access la JOIN hf_kyc k ON k.uid=la.uid AND k.verified_at IS NOT NULL ` +
       `WHERE la.uid=?${customerParam} AND la.lane='lgbtq' AND la.declared_at IS NOT NULL) AND ${selfieOk}))`,
+    // [HF-CREATOR-BADGES-1] "Who can call you" = video_kyc (spaces are always video_kyc): the customer needs a full video KYC.
+    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND caller_level='video_kyc') OR ${videoKycSql("?" + customerParam)})`,
   ].join(" AND ");
 }
 
@@ -302,6 +305,7 @@ async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow,
   if (lane === "lgbtq" && host.lgbtq_lane !== 1) return err(409, "host_unavailable");
   if (lane != null && lane !== "women" && lane !== "lgbtq") return err(400, "invalid_lane");
   if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
+  if (await callerKycBlocked(env, uid, host)) return err(403, CALLER_KYC_ERROR, { level: "video_kyc", message: CALLER_KYC_MESSAGE }); // [HF-CREATOR-BADGES-1]
   return null;
 }
 
@@ -350,7 +354,7 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   const lane = body.lane == null || body.lane === "" ? null : String(body.lane);
   if (!/^[a-z0-9-]{3,40}$/.test(slug) || startAt == null || !Number.isInteger(duration)) return err(400, "invalid_quote_request");
   const host = await env.DB_META.prepare(
-    "SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE slug=?1",
+    "SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane,caller_level,creator_kind FROM hf_hosts WHERE slug=?1",
   ).bind(slug).first<HfHostPricingRow>();
   if (!host) return err(404, "host_not_found");
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", { message: DEMO_MESSAGE }); // [HF-WIRE-14] HF-REEL-34
@@ -444,7 +448,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   const quote = await env.DB_META.prepare("SELECT * FROM hf_booking_quotes WHERE id=?1 AND customer_uid=?2")
     .bind(quoteId, auth.uid).first<BookingQuoteRow>();
   if (!quote || quote.status !== "open" || Number(quote.expires_at) <= Date.now()) return err(409, "quote_expired");
-  const host = await env.DB_META.prepare("SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE uid=?1")
+  const host = await env.DB_META.prepare("SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane,caller_level,creator_kind FROM hf_hosts WHERE uid=?1")
     .bind(quote.host_uid).first<HfHostPricingRow>();
   if (!host) return err(409, "host_unavailable");
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", { message: DEMO_MESSAGE }); // [HF-WIRE-14]
@@ -734,7 +738,7 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   }
   // [HF-CALL-MODES-D] D1 / spec 1.1: a CONFIRMED booking rings in ANY mode (Online, Bookings only, Offline). The old presence==='online'
   // refusal made a booked call fail when she was Offline or Busy at the booked minute, contradicting HF-REEL-16. She must still be a live host.
-  const host = await env.DB_META.prepare("SELECT uid,slug,status,presence,display_name,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE uid=?1")
+  const host = await env.DB_META.prepare("SELECT uid,slug,status,presence,display_name,price_per_min,category,women_lane,lgbtq_lane,caller_level,creator_kind FROM hf_hosts WHERE uid=?1")
     .bind(row.host_uid).first<HfHostPricingRow & { presence: string; display_name: string | null }>();
   if (!host || host.status !== "live") return err(409, "host_unavailable");
   const policy = JSON.parse(row.policy_snapshot_json) as { lane?: string | null };

@@ -25,7 +25,7 @@ import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup 
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { noteInviteCreator } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
-import { videoKycSql, spaceOfRow, parseSpace, type SpaceName } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
+import { videoKycSql, channelVerifiedSql, effectiveCallerLevel, spaceOfRow, parseSpace, type SpaceName } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status, NO_STORE);
@@ -94,9 +94,10 @@ async function onNetwork(env: Env, platform: string, handle: string): Promise<bo
 interface HostRow {
   uid: string; slug: string; display_name: string | null; presence: string | null; price_per_min: number; category: string | null; topics_json: string | null; image_key: string | null;
   women_lane?: number | null; lgbtq_lane?: number | null; lgbtq_public?: number | null; video_kyc?: number | null;
+  channel_verified?: number | null; caller_level?: string | null; creator_kind?: string | null;
 }
 
-async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, topic: string | null, platform: ChannelPlatform | null = null, space: SpaceName | null = null) {
+async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, topic: string | null, platform: ChannelPlatform | null = null, space: SpaceName | null = null, kyc = false) {
   const demoVisible = cfg.hfDemoInfluencersVisible !== false;
   const binds: unknown[] = [];
   const where: string[] = [
@@ -114,12 +115,13 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
       ${topicOr.length ? "OR " + topicOr.join(" OR ") : ""})`);
   }
   if (space) where.push(space === "women" ? "h.women_lane=1" : "h.lgbtq_lane=1 AND h.lgbtq_public=1"); // [HF-CREATOR-SPACES-1]
+  if (kyc) where.push(videoKycSql("h.uid")); // [HF-CREATOR-BADGES-1]
   if (topic) { binds.push(`%"${topic}"%`); where.push(`h.topics_json LIKE ?${binds.length}`); }
   if (platform) { // [HF-WIRE-22] HF-REEL-41
     binds.push(platform);
     where.push(`(EXISTS (SELECT 1 FROM hf_channels pc WHERE pc.host_uid=h.uid AND pc.status='approved' AND pc.platform=?${binds.length})${platform === "youtube" ? " OR EXISTS (SELECT 1 FROM hf_demo_hosts pd WHERE pd.host_uid=h.uid)" : ""})`);
   }
-  const sql = `SELECT h.uid, h.slug, h.display_name, h.presence, h.price_per_min, h.category, h.topics_json, h.women_lane, h.lgbtq_lane, h.lgbtq_public, ${videoKycSql("h.uid")} AS video_kyc,
+  const sql = `SELECT h.uid, h.slug, h.display_name, h.presence, h.price_per_min, h.category, h.topics_json, h.women_lane, h.lgbtq_lane, h.lgbtq_public, h.caller_level, h.creator_kind, ${videoKycSql("h.uid")} AS video_kyc, ${channelVerifiedSql("h.uid")} AS channel_verified,
       COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key
     FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id=h.avatar_id WHERE ${where.join(" AND ")}
     ORDER BY CASE h.presence WHEN 'online' THEN 0 WHEN 'busy' THEN 1 ELSE 2 END, h.display_name LIMIT ${RESULT_MAX * 2}`;
@@ -151,7 +153,7 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
       slug: r.slug, name: r.display_name ?? "", handle: h, avatar: r.image_key ? mediaUrl(env, r.image_key) : null,
       presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
       followers: f?.followers ?? 0, platforms: [...(plats.get(r.uid) ?? [])].sort(), topics, ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin,
-      videoKycVerified: Number(r.video_kyc) === 1, space: spaceOfRow(r), // [HF-CREATOR-SPACES-1]
+      videoKycVerified: Number(r.video_kyc) === 1, space: spaceOfRow(r), callerLevel: effectiveCallerLevel(r), channelVerified: Number(r.channel_verified) === 1, // [HF-CREATOR-SPACES-1] [HF-CREATOR-BADGES-1]
       ...(lines?.get(r.uid) ?? {}),
     };
   });
@@ -196,7 +198,7 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
       const spaceRaw = (url.searchParams.get("space") ?? "").trim();
       const space = parseSpace(spaceRaw);
       if (spaceRaw && !space) return err(400, "bad_space");
-      const hosts = await searchHosts(env, cfg, q, topic, platform, space);
+      const hosts = await searchHosts(env, cfg, q, topic, platform, space, url.searchParams.get("kyc") === "1");
       const online = hosts.filter((h) => h.presence !== "offline").slice(0, RESULT_MAX);
       const offline = hosts.filter((h) => h.presence === "offline").slice(0, RESULT_MAX);
       const notOnNetwork: { handle: string; platform: string; followers?: number; votes: number }[] = [];

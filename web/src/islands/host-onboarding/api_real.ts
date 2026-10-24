@@ -166,8 +166,12 @@ function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string |
     kycGender: kycGender(k.aadhaar.gender),
     selfie: { recorded: selfieSent, consent: selfieSent, code: '' },
     payout: { upi: '', accountLast4: k.payout.accountLast4 || '', ifsc: '', nameAtBank: '', verified: k.payout.done },
-    // [HF-CREATOR-SPACES-1] The server's copy of the creator type wins, so a reload resumes on the same path.
-    path: spaces?.kind ?? null,
+    // [HF-CREATOR-BADGES-1] The server's badges win, so a reload resumes on the same steps. A brand-new creator has no badge yet and sees the trust step.
+    wantChannel: !!(spaces?.badges?.channel || ch?.channels?.some(c => c.state !== 'disconnected')),
+    wantKyc: !!(spaces?.badges?.videoKyc || k.aadhaar.done || k.selfie.status !== 'none'),
+    space: spaces?.badges?.space ?? (spaces?.kind === 'women' || spaces?.kind === 'lgbtq' ? spaces.kind : null),
+    callerLevel: spaces?.callerLevel ?? 'everyone',
+    callerLocked: !!spaces?.callerLevelLocked || !!spaces?.badges?.space,
     lgbtqDeclared: !!spaces?.lgbtqDeclared,
     channelQualified: !!(ch?.qualified),
   };
@@ -220,7 +224,7 @@ function fieldsOf(d: Draft): Field[] {
   }
   f.push(['healthConsent', d.healthConsent]);
   // [HF-CREATOR-SPACES-1] On a Women-only / LGBTQ+ channel the server owns the lane flags (set by /api/hf/spaces/creator); never overwrite them here.
-  if (d.path !== 'women' && d.path !== 'lgbtq') {
+  if (d.space === null) {
     f.push(['lgbtqLane', d.lgbtqLane]);
     if (d.lgbtqLane) f.push(['lgbtqPublic', d.lgbtqShowOnProfile]);
     if (d.kycGender === 'woman') f.push(['womenLane', d.womenOnlyLane]);
@@ -294,6 +298,14 @@ export const realApi: OnboardingApi = {
   async setCreator(body) {
     const r = await call<{ ok: boolean; kind: CreatorPath }>('POST', '/api/hf/spaces/creator', body, 'We could not save your choice. Please try again.');
     return r.ok ? { ok: true } : { ok: false, error: r.error, code: r.code };
+  },
+  async setSpace(body) {
+    const r = await call<{ ok: boolean }>('POST', '/api/hf/spaces/space', body, 'We could not save your choice. Please try again.');
+    return r.ok ? { ok: true } : { ok: false, error: r.error, code: r.code };
+  },
+  async setCallerLevel(level) {
+    const r = await call<{ ok: boolean; callerLevel: string }>('POST', '/api/hf/spaces/caller-level', { level }, 'We could not save your choice. Please try again.');
+    return r.ok ? { ok: true } : { ok: false, error: r.code === 'space_locked' ? 'Because you are in a special space, only video-KYC customers can call you.' : r.error, code: r.code };
   },
   async listChannels() {
     const r = await call<ChanResp>('GET', '/api/hf/channels');

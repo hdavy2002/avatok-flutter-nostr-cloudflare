@@ -1,0 +1,31 @@
+/* [HF-CREATOR-BADGES-1] Dashboard "My verifications": one rounded, multi-colour card per badge. Nunito/Comfortaa via the dashboard shell.
+ * No green here: the only green is the "Video KYC verified" pill from hf-spaces.css. */
+.hv-summary{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:18px;padding:20px;border-radius:26px;border:2px solid var(--line);background:linear-gradient(120deg,#fff4f8,#f6f0ff)}
+.hv-summary h2{margin:0;font-family:var(--head);font-weight:900;font-size:clamp(1.25rem,1.1rem + .6vw,1.6rem)}
+.hv-summary p{margin:4px 0 0;font-size:1rem}
+.hv-summary .hv-lead{flex:1;min-width:14rem}
+.hv-missing{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.hv-missing li{font-weight:800;color:var(--rani)}
+.hv-list{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:60rem){.hv-list{grid-template-columns:1fr 1fr}.hv-wide{grid-column:1/-1}}
+.hv-card{display:grid;gap:12px;padding:22px;border-radius:26px;background:#fffdf7;border:2px solid var(--line);box-shadow:0 4px 18px #46113e0d;min-width:0}
+.hv-card:nth-child(4n+1){border-color:#f4c9dc}.hv-card:nth-child(4n+2){border-color:#d9cdf5}.hv-card:nth-child(4n+3){border-color:#f8dcb0}.hv-card:nth-child(4n){border-color:#bfe0e6}
+.hv-head{display:flex;align-items:flex-start;gap:14px}
+.hv-ico{flex:none;width:52px;height:52px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fde8ef;color:#bd2740}
+.hv-ico svg{width:26px;height:26px}
+.hv-head h3{margin:0;font-family:var(--head);font-weight:900;font-size:1.25rem;line-height:1.25}
+.hv-head p{margin:4px 0 0;font-size:1rem;color:var(--muted);line-height:1.5}
+.hv-status{margin-left:auto;flex:none}
+.hv-acts{display:flex;flex-wrap:wrap;gap:10px}
+.hv-acts .h3-btn{min-height:56px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.hv-opts{display:grid;gap:10px}
+.hv-opt{appearance:none;display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;text-align:left;font:inherit;font-weight:800;font-size:1.0625rem;color:var(--plum);background:#fff;border:2px solid var(--line);border-radius:20px;cursor:pointer}
+.hv-opt[aria-checked=true]{border-color:var(--plum);background:#f2ecfc}
+.hv-opt:disabled{opacity:.55;cursor:not-allowed}
+.hv-opt small{display:block;font-weight:600;color:var(--muted);font-size:.9375rem}
+.hv-check{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:18px;background:#fff;border:1.5px solid var(--line);font-size:1rem;line-height:1.5}
+.hv-check input{width:24px;height:24px;flex:none;margin-top:2px}
+.hv-note{display:flex;gap:10px;align-items:center;margin:0;font-weight:800;color:var(--plum);font-size:1rem}
+.hv-note svg{width:20px;height:20px;flex:none}
+.hv-err{margin:0;color:var(--bad);font-weight:800}
+.hv-reason{margin:0;padding:12px 14px;border-radius:16px;background:var(--blush);color:var(--rani);font-weight:800}

@@ -4,6 +4,7 @@
 //   GET    /api/hf/queue/me           -> {ok, entry: null | {entryId, hostSlug, hostName, position, status, callId?}}
 // The fan-side gates (signed in, 18+, verified WhatsApp, lane, rate limit) are here; everything about the host and the line is decided inside
 // the host's HfHostLineDO (lib/hf_queue_store.ts joinQueue) so two simultaneous joins are serialised. Neither response ever carries a phone number.
+import { callerKycBlocked, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES-1]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -66,14 +67,16 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   const limited = await rateLimit(env, `hfqueue:${uid}`, 10, 600);
   if (limited) return limited;
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return err(409, "queue_closed", JOIN_MESSAGE.queue_closed, { reason: "unavailable" });
+  let lane: { women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null } | null = null;
   try {
-    const lane = await env.DB_META.prepare("SELECT women_lane, lgbtq_lane FROM hf_hosts WHERE uid=?1").bind(host.uid).first<{ women_lane: number; lgbtq_lane: number }>().catch(() => null);
+    lane = await env.DB_META.prepare("SELECT women_lane, lgbtq_lane, caller_level, creator_kind FROM hf_hosts WHERE uid=?1").bind(host.uid).first<{ women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null }>().catch(() => null);
     if (lane?.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
     if (lane?.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/hf/hosts/:slug/queue", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_queue", step: "lane" } }).catch(() => undefined);
   }
 
+  if (lane && (await callerKycBlocked(env, uid, lane))) return err(403, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE, { level: "video_kyc" }); // [HF-CREATOR-BADGES-1] fail closed
   const r = await pokeLine(env, host.uid, { op: "join", fanUid: uid, entryId: crypto.randomUUID() });
   if (!r) return err(502, "queue_unavailable", "We couldn't join the queue. Please try again.");
   if (r.ok) return json({ ok: true, entryId: r.entryId, position: r.position, waiting: r.waiting });

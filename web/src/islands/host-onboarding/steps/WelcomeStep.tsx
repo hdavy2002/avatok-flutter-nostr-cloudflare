@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { BRAND } from '../../../lib/brand';
 import Icon, { type IconName } from '../Icon';
 import type { StepProps } from '../types';
-import { isOnboardingStandardPlan } from '../api_real';
 
 const NEEDS: { icon: IconName; text: string }[] = [
   { icon: 'phone', text: 'Your own phone with WhatsApp' },
@@ -20,7 +19,7 @@ export default function WelcomeStep({ setAction, goNext }: StepProps) {
       <p className="hob-v-eyebrow">{BRAND.name} influencers</p>
       <h1 className="hob-h1">Earn from home by talking to people</h1>
       <p className="hob-lead">
-        {isOnboardingStandardPlan() ? 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours and set your price.' : 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours and set your price.'}
+        Chat, keep company and share your day with people who like talking to you. Got a YouTube or Instagram channel? Even better. You pick your hours and set your price.
       </p>
       <p className="hob-lead hob-v-hinglish">Ghar baithe kamaayein — bas baat karke.</p>
 
@@ -45,7 +44,7 @@ export default function WelcomeStep({ setAction, goNext }: StepProps) {
 
       <ul className="hob-v-facts">
         <li><Icon name="check" /> 18+ only</li>
-        <li><Icon name="rupee" /> {isOnboardingStandardPlan() ? 'You choose your per-minute price' : 'You choose your per-minute price'}</li>
+        <li><Icon name="rupee" /> You choose your per-minute price</li>
         <li><Icon name="phone" /> Calls come to your phone, no app needed</li>
       </ul>
 

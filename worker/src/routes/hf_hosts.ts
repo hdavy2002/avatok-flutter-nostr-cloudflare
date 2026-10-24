@@ -20,7 +20,7 @@ import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES
 import { encryptPii } from "../lib/pii_crypto";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
-import { spaceQualified, type CreatorKind } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
+import { spaceQualified, goLiveFacts, type CreatorKind } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 import { putHostPhoto } from "./hf_host_photo"; // [HF-CHANNEL-CORE-1]
 
 const APP = BRAND.slug;
@@ -379,7 +379,8 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
   if (!cur.display_name || !cur.avatar_id) missing.push("profile");
   if (!media.some((m) => m.kind === "profile") || !media.some((m) => m.kind === "gallery")) missing.push("media");
   if (!cur.voice_sample_r2 || (cur.intro_status !== "pending" && cur.intro_status !== "approved")) missing.push("voice");
-  if (!(await spaceQualified(env, uid, cur.creator_kind as CreatorKind | null | undefined))) missing.push("video_kyc"); // [HF-CREATOR-SPACES-1]
+  if (!(await spaceQualified(env, uid, cur.creator_kind as CreatorKind | null | undefined)) /* [HF-CREATOR-BADGES-1] space derived from the lanes; legacy creator_kind only forces */) missing.push("video_kyc"); // [HF-CREATOR-SPACES-1]
+  if (isCreatorCategory(cur.category)) { const gf = await goLiveFacts(env, uid); if (!gf.channel && !gf.videoKyc) missing.push("verification_required"); } // [HF-CREATOR-BADGES-1]
   if (missing.length) return err(422, "incomplete", { missing, message: "A few steps are still missing." });
   const now = Date.now();
   const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_review', submitted_at=?2, updated_at=?2, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?3 AND status IN ('pending_host','rejected','paused')").bind(uid, now, cur.listing_revision ?? 1).run();

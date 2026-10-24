@@ -23,7 +23,10 @@ draft: false
 
 - You must be **18 years or older**.
 - For now, we only take on **influencers based in India**, with their own Indian mobile number.
-- You need **10 or more followers** on the channel you connect.
+- You go live in one of two ways. **Connect a channel** (20 or more followers, and 1,000 or more views on YouTube), or do a **video KYC** (Aadhaar and a short selfie video). You can do both.
+- No channel? Individuals are welcome to chat, keep company and share their day. Sexual or adult talk is never allowed.
+- A Women-only or LGBTQ+ channel needs video KYC.
+- Every creator can choose to take calls only from video-KYC customers, for free. We never share any customer’s details with anyone.
 
 Influencers on {{brand.name}} are not doctors, lawyers, counsellors, CAs or financial advisors. This is a place to talk to your fans, not to give professional advice.
 

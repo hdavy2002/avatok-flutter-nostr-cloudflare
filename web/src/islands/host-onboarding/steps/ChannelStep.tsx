@@ -69,6 +69,7 @@ export default function ChannelStep({ draft, update, api, setAction }: StepProps
     const ch = r.channel;
     const result = r.result || (ch?.state === 'approved' ? 'approved' : 'needs_followers');
     setMsg({ text: r.message || MESSAGES[result] || '', ok: result === 'approved' });
+    if (result === 'approved') { try { capture('hf_verify_badge_added', { badge: 'channel' } as never); } catch { /* ignore */ } }
     try { capture('hf_channel_threshold', { result, followers: ch?.followers ?? 0, views: ch?.views ?? 0 } as never); } catch { /* ignore */ }
   };
 

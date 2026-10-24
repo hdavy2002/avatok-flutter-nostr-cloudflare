@@ -40,6 +40,8 @@ import { newSelfieCode, validSelfieCode } from "../lib/hf_kyc_util";
 import { emailFor } from "../lib/identity";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
+import { syncHostState } from "./hf_channels"; // [HF-CREATOR-BADGES-1]
+import { videoKycVerified } from "../lib/hf_spaces";
 import { encryptPii, tryDecryptPii, piiKeyConfigured, piiKeyBytes } from "../lib/pii_crypto";
 import { sandboxConfigured, aadhaarOtpGenerate, aadhaarOtpVerify, digilockerInit, digilockerStatus, digilockerAadhaar, digilockerProfile, type AadhaarKyc, type SandboxFail } from "../lib/sandbox_client";
 import { verifyUpiId } from "../lib/hf_payouts"; // [HF-UPI-ONLY-1]
@@ -654,6 +656,14 @@ async function adminDecide(req: Request, env: Env, ctx: ExecutionContext | undef
   if (!res.meta?.changes) return err(409, "already_reviewed");
   await audit(env, a.uid, `selfie_${decision}`, targetUid, { selfieId: row.id, reason });
   makeEmit(env, ctx, targetUid)("hf_kyc_selfie_reviewed", { ok: true, decision, admin_uid: a.uid });
+  // [HF-CREATOR-BADGES-1] The selfie decision changes her video KYC badge: re-run the go-live sync so a video-KYC-only creator (no channel) reaches
+  // 'approved' (or a creator who lost the badge is demoted). A customer with no host row is untouched. Never blocks the admin's decision.
+  try {
+    const st = await syncHostState(env, targetUid);
+    if (decision === "approved" && (await videoKycVerified(env, targetUid))) makeEmit(env, ctx, targetUid)("hf_verify_badge_added", { badge: "video_kyc", hostStatus: st.hostStatus });
+  } catch (e) {
+    await trackException(env, e, { uid: targetUid, route: "/api/admin/hf/kyc/:uid/selfie", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "badge_sync" } });
+  }
   return json({ ok: true, status: decision });
 }
 

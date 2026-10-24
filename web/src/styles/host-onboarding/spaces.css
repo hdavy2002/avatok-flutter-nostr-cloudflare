@@ -34,3 +34,12 @@
 .hob-s-gate p{margin:0}
 .hob-s-queue{display:flex;align-items:center;gap:14px}
 .hob-s-queue p{margin:0}
+
+/* [HF-CREATOR-BADGES-1] Trust / space / who-can-call tiles (multi-select + radios) */
+@media(min-width:900px){.hob-b-tiles{grid-template-columns:repeat(2,1fr)}.hob-b-tiles3{grid-template-columns:repeat(3,1fr)}}
+.hob-s-tile[role=checkbox][aria-checked=true]{border-color:#46113e;background:#f2ecfc}
+.hob-s-tile:disabled{opacity:.6;cursor:not-allowed}
+.hob-s-tile{min-height:96px}
+.hob-b-declare{margin-top:18px}
+.hob-b-lock{display:flex;align-items:center;gap:12px;margin:14px 0 0;font-weight:700;color:#46113e;background:#fde8ef}
+.hob-b-never{display:flex;align-items:center;gap:10px;margin:16px 0 0;font-size:1rem;font-weight:700;color:#46113e}

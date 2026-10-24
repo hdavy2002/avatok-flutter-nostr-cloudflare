@@ -31,6 +31,8 @@ class ReelHost {
     this.queueWaiting = 0,
     this.videoKycVerified = false,
     this.space,
+    this.callerLevel = 'everyone',
+    this.channelVerified = false,
   });
 
   final String slug;
@@ -41,6 +43,15 @@ class ReelHost {
 
   /// [HF-CREATOR-SPACES-1] `women` or `lgbtq` for a space channel, else null.
   final String? space;
+
+  /// [HF-CREATOR-BADGES-1] `everyone` or `video_kyc` (spaces are always `video_kyc`). `everyone` when the server does not send it.
+  final String callerLevel;
+
+  /// [HF-CREATOR-BADGES-1] An approved channel is connected.
+  final bool channelVerified;
+
+  /// Only customers with full video KYC may call this creator.
+  bool get kycCallersOnly => callerLevel == 'video_kyc';
 
   /// With the leading "@", or null.
   final String? handle;
@@ -77,6 +88,8 @@ class ReelHost {
         queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
         videoKycVerified: j['videoKycVerified'] == true,
         space: _spaceOf(j['space']),
+        callerLevel: j['callerLevel'] == 'video_kyc' ? 'video_kyc' : 'everyone',
+        channelVerified: j['channelVerified'] == true,
         platforms: [
           for (final p in (j['platforms'] is List ? j['platforms'] as List : const []))
             if (p is String && p.isNotEmpty) p,
@@ -313,6 +326,8 @@ class PublicProfile {
       queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
       videoKycVerified: j['videoKycVerified'] == true,
       space: _spaceOf(j['space']),
+      callerLevel: j['callerLevel'] == 'video_kyc' ? 'video_kyc' : 'everyone',
+      channelVerified: j['channelVerified'] == true,
     );
     final reels = [
       for (final e in (j['reels'] is List ? j['reels'] as List : const []))

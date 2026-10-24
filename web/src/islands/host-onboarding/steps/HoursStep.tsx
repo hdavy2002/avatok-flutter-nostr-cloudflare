@@ -42,8 +42,8 @@ export default function HoursStep({ draft, update, setAction }: StepProps) {
         <span>I am comfortable talking about health topics (e.g. women's health) when a caller asks</span>
       </label>
 
-      {/* [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel creators already chose their space on the path step. */}
-      {(draft.path === 'channel' || draft.path === null) && (<>
+      {/* [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel creators already chose their space on the space step. */}
+      {draft.space === null && (<>
       <label className="hob-card hob-p-check-card">
         <input type="checkbox" role="switch" checked={draft.lgbtqLane} onChange={(e) => update({ lgbtqLane: e.target.checked, ...(e.target.checked ? {} : { lgbtqShowOnProfile: false }) })} />
         <span>

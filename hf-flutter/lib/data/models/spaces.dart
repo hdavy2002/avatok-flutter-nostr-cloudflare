@@ -43,6 +43,20 @@ class SelfieState {
   }
 }
 
+/// [HF-CREATOR-BADGES-1] The stacked badges of a creator, from `GET /api/hf/spaces/me` `badges`. Missing keys read as "not yet".
+class CreatorBadges {
+  const CreatorBadges({this.phone = false, this.channel = false, this.videoKyc = false, this.space});
+
+  final bool phone;
+  final bool channel;
+  final bool videoKyc;
+
+  /// The space she belongs to, or null.
+  final SpaceLane? space;
+
+  static const CreatorBadges empty = CreatorBadges();
+}
+
 /// Everything the verification flow and the customer gate need, read from either `/api/hf/lanes/me` (customer) or
 /// `/api/hf/spaces/me` (creator).
 class SpaceStatus {
@@ -59,6 +73,12 @@ class SpaceStatus {
     this.kind,
     this.minFollowers = 20,
     this.minViews = 1000,
+    this.kycGranted = false,
+    this.badges = CreatorBadges.empty,
+    this.canGoLive = false,
+    this.missing = const <String>[],
+    this.callerLevel = 'everyone',
+    this.callerLevelLocked = false,
   });
 
   final bool whatsappVerified;
@@ -82,6 +102,21 @@ class SpaceStatus {
   final int minFollowers;
   final int minViews;
 
+  /// [HF-CREATOR-BADGES-1] Customer side: full video KYC (Aadhaar verified and the latest selfie approved), enough to call
+  /// a creator who only takes video-KYC callers. From `lanes.kyc.granted`; an older server falls back to [videoKycVerified].
+  final bool kycGranted;
+
+  /// Creator side (`GET /api/hf/spaces/me`).
+  final CreatorBadges badges;
+  final bool canGoLive;
+
+  /// What stops her going live, e.g. `channel_or_video_kyc`, `space_video_kyc`.
+  final List<String> missing;
+
+  /// `everyone` or `video_kyc`; the setting is locked for space creators.
+  final String callerLevel;
+  final bool callerLevelLocked;
+
   bool grantedFor(SpaceLane lane) => lane == SpaceLane.women ? womenGranted : lgbtqGranted;
 
   /// What is still missing for [lane], as a short word for telemetry (never the gender or the declaration itself).
@@ -90,6 +125,15 @@ class SpaceStatus {
     if (!aadhaarVerified) return 'aadhaar';
     if (lane == SpaceLane.women && gender != 'F') return 'gender';
     if (lane == SpaceLane.lgbtq && !declared) return 'declaration';
+    if (selfie.pending) return 'selfie_pending';
+    if (!selfie.approved) return 'selfie';
+    return 'none';
+  }
+
+  /// [HF-CREATOR-BADGES-1] What is still missing for plain video KYC (a customer calling a video-KYC-only creator).
+  String missingForKyc() {
+    if (!whatsappVerified) return 'whatsapp';
+    if (!aadhaarVerified) return 'aadhaar';
     if (selfie.pending) return 'selfie_pending';
     if (!selfie.approved) return 'selfie';
     return 'none';
@@ -112,6 +156,7 @@ class SpaceStatus {
       videoKycVerified: j['videoKycVerified'] == true,
       womenGranted: w['granted'] == true,
       lgbtqGranted: l['granted'] == true,
+      kycGranted: lanes['kyc'] is Map ? (lanes['kyc'] as Map)['granted'] == true : j['videoKycVerified'] == true,
     );
   }
 
@@ -119,6 +164,9 @@ class SpaceStatus {
   factory SpaceStatus.fromSpaces(Map<String, dynamic> j) {
     final g = _s(j['gender']);
     int n(Object? v, int d) => v is num ? v.toInt() : d;
+    final b = j['badges'] is Map ? Map<String, dynamic>.from(j['badges'] as Map) : const <String, dynamic>{};
+    final kind = _s(j['kind']);
+    final level = _s(j['callerLevel']);
     return SpaceStatus(
       whatsappVerified: j['whatsappVerified'] == true,
       aadhaarVerified: j['aadhaarVerified'] == true,
@@ -130,6 +178,17 @@ class SpaceStatus {
       kind: _s(j['kind']),
       minFollowers: n(j['minFollowers'], 20),
       minViews: n(j['minViews'], 1000),
+      kycGranted: j['videoKycVerified'] == true,
+      badges: CreatorBadges(
+        phone: b.containsKey('phone') ? b['phone'] == true : j['whatsappVerified'] == true,
+        channel: b['channel'] == true,
+        videoKyc: b.containsKey('videoKyc') ? b['videoKyc'] == true : j['videoKycVerified'] == true,
+        space: SpaceLane.parse(b.containsKey('space') ? b['space'] : kind),
+      ),
+      canGoLive: j['canGoLive'] == true,
+      missing: [for (final m in (j['missing'] is List ? j['missing'] as List : const [])) if (_s(m) != null) _s(m)!],
+      callerLevel: level == 'video_kyc' ? 'video_kyc' : 'everyone',
+      callerLevelLocked: j['callerLevelLocked'] == true,
     );
   }
 }

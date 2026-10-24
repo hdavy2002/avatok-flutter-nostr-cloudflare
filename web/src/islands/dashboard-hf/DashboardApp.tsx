@@ -33,6 +33,7 @@ import ProfileV3 from './v3/Profile';
 import AppointmentsV3 from './v3/Appointments';
 import FraandsV3 from './v3/Fraands';
 import BecomeV3 from './v3/Become';
+import VerificationsV3 from './v3/Verifications'; // [HF-CREATOR-BADGES-1]
 import SupportV3 from './v3/Support';
 import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
@@ -141,6 +142,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'orders': body = <OrdersV3 key={key} />; break;
     case 'fraands': body = <FraandsV3 key={key} />; break;
     case 'become': body = <BecomeV3 key={key} account={account} />; break;
+    case 'verifications': body = <VerificationsV3 key={key} account={account} />; break;
     case 'host': body = <div className="h3-legacy"><HostProfile key={key} account={account} /></div>; break;
     case 'host-calendar': body = <div className="h3-legacy"><HostBookings key={key} role="host" /></div>; break;
     case 'availability': body = <div className="h3-legacy"><HostAvailability key={key} /></div>; break;

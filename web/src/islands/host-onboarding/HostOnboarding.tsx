@@ -12,16 +12,17 @@ import { request } from '../../lib/apiClient';
 import { loadDraft, saveDraft } from './storage';
 import PreviewCard from './PreviewCard';
 import Icon from './Icon';
-import type { Avatar, CreatorPath, Draft, OnboardingApi, StepAction, StepGroup, StepKey, StepProps } from './types';
+import type { Avatar, Draft, OnboardingApi, StepAction, StepGroup, StepKey, StepProps } from './types';
 
 const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>> = {
   welcome: lazy(() => import('./steps/WelcomeStep')),
-  path: lazy(() => import('./steps/PathStep')),
   phone: lazy(() => import('./steps/PhoneStep')),
+  trust: lazy(() => import('./steps/TrustStep')),
   channel: lazy(() => import('./steps/ChannelStep')),
-  declare: lazy(() => import('./steps/DeclareStep')),
   aadhaar: lazy(() => import('./steps/AadhaarStep')),
   selfie: lazy(() => import('./steps/SelfieStep')),
+  space: lazy(() => import('./steps/SpaceStep')),
+  caller: lazy(() => import('./steps/CallerStep')),
   payout: lazy(() => import('./steps/PayoutStep')),
   avatar: lazy(() => import('./steps/AvatarStep')),
   about: lazy(() => import('./steps/AboutStep')),
@@ -43,12 +44,12 @@ type Phase = 'boot' | 'auth' | 'gate' | 'error' | 'ready';
 const SIGN_IN_URL = `/sign-in?redirect_url=${encodeURIComponent('/hosts/onboarding')}`;
 
 /** Real mode only when the worker says both flags are on (cache-busted) and the URL does not ask for ?mock=1. */
-// [HF-CREATOR-SPACES-1] The step list depends on the chosen path (channel / women / lgbtq) and on the Standard plan.
+// [HF-CREATOR-BADGES-1] The step list depends on the trust badges picked (channel / video KYC) and on the Standard plan.
 let STANDARD_PLAN = false;
 let ACTIVE_STEPS = stepsFor(null, STANDARD_PLAN);
 let KEYS = ACTIVE_STEPS.map(s => s.key);
-function setActivePath(path: CreatorPath | null) {
-  ACTIVE_STEPS = stepsFor(path, STANDARD_PLAN);
+function setActiveTrust(d: { wantChannel: boolean; wantKyc: boolean } | null) {
+  ACTIVE_STEPS = stepsFor(d && (d.wantChannel || d.wantKyc) ? { channel: d.wantChannel, kyc: d.wantKyc } : null, STANDARD_PLAN);
   KEYS = ACTIVE_STEPS.map(s => s.key);
 }
 async function pickApi(): Promise<OnboardingApi> {
@@ -58,24 +59,25 @@ async function pickApi(): Promise<OnboardingApi> {
     const standard = cfg?.hfStdPlan?.enabled === true;
     setOnboardingStandardPlan(standard);
     STANDARD_PLAN = standard;
-    setActivePath(null);
+    setActiveTrust(null);
     return cfg && cfg.hostOnboardingEnabled === true && cfg.hostKycEnabled === true ? realApi : mockApi;
   } catch { return mockApi; }
 }
 
 const DEFAULT_ACTION: StepAction = { label: 'Continue' };
-const NO_PREVIEW: StepKey[] = ['welcome', 'path', 'channel', 'declare', 'generating', 'done'];
+const NO_PREVIEW: StepKey[] = ['welcome', 'trust', 'channel', 'space', 'caller', 'generating', 'done'];
 const NO_BACK: StepKey[] = ['welcome', 'generating', 'done'];
 const BAR_GROUPS: StepGroup[] = ['verify', 'profile', 'voice', 'finish'];
 
 function isComplete(key: StepKey, d: Draft): boolean {
   switch (key) {
     case 'welcome': return true;
-    case 'path': return d.path !== null;
     case 'phone': return d.phoneVerified;
+    case 'trust': return d.wantChannel || d.wantKyc;
     case 'channel': return d.channelQualified;
-    case 'declare': return d.lgbtqDeclared;
-    case 'aadhaar': return d.aadhaarDone && !(d.path === 'women' && d.kycGender !== null && d.kycGender !== 'woman');
+    case 'aadhaar': return d.aadhaarDone;
+    case 'space': return true; // "no space" is a valid answer
+    case 'caller': return true; // default 'everyone'
     case 'selfie': return d.selfie.recorded && d.selfie.consent;
     case 'payout': return d.payout.verified;
     case 'avatar': return !!d.avatarId;
@@ -132,12 +134,19 @@ export default function HostOnboarding() {
   apiRef.current = api;
   const update = useCallback((patch: Partial<Draft>) => {
     touched.current = true;
-    if ('path' in patch) setActivePath(patch.path ?? null); // the step list changes with the path, before anything reads it
+    if ('wantChannel' in patch || 'wantKyc' in patch) setActiveTrust({ ...draftRef.current, ...patch }); // the step list changes with the trust choice, before anything reads it
     setDraft(prev => { const next = { ...prev, ...patch }; if (apiRef.current.mode === 'mock') saveDraft(next); return next; });
   }, []);
 
-  const finishBoot = useCallback((d: Draft) => {
-    setActivePath(d.path);
+  const finishBoot = useCallback((d0: Draft) => {
+    // [HF-CREATOR-BADGES-1] "My verifications" deep-links here with ?add=channel|kyc to add one more badge to an existing creator.
+    let d = d0;
+    try {
+      const add = new URLSearchParams(window.location.search).get('add');
+      if (add === 'channel') d = { ...d0, wantChannel: true };
+      else if (add === 'kyc') d = { ...d0, wantKyc: true };
+    } catch { /* ignore */ }
+    setActiveTrust(d);
     setDraft(d);
     draftRef.current = d;
     const k = stepFromUrl(d);

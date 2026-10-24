@@ -20,7 +20,7 @@ export interface Insights {
 }
 export interface DashProfile { ok: boolean; firstName: string | null; lastName: string | null; username: string | null; displayName: string | null; city: string | null; languages: string[]; talkAbout: string | null; joinedAt: number | null }
 /** A saved influencer, with the price block the worker now adds ([HF-DASH-V3-1]) so HostCallActions can start a real call. */
-export type Fav = FavouriteHost & { languages?: string[]; topics?: string[]; plan?: string; pricePerMin?: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; womenOnly?: boolean; space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean };
+export type Fav = FavouriteHost & { languages?: string[]; topics?: string[]; plan?: string; pricePerMin?: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; womenOnly?: boolean; space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean; channelVerified?: boolean; channelPlatform?: string | null; followers?: number | null; callerLevel?: 'everyone' | 'video_kyc' };
 
 export const getInsights = () => hfCall<Insights>('GET', '/api/hf/me/insights');
 export const getProfile = () => hfCall<DashProfile>('GET', '/api/hf/me/profile');

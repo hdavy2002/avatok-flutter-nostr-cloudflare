@@ -6,6 +6,7 @@ import '../models/spaces.dart';
 ///
 /// - `GET  /api/hf/lanes/me` (customer) and `GET /api/hf/spaces/me` (creator): [laneStatus] / [creatorStatus].
 /// - `POST /api/hf/spaces/creator {kind, declare?, acceptTerms?, publicTagConsent?}`: [chooseCreatorKind].
+/// - `POST /api/hf/spaces/space {space}` and `/caller-level {level}`: [setSpace] / [setCallerLevel] [HF-CREATOR-BADGES-1].
 /// - `POST /api/hosts/kyc/aadhaar/otp {aadhaar, consent:true, role}` then `/verify {otp}`: [aadhaarOtp] / [aadhaarVerify].
 ///   Errors carry `extra['fallback'] == 'digilocker'` when the screen should offer DigiLocker.
 /// - `POST /api/hf/lanes/women/join` and `/lanes/lgbtq/join {declare:true, ack18:true}`: [joinLane].
@@ -45,6 +46,24 @@ class SpacesRepo {
       if (acceptTerms) 'acceptTerms': true,
       if (publicTagConsent) 'publicTagConsent': true,
     });
+  }
+
+  /// [HF-CREATOR-BADGES-1] Join a space (`women` / `lgbtq`) or leave it (null). One space at a time.
+  /// Throws [ApiException] with the same codes as [chooseCreatorKind].
+  Future<void> setSpace(SpaceLane? space, {bool declare = false, bool acceptTerms = false, bool publicTagConsent = false}) async {
+    await _api.postJson('/api/hf/spaces/space', body: {
+      'space': space?.name,
+      if (declare) 'declare': true,
+      if (acceptTerms) 'acceptTerms': true,
+      if (publicTagConsent) 'publicTagConsent': true,
+    });
+  }
+
+  /// [HF-CREATOR-BADGES-1] "Who can call you": `everyone` or `video_kyc`. Returns the level the server saved.
+  /// Throws [ApiException] `space_locked` (409) for a space creator.
+  Future<String> setCallerLevel(String level) async {
+    final j = await _api.postJson('/api/hf/spaces/caller-level', body: {'level': level});
+    return j['callerLevel'] == 'video_kyc' ? 'video_kyc' : level;
   }
 
   /// Sends the Aadhaar code. Returns true when the Aadhaar was already verified (no code needed).

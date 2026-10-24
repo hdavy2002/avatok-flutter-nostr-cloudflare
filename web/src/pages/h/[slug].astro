@@ -31,7 +31,7 @@ import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/hf-channel.css';
 import '../../styles/hf-spaces.css';
 import SpaceBadges from '../../components/hosts/SpaceBadges';
-import { SPACE_TAG, spaceOf } from '../../lib/hfSpaces';
+import { SPACE_TAG, gateOf, spaceOf } from '../../lib/hfSpaces';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
@@ -48,6 +48,8 @@ interface Card {
   identityVerified?: boolean; callEligible?: boolean;
   /** [HF-CREATOR-SPACES-1] Green Video KYC badge + Women-only / LGBTQ+ channel tag. Missing = false / null. */
   videoKycVerified?: boolean; space?: 'women' | 'lgbtq' | null;
+  /** [HF-CREATOR-BADGES-1] Stacked badges + who may call. Missing = false / 'everyone'. */
+  channelVerified?: boolean; callerLevel?: 'everyone' | 'video_kyc'; channelPlatform?: string | null;
   rating?: number | null; reviewCount?: number; ratingBreakdown?: Record<'5' | '4' | '3' | '2' | '1', number>; talkedTo?: number; regulars?: number;
   reviews?: { firstName: string; stars: number; text: string; topic: string | null; minutes: number | null; regular: boolean; date: string | number }[];
 }
@@ -88,9 +90,11 @@ const reviews = host?.reviews ?? [];
 const talkedTo = host?.talkedTo ?? 0;
 const identityVerified = host?.identityVerified === true;
 const callEligible = identityVerified && host?.callEligible === true;
-const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly, space: spaceOf(host) } : null;
+const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly, space: spaceOf(host), callerLevel: host.callerLevel === 'video_kyc' || spaceOf(host) ? 'video_kyc' as const : 'everyone' as const } : null;
 const hostSpace = spaceOf(host);
 const videoKyc = host?.videoKycVerified === true;
+const channelBadge = host?.channelVerified === true ? { verified: true, platform: host.channelPlatform ?? reels[0]?.platform ?? null, followers: host.followers ?? null } : null;
+const callerKycOnly = gateOf(host) === 'kyc';
 const audioUrl = host?.introAudioUrl ?? null;
 // [HF-MERCH-QA-1] End the headline with a full stop when it has no ending punctuation, so the meta reads "Founder, happy to chat. From Rs 10/min."
 const headline = (host?.tagline ?? '').trim() || 'A real person to talk to, in your language.';
@@ -169,7 +173,7 @@ const navItems = [
               <p class="eyebrow">{eyebrow}</p>
               <h1 id="nm">{firstName}{restName && <>{' '}<br />{restName}</>}</h1>
               {host.tagline && <p class="tag">{host.tagline}</p>}
-              {(videoKyc || hostSpace) && <div style="margin:14px 0 4px"><SpaceBadges client:idle videoKyc={videoKyc} space={hostSpace} surface="channel_page" large /></div>}
+              {(videoKyc || hostSpace || channelBadge || callerKycOnly) && <div style="margin:14px 0 4px"><SpaceBadges client:idle videoKyc={videoKyc} space={hostSpace} channel={channelBadge} callerLevel={callerKycOnly ? 'video_kyc' : 'everyone'} surface="channel_page" large /></div>}
               {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
               <div class="ratecard">
                 <div class="rate">{rateBig}{rateSmall && <small>{rateSmall}</small>}</div>
@@ -240,7 +244,7 @@ const navItems = [
                 <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="chip">{rateLabel}</span><span class="chip">India time</span></div>
                 <div style="margin-top:30px"><Sticker k="booking" /></div>
               </div>
-              <InlineBooking client:idle space={hostSpace} hostSlug={host.slug} hostName={name} paisePerMin={paisePerMin} plan={host.plan} priceTiers={host.priceTiers} />
+              <InlineBooking client:idle space={hostSpace} callerLevel={callerKycOnly ? 'video_kyc' : 'everyone'} hostSlug={host.slug} hostName={name} paisePerMin={paisePerMin} plan={host.plan} priceTiers={host.priceTiers} />
             </div>
           </section>
           <div class={`band${bandArt ? ' art' : ' rick'}`} data-book-band aria-hidden="true" style={bandArt ? `background-image:url(${bandArt})` : undefined}></div>

@@ -33,10 +33,13 @@ const igBody = (id: string, followers: number, bio = "", extra: any = {}) =>
 
 function makeEnv(withKeys = true) {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, price_per_min INTEGER NOT NULL DEFAULT 20, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, price_per_min INTEGER NOT NULL DEFAULT 20, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0, lgbtq_public INTEGER NOT NULL DEFAULT 0);
     CREATE UNIQUE INDEX idx_hf_hosts_slug ON hf_hosts(slug);`);
+  db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER); CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
+    CREATE TABLE hf_lane_access (uid TEXT, lane TEXT, verified_at INTEGER, declared_at INTEGER, PRIMARY KEY (uid, lane)); CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT);`); // [HF-CREATOR-BADGES-1] syncHostState reads video KYC
   db.exec(readFileSync(new URL("../../migrations/2026-10-19-hf-channels.sql", import.meta.url), "utf8"));
   db.exec(readFileSync(new URL("../../migrations/hf_creator_spaces.sql", import.meta.url), "utf8")); // [HF-CREATOR-SPACES-1]
+  db.exec(readFileSync(new URL("../../migrations/hf_creator_badges.sql", import.meta.url), "utf8")); // [HF-CREATOR-BADGES-1]
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),

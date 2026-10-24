@@ -11,7 +11,7 @@ import { request } from '../../lib/apiClient';
 import { EMPTY_DRAFT } from '../host-onboarding/data';
 import { digilockerReturning } from '../host-onboarding/storage';
 import type { Draft, StepAction, StepProps } from '../host-onboarding/types';
-import { fetchLaneMe, joinLane, leaveLane, makeLaneAadhaarApi, parseLane, safeNext, type Lane, type LaneMe } from './laneApi';
+import { fetchLaneMe, joinLane, laneGranted, leaveLane, makeLaneAadhaarApi, parseLane, safeNext, type Lane, type LaneMe } from './laneApi';
 
 const AadhaarStep = lazy(() => import('../host-onboarding/steps/AadhaarStep'));
 const SelfieStep = lazy(() => import('../host-onboarding/steps/SelfieStep'));
@@ -30,20 +30,27 @@ function looksSignedOut(): boolean {
   } catch { return false; }
 }
 
-const COPY: Record<Lane, { name: string; intro: string; privacy: string; back: string; backHref: string; browse: string; whoCan: string }> = {
+const COPY: Record<Lane, { name: string; intro: string; privacy: string; back: string; backHref: string; browse: string; whoCan: string; every: string }> = {
+  kyc: {
+    name: 'video-KYC creators',
+    intro: 'Some creators only take calls from customers who did a video KYC. You verify once with Aadhaar and a short selfie video, and it works for every video-KYC creator.',
+    privacy: 'Only you and our verification team see your Aadhaar check and your video. Creators and other callers never see them. We never share any customer’s details with anyone.',
+    back: 'How it works', backHref: '/how-it-works',
+    browse: 'See video-KYC creators', whoCan: 'video-KYC verified customers', every: 'video-KYC creator',
+  },
   women: {
     name: 'Women-only channels',
     intro: 'Only verified women can call a Women-only channel. You verify once with Aadhaar and a short selfie video, and it works for every Women-only channel.',
     privacy: 'Only you and our verification team see your Aadhaar check and your video. Creators and other callers never see them.',
     back: 'How Women-only channels work', backHref: '/women-only',
-    browse: 'See Women-only channels', whoCan: 'women',
+    browse: 'See Women-only channels', whoCan: 'women', every: 'Women-only channel',
   },
   lgbtq: {
     name: 'LGBTQ+ channels',
     intro: 'Only verified LGBTQ+ members can call an LGBTQ+ channel. You verify once with Aadhaar, a private choice and a short selfie video, and it works for every LGBTQ+ channel.',
     privacy: 'Aadhaar cannot show this, so your choice is a private self-declaration. It is never shown to anyone. Only you and our verification team see your Aadhaar check and your video.',
     back: 'How LGBTQ+ channels work', backHref: '/lgbtq',
-    browse: 'See LGBTQ+ channels', whoCan: 'LGBTQ+ members',
+    browse: 'See LGBTQ+ channels', whoCan: 'LGBTQ+ members', every: 'LGBTQ+ channel',
   },
 };
 
@@ -111,7 +118,7 @@ export default function LaneVerify() {
       setMe(r.me);
       setPhase('ready');
       if (!lane) { setStep('pick'); return; }
-      if (r.me.lanes[lane].granted) { setStep('done'); return; }
+      if (laneGranted(r.me, lane)) { setStep('done'); return; }
       if (!r.me.whatsappVerified) { setStep('wa'); return; }
       if (!r.me.aadhaarVerified && digilockerReturning()) { setAck18(true); setAckRules(true); setStep('aadhaar'); return; }
       if (!r.me.aadhaarVerified) { setStep('intro'); return; }
@@ -133,12 +140,12 @@ export default function LaneVerify() {
   const doJoin = useCallback(async (): Promise<void> => {
     if (!lane) return;
     go('joining');
-    const r = await joinLane(lane);
+    const r = lane === 'kyc' ? { ok: true as const, error: undefined, code: undefined } : await joinLane(lane); // plain video KYC has no join call
     if (r.ok) {
       const fresh = await fetchLaneMe();
       if (fresh.ok) {
         setMe(fresh.me);
-        if (fresh.me.lanes[lane].granted) { go('done'); return; }
+        if (laneGranted(fresh.me, lane)) { go('done'); return; }
         const sf = fresh.me.selfie?.status ?? 'none';
         if (sf === 'pending') { go('pending'); return; }
         if (sf === 'rejected') { setRejectReason(fresh.me.selfie?.reason ?? ''); go('rejected'); return; }
@@ -154,6 +161,7 @@ export default function LaneVerify() {
 
   const afterAadhaar = useCallback((gender: 'F' | 'M' | 'T' | null) => {
     if (!lane) return;
+    if (lane === 'kyc') { void doJoin(); return; }
     if (lane === 'women') { if (gender && gender !== 'F') go('ineligible'); else void doJoin(); return; }
     go('declare');
   }, [lane, go, doJoin]);
@@ -167,7 +175,7 @@ export default function LaneVerify() {
       if (!live || !r.ok) return;
       setMe(r.me);
       const sf = r.me.selfie?.status ?? 'none';
-      if (sf === 'approved') { if (r.me.lanes[lane].granted) go('done'); else await doJoin(); }
+      if (sf === 'approved') { if (laneGranted(r.me, lane)) go('done'); else await doJoin(); }
       else if (sf === 'rejected') { setRejectReason(r.me.selfie?.reason ?? ''); go('rejected'); }
     };
     const t = window.setInterval(() => { void tick(); }, 15000);
@@ -225,7 +233,7 @@ export default function LaneVerify() {
     <div className="hob">
       {header}
       <div className="hob-body hob-wrap">
-        <main className="hob-main" ref={mainRef} tabIndex={-1} aria-label="Video KYC for Women-only and LGBTQ+ channels">{body}</main>
+        <main className="hob-main" ref={mainRef} tabIndex={-1} aria-label="Video KYC">{body}</main>
       </div>
       {showBar && !action.hidden && (
         <div className="hob-bar">
@@ -263,6 +271,7 @@ export default function LaneVerify() {
         <p className="hob-lead">Each type needs a short video KYC, once. It works for every channel of that type.</p>
         <p><a className="hob-btn hob-btn-primary hob-v-start" href={`/verify/lane?lane=women${next ? `&next=${encodeURIComponent(next)}` : ''}`}>Women-only channels</a></p>
         <p><a className="hob-btn hob-btn-ghost hob-v-start" href={`/verify/lane?lane=lgbtq${next ? `&next=${encodeURIComponent(next)}` : ''}`}>LGBTQ+ channels</a></p>
+        <p><a className="hob-btn hob-btn-ghost hob-v-start" href={`/verify/lane?lane=kyc${next ? `&next=${encodeURIComponent(next)}` : ''}`}>Video-KYC creators</a></p>
       </div>,
     );
   }
@@ -283,11 +292,13 @@ export default function LaneVerify() {
     return wrap(
       <div>
         <p className="hob-v-eyebrow">Video KYC</p>
-        <h1 className="hob-h1">Verify to call {c.name}</h1>
+        <h1 className="hob-h1">{lane === 'kyc' ? 'Verify to call video-KYC creators' : `Verify to call ${c.name}`}</h1>
         <p className="hob-lead">{c.intro}</p>
         <div className="hob-card">
           <p className="hob-v-strong">{c.privacy}</p>
-          <p className="hob-help">{lane === 'women'
+          <p className="hob-help">{lane === 'kyc'
+            ? 'Step 1: Aadhaar check with an OTP (or DigiLocker if the OTP does not work). Step 2: a 10-second selfie video where you read a code. We keep only the last 4 digits of your Aadhaar number.'
+            : lane === 'women'
             ? 'Step 1: Aadhaar check with an OTP (or DigiLocker if the OTP does not work). Step 2: a 10-second selfie video where you read a code. We keep only the last 4 digits of your Aadhaar number.'
             : 'Step 1: Aadhaar check with an OTP (or DigiLocker if the OTP does not work). Step 2: a private choice. Step 3: a 10-second selfie video where you read a code. We keep only the last 4 digits of your Aadhaar number, and we do not keep which option you choose.'}</p>
         </div>
@@ -391,14 +402,14 @@ export default function LaneVerify() {
     <div>
       <span className="hob-v-badge" aria-hidden="true">✓</span>
       <h1 className="hob-h1">You're verified</h1>
-      <p className="hob-lead">You can now call {c.name}. One verification works for every {lane === 'women' ? 'Women-only' : 'LGBTQ+'} channel.</p>
-      <p><a className="hob-btn hob-btn-primary hob-v-start" href={next ?? `/marketplace?space=${lane}`}>{next ? 'Continue' : c.browse}</a></p>
-      <p className="hob-v-rules">
+      <p className="hob-lead">You can now call {c.name}. One verification works for every {c.every}.</p>
+      <p><a className="hob-btn hob-btn-primary hob-v-start" href={next ?? (lane === 'kyc' ? '/marketplace?kyc=1' : `/marketplace?space=${lane}`)}>{next ? 'Continue' : c.browse}</a></p>
+      {lane !== 'kyc' && <p className="hob-v-rules">
         <button type="button" className="hob-v-link" onClick={async () => {
           if (!window.confirm('Leave these channels? You can verify again any time.')) return;
           if (await leaveLane(lane)) { setMe(m => (m ? { ...m, lanes: { ...m.lanes, [lane]: { ...m.lanes[lane], granted: false } } } : m)); setAck18(false); setAckRules(false); setFit(''); setAckTerms(false); go('intro'); }
         }}>Leave {c.name}</button>
-      </p>
+      </p>}
     </div>,
   );
 }

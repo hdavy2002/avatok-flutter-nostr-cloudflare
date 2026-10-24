@@ -463,7 +463,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SettingsRow(icon: Icons.mail_rounded, tone: DesiTone.rani, label: 'Email', sub: demo.email),
                     SettingsRow(icon: Icons.chat_rounded, tone: DesiTone.rani, label: 'WhatsApp', sub: demo.whatsappDisplay, last: !host),
                     // [HF-WIRE-3] Channels: for an influencer, or someone who has started joining.
-                    if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Channels', last: true, onTap: () => context.push('/inf/channels')),
+                    if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Channels', last: false, onTap: () => context.push('/inf/channels')),
+                    if (host) SettingsRow(icon: Icons.verified_user_rounded, tone: DesiTone.lav, label: 'My verifications', last: true, onTap: () => context.push('/inf/verifications')), // [HF-CREATOR-BADGES-1]
                   ]),
                   const SizedBox(height: 12),
                   SettingsCard(title: 'WhatsApp messages', tone: DesiTone.tea, flower: true, children: [

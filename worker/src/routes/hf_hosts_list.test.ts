@@ -26,7 +26,7 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 let prepares = 0;
 function makeEnv() {
   const db = new DatabaseSync(":memory:");
-  for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql", "2026-10-12-hf-creator-price-alters.sql"]) db.exec(mig(f));
+  for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql", "2026-10-12-hf-creator-price-alters.sql", "2026-10-19-hf-channels.sql", "hf_creator_spaces.sql", "hf_creator_badges.sql"]) db.exec(mig(f)); // [HF-CREATOR-BADGES-1] channelVerified + callerLevel
   db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER, age_ok INTEGER);
     CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT, r2_key TEXT, mime TEXT, code TEXT);
     CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT);
@@ -104,7 +104,7 @@ describe("GET /api/hf/hosts", () => {
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
       // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
-      ["avatarUrl", "callEligible", "category", "displayName", "identityVerified", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "space", "status", "style", "tagline", "talkedTo", "topics", "videoKycVerified", "womenOnly"],
+      ["avatarUrl", "callEligible", "callerLevel", "category", "channelVerified", "displayName", "identityVerified", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "space", "status", "style", "tagline", "talkedTo", "topics", "videoKycVerified", "womenOnly"],
     );
     expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
     expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);

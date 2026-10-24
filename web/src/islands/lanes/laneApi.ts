@@ -3,8 +3,10 @@
 import { call, kycGender, otpFailure, realApi } from '../host-onboarding/api_real';
 import type { OnboardingApi } from '../host-onboarding/types';
 
-export type Lane = 'women' | 'lgbtq';
-export const parseLane = (v: string | null | undefined): Lane | null => (v === 'women' || v === 'lgbtq' ? v : null);
+/** [HF-CREATOR-BADGES-1] 'kyc' = plain video KYC (no space, no join, no declaration) to call video-KYC-only creators. */
+export type SpaceLane = 'women' | 'lgbtq';
+export type Lane = SpaceLane | 'kyc';
+export const parseLane = (v: string | null | undefined): Lane | null => (v === 'women' || v === 'lgbtq' || v === 'kyc' ? v : null);
 export const laneReturnPath = (lane: Lane) => {
   let next = '';
   try { const n = safeNext(new URLSearchParams(window.location.search).get('next')); if (n) next = `&next=${encodeURIComponent(n)}`; } catch { /* ignore */ }
@@ -15,8 +17,9 @@ export const laneReturnPath = (lane: Lane) => {
 export interface LaneMe {
   whatsappVerified: boolean; aadhaarVerified: boolean; gender: 'F' | 'M' | 'T' | null;
   selfie?: { status?: 'none' | 'pending' | 'approved' | 'rejected'; reason?: string | null }; videoKycVerified?: boolean;
-  lanes: { women: { eligible: boolean; granted: boolean }; lgbtq: { declared: boolean; granted: boolean } };
+  lanes: { women: { eligible: boolean; granted: boolean }; lgbtq: { declared: boolean; granted: boolean }; kyc?: { granted: boolean } };
 }
+export const laneGranted = (me: LaneMe, lane: Lane): boolean => (lane === 'kyc' ? me.lanes.kyc?.granted ?? me.videoKycVerified === true : me.lanes[lane].granted);
 /** Where to go after verifying: a same-site path only (no open redirect). */
 export function safeNext(raw: string | null | undefined): string | null {
   if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return null;
@@ -28,13 +31,13 @@ export async function fetchLaneMe(): Promise<{ ok: true; me: LaneMe } | { ok: fa
   return r.ok ? { ok: true, me: r.data } : { ok: false, status: r.status, error: r.error ?? '', code: r.code };
 }
 
-export async function joinLane(lane: Lane): Promise<{ ok: boolean; error?: string; code?: string }> {
+export async function joinLane(lane: SpaceLane): Promise<{ ok: boolean; error?: string; code?: string }> {
   const body = lane === 'lgbtq' ? { declare: true, ack18: true } : { ack18: true };
   const r = await call<{ ok: boolean }>('POST', `/api/hf/lanes/${lane}/join`, body, 'We could not open this space for you. Please try again.');
   return r.ok ? { ok: true } : { ok: false, error: r.error, code: r.code };
 }
 
-export async function leaveLane(lane: Lane): Promise<boolean> {
+export async function leaveLane(lane: SpaceLane): Promise<boolean> {
   const r = await call<{ ok: boolean }>('DELETE', `/api/hf/lanes/${lane}`, undefined, 'We could not do that. Please try again.');
   return r.ok;
 }

@@ -50,10 +50,11 @@ const vid = (id: string, title = "T " + id, views = "100") => ({ id, snippet: { 
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT UNIQUE, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
-    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0, lgbtq_public INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER); CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT); /* [HF-CREATOR-BADGES-1] go-live sync reads video KYC */
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
-  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-reels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-20-hf-reel-details.sql", "hf_creator_spaces.sql"]) db.exec(mig(f));
+  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-reels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-20-hf-reel-details.sql", "hf_creator_spaces.sql", "hf_creator_badges.sql"]) db.exec(mig(f));
   const kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),

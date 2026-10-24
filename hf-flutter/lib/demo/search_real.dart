@@ -35,7 +35,7 @@ class _RealSearchState extends State<RealSearch> {
   int _run = 0;
   String? _topic;
   String _platform = 'all'; // [HF-WIRE-22] HF-REEL-41: all | youtube | instagram
-  String? _space; // [HF-CREATOR-SPACES-1] null | women | lgbtq
+  String? _space; // [HF-CREATOR-SPACES-1] null | women | lgbtq | kyc ([HF-CREATOR-BADGES-1] Video KYC verified)
   AsyncState<SearchResult> _state = const AsyncLoading();
   List<TopicOption> _topics = const [];
   List<MissingCreator> _top = const [];
@@ -90,7 +90,7 @@ class _RealSearchState extends State<RealSearch> {
       // [HF-APP-CACHE-1] the same search seen before paints at once, then the server's answer replaces it
       await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform, space: _space)) {
         if (!mounted || run != _run) return;
-        setState(() => _state = AsyncData(r));
+        setState(() => _state = AsyncData(_space == 'kyc' ? _onlyKyc(r) : r));
       }
       return;
     } catch (e) {
@@ -149,6 +149,12 @@ class _RealSearchState extends State<RealSearch> {
     );
   }
 
+  /// [HF-CREATOR-BADGES-1] The "Video KYC verified" chip also filters here, so an older server that ignores `kyc=1` still behaves.
+  SearchResult _onlyKyc(SearchResult r) => SearchResult(
+        online: [for (final h in r.online) if (h.videoKycVerified) h],
+        offline: [for (final h in r.offline) if (h.videoKycVerified) h],
+      );
+
   /// [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel filter. Tap the chosen one again to clear it.
   void _pickSpace(String space) {
     _timer?.cancel();
@@ -159,35 +165,31 @@ class _RealSearchState extends State<RealSearch> {
   }
 
   Widget _spaceFilter() {
-    const options = [('women', 'Women-only'), ('lgbtq', 'LGBTQ+')];
+    const options = [('women', 'Women-only'), ('lgbtq', 'LGBTQ+'), ('kyc', 'Video KYC verified')];
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Row(
+      child: Wrap(
         key: const ValueKey('space-filter'),
+        spacing: 8,
+        runSpacing: 8,
         children: [
           for (final o in options)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Semantics(
-                  button: true,
-                  selected: _space == o.$1,
-                  label: 'Show ${o.$2} channels',
-                  child: InkWell(
-                    key: ValueKey('space-${o.$1}'),
+            Semantics(
+              button: true,
+              selected: _space == o.$1,
+              label: 'Show ${o.$2} creators',
+              child: InkWell(
+                key: ValueKey('space-${o.$1}'),
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => _pickSpace(o.$1),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  decoration: BoxDecoration(
+                    color: _space == o.$1 ? C.rani : C.white,
                     borderRadius: BorderRadius.circular(999),
-                    onTap: () => _pickSpace(o.$1),
-                    child: Container(
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _space == o.$1 ? C.rani : C.white,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: _space == o.$1 ? C.rani : C.line, width: 1.5),
-                      ),
-                      child: Text(o.$2, style: t(15, color: _space == o.$1 ? C.white : C.rani, w: FontWeight.w800)),
-                    ),
+                    border: Border.all(color: _space == o.$1 ? C.rani : C.line, width: 1.5),
                   ),
+                  child: Text(o.$2, style: t(15, color: _space == o.$1 ? C.white : C.rani, w: FontWeight.w800)),
                 ),
               ),
             ),
@@ -324,7 +326,7 @@ class _RealSearchState extends State<RealSearch> {
       rate: h.rateRupees,
       last: last,
       subtitle: Row(children: [
-        SpaceBadges(space: h.space, videoKycVerified: h.videoKycVerified, surface: 'app_search', compact: true),
+        SpaceBadges(space: h.space, videoKycVerified: h.videoKycVerified, channelVerified: h.channelVerified, kycCallersOnly: h.kycCallersOnly, surface: 'app_search', compact: true),
         for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
         Flexible(child: Text(h.handle ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w600))),
       ]),

@@ -22,7 +22,8 @@ import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
 import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
 import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
-import { spaceQualified } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
+import { goLiveFacts, goLiveBlockers } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1] [HF-CREATOR-BADGES-1]
+import { isCreatorCategory as isCreatorCat } from "../lib/hf_creator_pricing";
 import { isPhoneVerified } from "../lib/hf_public_verification";
 import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
 import { acquireHfScheduleWriteLock, drainHfBookingHolds, getHfBookingSchedule, releaseHfScheduleWriteLock } from "../lib/hf_booking_store";
@@ -295,7 +296,10 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
       isPhoneVerified(env, uid),
       env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE uid=?1 AND status='active' AND kind IN ('profile','gallery')").bind(uid).first<{ n: number }>(),
     ]);
-    if (!(await spaceQualified(env, uid))) return err(409, "video_kyc_required", { message: "This Women-only / LGBTQ+ creator has not passed video KYC yet." }); // [HF-CREATOR-SPACES-1]
+    // [HF-CREATOR-BADGES-1] one go-live rule: approved channel OR video KYC (creators only; standard hosts keep their own review), plus the space qualification.
+    const gl = goLiveBlockers(await goLiveFacts(env, uid), { requireBasis: isCreatorCat((await env.DB_META.prepare("SELECT category FROM hf_hosts WHERE uid=?1").bind(uid).first<{ category: string | null }>())?.category) });
+    if (gl.includes("video_kyc_required")) return err(409, "video_kyc_required", { message: "This Women-only / LGBTQ+ creator has not passed video KYC yet." });
+    if (gl.includes("verification_required")) return err(409, "verification_required", { message: "Needs an approved channel or a video KYC before going live." });
     const missing: string[] = [];
     if (!phoneOk) missing.push("whatsapp_not_verified");
     if (!media?.n) missing.push("no_media");

@@ -314,7 +314,7 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
 }
 
 async function slotsRoute(req: Request, env: Env, slug: string): Promise<Response> {
-  const host = await env.DB_META.prepare("SELECT uid,slug,status,category,price_per_min,women_lane,lgbtq_lane FROM hf_hosts WHERE slug=?1")
+  const host = await env.DB_META.prepare("SELECT uid,slug,status,category,price_per_min,women_lane,lgbtq_lane,caller_level,creator_kind FROM hf_hosts WHERE slug=?1")
     .bind(slug).first<HfHostPricingRow>();
   if (!host || host.status !== "live") return err(404, "host_not_found");
   const lengthCfg = await readBookingLengthConfig(env); // [HF-CALL-MODES-D] ?durationMinutes=L only when lengths are on; off = 10 as always

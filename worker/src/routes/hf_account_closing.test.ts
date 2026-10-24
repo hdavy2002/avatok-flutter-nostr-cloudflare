@@ -30,7 +30,7 @@ function makeEnv() {
     CREATE TABLE hf_lane_access (uid TEXT, lane TEXT, verified_at INTEGER, declared_at INTEGER);
     CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_selfie (id TEXT, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
-    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, display_name TEXT, price_per_min INTEGER, women_lane INTEGER DEFAULT 0, lgbtq_lane INTEGER DEFAULT 0, presence TEXT, presence_at INTEGER, status TEXT, category TEXT DEFAULT 'standard');
+    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, display_name TEXT, price_per_min INTEGER, caller_level TEXT NOT NULL DEFAULT 'everyone', creator_kind TEXT NOT NULL DEFAULT 'channel', women_lane INTEGER DEFAULT 0, lgbtq_lane INTEGER DEFAULT 0, presence TEXT, presence_at INTEGER, status TEXT, category TEXT DEFAULT 'standard');
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT, requested_at INTEGER, updated_at INTEGER, payout_id TEXT, refund_id TEXT, note TEXT);
     CREATE TABLE hf_topups (id TEXT PRIMARY KEY, uid TEXT, amount_rupees INTEGER, gateway TEXT, gateway_order_id TEXT, status TEXT, credited INTEGER, raw_status TEXT, gateway_payment_id TEXT, created_at INTEGER, updated_at INTEGER, paid_at INTEGER);
   `);

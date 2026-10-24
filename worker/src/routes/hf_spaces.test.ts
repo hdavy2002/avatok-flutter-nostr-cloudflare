@@ -38,6 +38,7 @@ function makeEnv() {
   `);
   db.exec(readFileSync(new URL("../../migrations/2026-10-19-hf-channels.sql", import.meta.url), "utf8"));
   db.exec(readFileSync(new URL("../../migrations/hf_creator_spaces.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../../migrations/hf_creator_badges.sql", import.meta.url), "utf8")); // [HF-CREATOR-BADGES-1]
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     run: async () => { const r = db.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; },
@@ -117,6 +118,7 @@ describe("GET /api/hf/spaces/me", () => {
     expect(await (await get())!.json()).toEqual({
       ok: true, kind: null, whatsappVerified: false, aadhaarVerified: false, gender: null, selfie: { status: "none", reason: null },
       lgbtqDeclared: false, videoKycVerified: false, qualified: false, hostStatus: null, minFollowers: 20, minViews: 1000,
+      badges: { phone: false, channel: false, videoKyc: false, space: null }, canGoLive: false, missing: ["channel_or_video_kyc"], callerLevel: "everyone", callerLevelLocked: false, // [HF-CREATOR-BADGES-1]
     });
   });
   it("reports selfie rejection reason and qualification of a women creator", async () => {

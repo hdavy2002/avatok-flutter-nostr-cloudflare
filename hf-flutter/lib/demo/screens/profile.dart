@@ -98,7 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final p = await (widget.repo ?? Services.instance.reelsRepo).profile(widget.id);
       if (!mounted) return;
       setState(() => _ps = AsyncData(p));
-      if (SpaceLane.parse(p.host.space) != null) unawaited(_loadSpace(p.host));
+      if (SpaceLane.parse(p.host.space) != null || p.host.kycCallersOnly) unawaited(_loadSpace(p.host));
       if (!_viewed) {
         _viewed = true;
         channelEvent('channel_viewed', {'slug': widget.id, 'surface': 'app', 'online': p.host.presence == 'online', 'videos': p.reels.length});
@@ -111,7 +111,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// [HF-CREATOR-SPACES-1] A Women-only / LGBTQ+ channel: read the viewer's verification so Call / Book / Queue / Notify can unlock.
   Future<void> _loadSpace(ReelHost host) async {
     final lane = SpaceLane.parse(host.space);
-    if (lane == null) return;
+    if (lane == null && !host.kycCallersOnly) return; // [HF-CREATOR-BADGES-1] a video-KYC-only creator needs the viewer's status too
     SpaceStatus? st;
     if (Services.instance.isSignedIn) {
       try {
@@ -123,13 +123,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     setState(() => _space = st);
     final own = Services.instance.me?.hostSlug == host.slug;
-    if (!own && !_gateShown && !(st?.grantedFor(lane) ?? false)) {
+    final granted = st == null ? false : (lane != null ? st.grantedFor(lane) : st.kycGranted);
+    if (!own && !_gateShown && !granted) {
       _gateShown = true;
-      Telemetry.event('hf_space_gate_shown', {'lane': lane.name, 'missing': st == null ? 'signin' : st.missingFor(lane)});
+      if (lane != null) Telemetry.event('hf_space_gate_shown', {'lane': lane.name, 'missing': st == null ? 'signin' : st.missingFor(lane)});
+      Telemetry.event('hf_caller_gate_shown', {'reason': lane?.name ?? 'video_kyc'}); // [HF-CREATOR-BADGES-1]
     }
   }
 
-  Future<void> _verifySpace(ReelHost host, SpaceLane lane) async {
+  Future<void> _verifySpace(ReelHost host, SpaceLane? lane) async {
     await openSpaceVerify(context, lane);
     if (mounted) await _loadSpace(host);
   }
@@ -240,7 +242,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel: Call / Book / Queue / Notify stay locked until the viewer finished video KYC.
     final spaceLane = SpaceLane.parse(prof?.host.space);
     final ownPage = prof != null && Services.instance.me?.hostSlug == prof.host.slug;
-    final spaceLocked = spaceLane != null && !ownPage && !(_space?.grantedFor(spaceLane) ?? false);
+    // [HF-CREATOR-BADGES-1] a creator who only takes video-KYC callers locks the same way, with plain video KYC
+    final kycLocked = spaceLane == null && (prof?.host.kycCallersOnly ?? false) && !ownPage && !(_space?.kycGranted ?? false);
+    final spaceLocked = kycLocked || (spaceLane != null && !ownPage && !(_space?.grantedFor(spaceLane) ?? false));
     final hasBook = prof != null && BookingsBridge.real && eligible && !spaceLocked;
     final hasAbout = who.bio.trim().isNotEmpty;
     final hasFacts = prof != null;
@@ -305,7 +309,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       who: who,
                       badge: badge,
                       tagline: prof != null && prof.tagline.trim().isNotEmpty ? prof.tagline.trim() : _tagline(who.bio),
-                      badges: prof == null ? null : SpaceBadges(space: prof.host.space, videoKycVerified: prof.host.videoKycVerified, surface: 'app_profile'),
+                      badges: prof == null
+                          ? null
+                          : SpaceBadges(
+                              space: prof.host.space,
+                              videoKycVerified: prof.host.videoKycVerified,
+                              channelVerified: prof.host.channelVerified,
+                              kycCallersOnly: prof.host.kycCallersOnly,
+                              surface: 'app_profile',
+                            ),
                       stats: stats,
                       faved: faved,
                       onHeart: onHeart,
@@ -352,7 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               if (!eligible)
                 const Expanded(child: ChannelCallsUnavailable())
-              else if (spaceLocked && prof != null) // spaceLocked already means spaceLane != null
+              else if (spaceLocked && prof != null)
                 Expanded(
                   child: SpaceLockedBar(
                     lane: spaceLane,

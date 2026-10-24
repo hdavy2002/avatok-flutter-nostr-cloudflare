@@ -1,16 +1,17 @@
 /* [HF-HOST-ONBOARD-1] Static option lists for the onboarding mock. */
 import { moods, moodGroups } from '../../lib/callvaalHomeReference';
-import type { Avatar, CreatorPath, Draft, StepGroup, StepKey } from './types';
+import type { Avatar, Draft, StepGroup, StepKey } from './types';
 
 export const STEPS: { key: StepKey; group: StepGroup; title: string }[] = [
   { key: 'welcome', group: 'start', title: 'Welcome' },
-  { key: 'path', group: 'start', title: 'How do you want to start?' }, // [HF-CREATOR-SPACES-1]
   { key: 'phone', group: 'verify', title: 'Your WhatsApp number' },
-  // [HF-CREATOR-SPACES-1] Verify steps differ by path; stepsFor() keeps only the ones for the chosen path.
+  // [HF-CREATOR-BADGES-1] Trust badges stack; stepsFor() keeps the steps for the badges the creator picked.
+  { key: 'trust', group: 'verify', title: 'How will fans trust you?' },
   { key: 'channel', group: 'verify', title: 'Your channel' },
   { key: 'aadhaar', group: 'verify', title: 'Verify your Aadhaar' },
-  { key: 'declare', group: 'verify', title: 'LGBTQ+ channel details' },
   { key: 'selfie', group: 'verify', title: 'Video check' },
+  { key: 'space', group: 'verify', title: 'Join a special space?' },
+  { key: 'caller', group: 'verify', title: 'Who can call you?' },
   // [HF-IDV-WHATSAPP-1 2026-10-24] No Aadhaar, no selfie video. Payout (UPI + Aadhaar) is set up later from the wallet, when withdrawing.
   { key: 'avatar', group: 'profile', title: 'Choose your avatar' },
   { key: 'about', group: 'profile', title: 'About you' },
@@ -25,13 +26,15 @@ export const STEPS: { key: StepKey; group: StepGroup; title: string }[] = [
   { key: 'done', group: 'finish', title: 'Sent for review' },
 ];
 
-const PATH_ONLY: Partial<Record<StepKey, CreatorPath[]>> = {
-  channel: ['channel'], aadhaar: ['women', 'lgbtq'], declare: ['lgbtq'], selfie: ['women', 'lgbtq'],
-};
-/** [HF-CREATOR-SPACES-1] The step list for a creator path. Before a path is chosen the channel list is shown. */
-export function stepsFor(path: CreatorPath | null, standardPlan: boolean) {
-  const p = path ?? 'channel';
-  return STEPS.filter(s => (!PATH_ONLY[s.key] || PATH_ONLY[s.key]!.includes(p)) && !(standardPlan && s.key === 'price'));
+/** [HF-CREATOR-BADGES-1] Which trust choice each verify step belongs to. */
+const NEEDS: Partial<Record<StepKey, 'channel' | 'kyc'>> = { channel: 'channel', aadhaar: 'kyc', selfie: 'kyc', space: 'kyc' };
+/** The step list for the trust choices. Before a choice is made only the always-on steps show. */
+export function stepsFor(trust: { channel: boolean; kyc: boolean } | null, standardPlan: boolean) {
+  return STEPS.filter(s => {
+    const need = NEEDS[s.key];
+    if (need && !(trust && trust[need])) return false;
+    return !(standardPlan && s.key === 'price');
+  });
 }
 
 export const GROUP_LABEL: Record<StepGroup, string> = {
@@ -110,7 +113,8 @@ export const VOICE_TIPS = [
 export const VOICE_DONTS = 'Please do not say a phone number, WhatsApp, Instagram or any other social handle, an email, your workplace, your area or your address. We check every recording.';
 
 export const EMPTY_DRAFT: Draft = {
-  path: null, lgbtqDeclared: false, channelQualified: false,
+  wantChannel: false, wantKyc: false, space: null, callerLevel: 'everyone', callerLocked: false,
+  lgbtqDeclared: false, channelQualified: false,
   phone: '', phoneVerified: false,
   kycGender: null,
   aadhaarDone: false, aadhaarLast4: '', aadhaarName: '',

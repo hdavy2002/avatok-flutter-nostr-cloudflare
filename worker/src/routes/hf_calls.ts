@@ -14,6 +14,7 @@ import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 //   POST /api/hf/vobiz/<VOBIZ_WEBHOOK_SECRET>/{answer/<host|caller>/<id> | digits/host/<id> | hangup/<host|caller>/<id> | conf/<id>/<host|caller> | notice/host-nopickup/<id>}
 // Phone numbers are never present in any response, log or event here; they are read from the verified-WhatsApp store only at dial time (do/hf_call.ts).
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
+import { callerKycBlocked, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES-1]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -141,8 +142,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const limited = await rateLimit(env, `hfcall:${uid}`, 10, 600);
   if (limited) return limited;
 
-  const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
-    .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
+  const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, caller_level, creator_kind, presence, status FROM hf_hosts WHERE slug=?1")
+    .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null; presence: string | null; status: string }>();
   if (host && (await isDemoHost(env, host.uid))) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" }); // [HF-WIRE-14] HF-REEL-34
   if (!host || host.status !== "live" || host.uid === uid) return UNAVAILABLE();
   if (host.presence !== "online" || (await queueHoldsLine(env, host.uid))) return lineRefusal(env, host.uid); // [HF-CALL-MODES-C] adds reason / canQueue / canBook / queueWaiting
@@ -153,6 +154,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
   if (laneIn === "lgbtq" && host.lgbtq_lane !== 1) return UNAVAILABLE();
   if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
+  if (await callerKycBlocked(env, uid, host)) return err(403, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE, { level: "video_kyc" }); // [HF-CREATOR-BADGES-1]
   const lane = laneIn ?? (host.women_lane === 1 ? "women" : host.lgbtq_lane === 1 ? "lgbtq" : null);
 
   const open = await env.DB_META.prepare(

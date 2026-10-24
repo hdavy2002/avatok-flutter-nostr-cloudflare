@@ -12157,5 +12157,35 @@
   "HF-APP-ANALYZE-FIX-2": {
     "description": "[HF-APP-ANALYZE-FIX-2] Remove an always-true null check in profile.dart (from HF-CREATOR-SPACES-1) that failed the hf-flutter Analyze step.",
     "no_telemetry": "Build fix only."
+  },
+  "HF-CREATOR-BADGES-1": {
+    "description": "[HF-CREATOR-BADGES-1] Stacked creator badges (channel / video KYC / one space), go-live = channel OR video KYC, free caller-level setting enforced at call/booking/queue, My verifications screen, Video KYC search filter.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCreatorSpacesEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_caller_level_set",
+        "property": "level",
+        "in": [
+          "everyone",
+          "video_kyc"
+        ],
+        "min_events": 1,
+        "note": "A creator setting who can call her."
+      },
+      {
+        "event": "hf_verify_badge_added",
+        "property": "badge",
+        "in": [
+          "channel",
+          "video_kyc"
+        ],
+        "min_events": 1,
+        "note": "A creator gaining a badge."
+      }
+    ]
   }
 }

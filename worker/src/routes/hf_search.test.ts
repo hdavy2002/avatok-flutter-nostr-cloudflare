@@ -31,6 +31,7 @@ function makeEnv() {
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
   db.exec(mig("2026-10-19-hf-channels.sql"));
   db.exec(mig("hf_creator_spaces.sql")); // [HF-CREATOR-SPACES-1]
+  db.exec(mig("hf_creator_badges.sql")); // [HF-CREATOR-BADGES-1]
   db.exec(mig("2026-10-19-hf-demo-hosts.sql"));
   db.exec(mig("2026-10-19-hf-invite-votes.sql"));
   kv = new Map();

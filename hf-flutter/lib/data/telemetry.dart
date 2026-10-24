@@ -42,6 +42,12 @@ abstract final class Telemetry {
     'hf_space_filter', // {space, surface}
     'hf_video_kyc_badge_shown', // {surface}
     'hf_space_verify_step', // {lane, step}
+    // [HF-CREATOR-BADGES-1] never carries gender or the declaration
+    'hf_verify_badge_added', // {badge}
+    'hf_caller_level_set', // {level}
+    'hf_space_joined', // {space}
+    'hf_space_left',
+    'hf_caller_gate_shown', // {reason: video_kyc|women|lgbtq}
     'hf_app_cache', // [HF-APP-CACHE-1]
     'app_crash',
     'hf_app_open',

@@ -185,6 +185,11 @@ Future<void> startCall(BuildContext context, Influencer who) {
       unawaited(spaceGateThen(context, lane, () => _openCallSheet(context, who)));
       return;
     }
+    // [HF-CREATOR-BADGES-1] A creator who only takes video-KYC callers: plain video KYC first.
+    if (lane == null && who.kycCallersOnly && CallsBridge.real) {
+      unawaited(kycGateThen(context, () => _openCallSheet(context, who)));
+      return;
+    }
     _openCallSheet(context, who);
   }, reason: 'to call ${who.name.split(' ').first}');
 }

@@ -37,11 +37,15 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
     ] },
     { title: 'Influencer', items: account.host ? [
       { key: 'host', href: '/dashboard/host', label: 'Influencer profile', icon: 'star' },
+      { key: 'verifications', href: '/dashboard/verifications', label: 'My verifications', icon: 'shield' }, // [HF-CREATOR-BADGES-1]
       { key: 'host-calendar', href: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'cal', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'availability', href: '/dashboard/host/availability', label: 'Availability', icon: 'clock', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'earnings', href: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', disabled: !hostReady ? 'When your profile is live' : undefined },
       ...(merchOn && hostReady ? [{ key: 'merch' as const, href: '/dashboard/merch', label: 'Merch', icon: 'shirt' }] : []), // [HF-MERCH-CREATOR-WEB-1]
-    ] : [{ key: 'become', href: '/dashboard/become', label: 'Become an influencer', icon: 'star', disabled: account.closing ? 'Account closing' : undefined }] },
+    ] : [
+      { key: 'become', href: '/dashboard/become', label: 'Become an influencer', icon: 'star', disabled: account.closing ? 'Account closing' : undefined },
+      { key: 'verifications', href: '/dashboard/verifications', label: 'My verifications', icon: 'shield' }, // [HF-CREATOR-BADGES-1]
+    ] },
     // [HF-CHANNEL-PHOTO-1] Only people who have an influencer profile get this group.
     { title: 'My public page', items: account.host ? [
       { key: 'profile-photo', href: '/dashboard/profile-photo', label: 'Profile photo', icon: 'user' },

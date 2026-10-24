@@ -37,13 +37,14 @@ let env: any, raw: any;
 
 function build(withApproval: boolean) {
   const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-calls.sql", "2026-10-10-hf-tokens.sql"], { alters: true });
-  const files = ["2026-10-12-hf-creator-price-alters.sql", "2026-10-13-hf-bookings.sql", ...(withApproval ? ["2026-10-20-hf-booking-approval-alters.sql", "2026-10-20-hf-booking-approval.sql"] : [])];
+  const files = ["2026-10-12-hf-creator-price-alters.sql", "hf_creator_badges.sql", "2026-10-13-hf-bookings.sql", ...(withApproval ? ["2026-10-20-hf-booking-approval-alters.sql", "2026-10-20-hf-booking-approval.sql"] : [])];
   for (const f of files) {
     const lines = readFileSync(new URL(`../../migrations/${f}`, import.meta.url), "utf8").split("\n");
     for (const l of lines.filter((x) => x.trim().startsWith("ALTER TABLE"))) db._raw.exec(l.replace(/--.*$/, ""));
     db._raw.exec(lines.filter((x) => !x.trim().startsWith("ALTER TABLE")).join("\n"));
   }
   db._raw.exec(`
+    ALTER TABLE hf_hosts ADD COLUMN creator_kind TEXT NOT NULL DEFAULT 'channel';
     CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER);
     INSERT INTO hf_age_confirm VALUES ('fan',1),('fan2',1);
     CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT);

@@ -174,6 +174,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                     SettingsRow(icon: Icons.chat_rounded, tone: DesiTone.rani, label: 'WhatsApp', sub: (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!, last: true),
                     SettingsNote(lead: HelpStrings.changeWhatsappNote, email: HelpStrings.supportEmail, onTap: () => _openLink(ExternalLinks.supportMail)),
                     if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Channels', onTap: () => context.push('/inf/channels')),
+                    if (host) SettingsRow(icon: Icons.verified_user_rounded, tone: DesiTone.lav, label: 'My verifications', onTap: () => context.push('/inf/verifications')), // [HF-CREATOR-BADGES-1]
                     // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
                     if (host) SettingsRow(icon: Icons.event_rounded, tone: DesiTone.tea, label: 'Availability calendar', onTap: () => context.go('/inf/availability')),
                     if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: slug == null, onTap: () => context.go('/inf/bookings')),
