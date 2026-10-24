@@ -276,10 +276,10 @@ void main() {
   });
 
   testWidgets('a saved page shows at once even when the server never answers', (tester) async {
-    await ReelCommentsCache.instance.write(
+    unawaited(ReelCommentsCache.instance.write(
       'hfrl_abc12345',
       const CommentsPage(items: [ReelComment(id: 'c1', source: 'youtube', authorName: 'Ravi', body: 'Cached hello')]),
-    );
+    ));
     await _pump(tester, _reel(), _NeverRepo());
     await tester.tap(find.byKey(const ValueKey('reel-comment')));
     await tester.pump();
@@ -289,7 +289,7 @@ void main() {
   });
 
   testWidgets('the fresh page replaces the saved one quietly and is saved', (tester) async {
-    await ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Old text')]));
+    unawaited(ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Old text')])));
     final repo = _Repo()..existing.add(const ReelComment(id: 'c2', authorName: 'Asha', body: 'Fresh text'));
     await _pump(tester, _reel(), repo);
     await tester.tap(find.byKey(const ValueKey('reel-comment')));
@@ -301,7 +301,7 @@ void main() {
   });
 
   testWidgets('a failed refresh keeps the saved list and shows nothing scary', (tester) async {
-    await ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Cached hello')]));
+    unawaited(ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Cached hello')])));
     final repo = _FailingRepo();
     await _pump(tester, _reel(), repo);
     await tester.tap(find.byKey(const ValueKey('reel-comment')));
