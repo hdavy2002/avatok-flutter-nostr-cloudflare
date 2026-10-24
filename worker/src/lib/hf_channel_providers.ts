@@ -134,8 +134,10 @@ export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrU
 
 // ── Instagram via treg ───────────────────────────────────────────────────────────────────────────────────────────
 
-export const TREG_IG_PROFILE = "tikhub.instagram.user.profile";
-export const TREG_IG_PROFILE_FALLBACK = "scrapecreators.instagram.user.profile";
+// [HF-IG-LOOKUP-FAST-1] scrapecreators answers in ~4 s, tikhub in ~7-8 s (often past the 8 s budget, then the fallback doubled the wait and the
+// app timed out at 15 s with "Slow connection"). Fastest first.
+export const TREG_IG_PROFILE = "scrapecreators.instagram.user.profile";
+export const TREG_IG_PROFILE_FALLBACK = "tikhub.instagram.user.profile";
 
 export async function instagramLookup(env: Pick<Env, "TREG_API_KEY">, handleOrUrl: string, f: FetchLike = fetch): Promise<ChannelLookup> {
   const handle = parseInstagramHandle(handleOrUrl);

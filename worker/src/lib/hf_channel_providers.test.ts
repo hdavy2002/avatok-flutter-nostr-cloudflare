@@ -13,7 +13,7 @@ describe("Instagram provider fallback", () => {
       exists: true, platformUserId: user.id, followers: 123327, handle: "maya.reels",
     });
     expect(f).toHaveBeenCalledTimes(1);
-    expect(new URL(f.mock.calls[0][0]).pathname).toBe("/call/tikhub.instagram.user.profile");
+    expect(new URL(f.mock.calls[0][0]).pathname).toBe("/call/" + TREG_IG_PROFILE);
   });
 
   it.each(["http", "network", "json", "missing-user", "missing-id"])("falls back after %s failure", async (failure) => {
@@ -33,8 +33,8 @@ describe("Instagram provider fallback", () => {
     const fallback = new URL(f.mock.calls[1][0]);
     expect(primary.pathname).toBe("/call/" + TREG_IG_PROFILE);
     expect(fallback.pathname).toBe("/call/" + TREG_IG_PROFILE_FALLBACK);
-    expect(primary.search).toBe("?username=maya.reels");
-    expect(fallback.searchParams.get("handle")).toBe("maya.reels");
+    expect(primary.searchParams.get("handle")).toBe("maya.reels"); // [HF-IG-LOOKUP-FAST-1] scrapecreators first
+    expect(fallback.search).toBe("?username=maya.reels");
     for (const [url, init] of f.mock.calls) {
       expect(url).not.toContain(env.TREG_API_KEY);
       expect(new Headers(init.headers).get("X-Treg-Token")).toBe(env.TREG_API_KEY);
