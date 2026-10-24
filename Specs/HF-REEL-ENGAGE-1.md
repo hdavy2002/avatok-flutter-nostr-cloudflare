@@ -135,3 +135,9 @@ too long / link 422; invisible reel 404; YouTube refresh replaces set; commentsD
 ## 7. Later (not in this issue)
 Instagram comment text after Instagram-login connect; creator replies pinned; admin comments queue page; liking a
 comment on our side; push / WhatsApp to the creator about new comments.
+
+## 8. Change 2026-10-24 — HF-REEL-IG-COMMENTS-1 (owner, after phone test)
+- Instagram comments are imported through treg (`instagramComments` in `worker/src/lib/hf_reels_import.ts`, up to 3 pages), ids `instagram:<id>`, author `@username`, no avatar (Instagram picture links expire). Replies and reports work on them like YouTube ones.
+- First open of a reel's sheet awaits the pull; later stale opens refresh in the background.
+- Refresh and the 30-day purge never delete an imported comment that has a visible reply from our users.
+- App: the header shows only "N comments"; the breakdown line (§3) and the Instagram note (§5) are removed. Rules HF-REEL-55/56 amended.

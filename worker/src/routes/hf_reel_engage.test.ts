@@ -244,20 +244,52 @@ describe("YouTube comments (read only)", () => {
     expect(r.ok).toBe(false);
     expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments").get().c).toBe(1);
   });
-  it("opening the sheet with a stale set starts a background refresh (page 1 only)", async () => {
+  it("first open waits for the pull (sheet opens with comments); a later stale open refreshes in the background", async () => {
     env.YOUTUBE_API_KEY = "k";
     const orig = globalThis.fetch;
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ items: [thread("Ugx44444444", "fresh from yt")] }), { status: 200 })) as any;
     try {
       const j = await body(await route(`/api/hf/reels/${R1}/comments`));
-      expect(j.items).toHaveLength(0); // stale-while-revalidate: this response is what we had
+      expect(j.items.map((i: any) => i.body)).toEqual(["fresh from yt"]); // [HF-REEL-IG-COMMENTS-1] awaited on the first pull
+      expect(waits).toHaveLength(0);
+      kv.delete(`hfx:fresh:${R1}`); // stale again, rows exist now
+      await route(`/api/hf/reels/${R1}/comments`);
       expect(waits).toHaveLength(1);
       await Promise.all(waits);
-      expect(db.prepare("SELECT body FROM hf_reel_ext_comments").all().map((x: any) => x.body)).toEqual(["fresh from yt"]);
       waits.length = 0;
       await route(`/api/hf/reels/${R1}/comments`);
       expect(waits).toHaveLength(0); // marker is fresh now
     } finally { globalThis.fetch = orig; }
+  });
+  it("a refresh keeps an imported comment one of our users replied to, even when the platform dropped it", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    await refreshExtComments(env, R1, "vidabcdef12", fakeFetch([thread("Ugx11111111", "keep me"), thread("Ugx22222222", "drop me")]));
+    await comment("nice", "u1", { parentId: "youtube:Ugx11111111" });
+    await refreshExtComments(env, R1, "vidabcdef12", fakeFetch([thread("Ugx33333333", "new")]));
+    expect(db.prepare("SELECT id FROM hf_reel_ext_comments ORDER BY id").all().map((x: any) => x.id)).toEqual(["youtube:Ugx11111111", "youtube:Ugx33333333"]);
+  });
+  it("Instagram: comments come through treg (2 pages), tagged instagram, and can be replied to", async () => {
+    env.TREG_API_KEY = "t";
+    const urls: string[] = [];
+    const f = async (url: string) => {
+      urls.push(url);
+      const page2 = url.includes("cursor=");
+      const comments = page2 ? [{ id: "1000000002", text: "second page", comment_like_count: 1, created_at: "2026-10-21T10:00:00Z", user: { username: "b.user" } }]
+        : [{ id: "1000000001", text: "so cute", comment_like_count: 7, created_at: "2026-10-20T10:00:00Z", user: { username: "a_user" } }];
+      return new Response(JSON.stringify({ success: true, comments, cursor: page2 ? null : "abc" }), { status: 200 });
+    };
+    const r = await refreshExtComments(env, R1, "DOq6eV6iIgD", f as any, "instagram");
+    expect(r.ok).toBe(true);
+    expect(r.count).toBe(2);
+    expect(urls[0]).toContain("scrapecreators.instagram.post.comments");
+    expect(urls[0]).toContain(encodeURIComponent("https://www.instagram.com/reel/DOq6eV6iIgD/"));
+    kv.set(`hfx:fresh:${R1}`, "1");
+    const j = await body(await route(`/api/hf/reels/${R1}/comments`));
+    const ig = j.items.filter((i: any) => i.source === "instagram");
+    expect(ig.map((i: any) => i.author.name)).toEqual(["@a_user", "@b.user"]);
+    const rep = await comment("agreed", "u1", { parentId: "instagram:1000000001" });
+    expect(rep.item.parentId).toBe("instagram:1000000001");
+    expect((await post(`/api/hf/reels/comments/instagram:1000000002/report`, { reason: "spam" }, "r1")).status).toBe(200);
   });
   it("an imported comment reported by enough users is hidden; replying to one stays ours", async () => {
     env.YOUTUBE_API_KEY = "k";

@@ -6,7 +6,7 @@
 import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
-import { youtubeCommentThreads } from "./hf_reels_import";
+import { instagramComments, youtubeCommentThreads } from "./hf_reels_import";
 
 const APP = BRAND.slug;
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -79,23 +79,32 @@ export function recountStmt(env: Env, reelId: string, now: number): D1PreparedSt
   ).bind(reelId, now);
 }
 
+/** An imported comment none of our users has replied to (only those are ever deleted). */
+const NO_OUR_REPLIES = "NOT EXISTS (SELECT 1 FROM hf_reel_comments oc WHERE oc.parent_id=hf_reel_ext_comments.id AND oc.status='visible')";
+
 const freshKey = (reelId: string) => `hfx:fresh:${reelId}`;
 export async function extIsFresh(env: Env, reelId: string): Promise<boolean> {
   try { return !!(await env.TOKENS.get(freshKey(reelId))); } catch { return false; }
 }
 
-/** Pull one YouTube video's comments and REPLACE the stored set (a comment deleted on YouTube disappears here). Never throws. */
-export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch): Promise<{ ok: boolean; count: number; reason: string }> {
+/** Can this reel's comments be pulled here? YouTube needs YOUTUBE_API_KEY, Instagram needs TREG_API_KEY ([HF-REEL-IG-COMMENTS-1]). */
+export function canPullComments(env: Env, platform: string): boolean {
+  return platform === "youtube" ? !!(env.YOUTUBE_API_KEY ?? "").trim() : platform === "instagram" ? !!(env.TREG_API_KEY ?? "").trim() : false;
+}
+
+/** Pull one reel's comments (YouTube API / Instagram via treg) and REPLACE the stored set, so a comment deleted on the platform disappears here —
+ *  EXCEPT an imported comment one of our users replied to: it stays on our network with its replies (owner 2026-10-24). Never throws. */
+export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch, platform: "youtube" | "instagram" = "youtube"): Promise<{ ok: boolean; count: number; reason: string }> {
   const t0 = Date.now();
   let ok = false, count = 0, reason = "";
   try {
-    const pull = await youtubeCommentThreads(env, videoId, f);
+    const pull = platform === "instagram" ? await instagramComments(env, videoId, f) : await youtubeCommentThreads(env, videoId, f);
     const now = Date.now();
-    const stmts: D1PreparedStatement[] = [env.DB_META.prepare("DELETE FROM hf_reel_ext_comments WHERE reel_id=?1").bind(reelId)];
+    const stmts: D1PreparedStatement[] = [env.DB_META.prepare(`DELETE FROM hf_reel_ext_comments WHERE reel_id=?1 AND ${NO_OUR_REPLIES}`).bind(reelId)];
     for (const c of pull.items) {
       stmts.push(env.DB_META.prepare(
-        "INSERT OR REPLACE INTO hf_reel_ext_comments (id, reel_id, platform, author_name, author_avatar, author_url, body, like_count, published_at, fetched_at) VALUES (?1,?2,'youtube',?3,?4,?5,?6,?7,?8,?9)",
-      ).bind(c.id, reelId, c.authorName, c.authorAvatar, c.authorUrl, c.body, c.likeCount, c.publishedAt, now));
+        "INSERT OR REPLACE INTO hf_reel_ext_comments (id, reel_id, platform, author_name, author_avatar, author_url, body, like_count, published_at, fetched_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+      ).bind(c.id, reelId, platform, c.authorName, c.authorAvatar, c.authorUrl, c.body, c.likeCount, c.publishedAt, now));
     }
     await env.DB_META.batch(stmts);
     ok = true; count = pull.items.length; reason = pull.disabled ? "comments_disabled" : "";
@@ -104,7 +113,7 @@ export async function refreshExtComments(env: Env, reelId: string, videoId: stri
     await trackException(env, e, { route: "hf_reel_ext_comments", handled: true, app_name: APP, extra: { area: "hf_reel_engage", reel_id: reelId } });
   }
   try { await env.TOKENS.put(freshKey(reelId), "1", { expirationTtl: ok ? EXT_FRESH_SEC : 600 }); } catch { /* marker is best effort */ }
-  await track(env, "server", "hf_reel_ext_comments_fetch", APP, { reel_id: reelId, platform: "youtube", count, ms: Date.now() - t0, ok, reason });
+  await track(env, "server", "hf_reel_ext_comments_fetch", APP, { reel_id: reelId, platform, count, ms: Date.now() - t0, ok, reason });
   return { ok, count, reason };
 }
 
@@ -112,23 +121,28 @@ export async function refreshExtComments(env: Env, reelId: string, videoId: stri
 export async function refreshRecentReelComments(env: Env, cfg: Record<string, unknown>, f: FetchLike = fetch, limit = 40): Promise<{ purged: number; scanned: number; fetched: number }> {
   const out = { purged: 0, scanned: 0, fetched: 0 };
   try {
-    const r = await env.DB_META.prepare("DELETE FROM hf_reel_ext_comments WHERE fetched_at<?1").bind(Date.now() - EXT_KEEP_MS).run();
+    const r = await env.DB_META.prepare(`DELETE FROM hf_reel_ext_comments WHERE fetched_at<?1 AND ${NO_OUR_REPLIES}`).bind(Date.now() - EXT_KEEP_MS).run();
     out.purged = Number(r.meta?.changes ?? 0);
   } catch { /* table not applied yet */ }
-  if (!engageOn(cfg) || !(env.YOUTUBE_API_KEY ?? "").trim()) return out;
+  if (!engageOn(cfg)) return out;
+  const platforms = (["youtube", "instagram"] as const).filter((p) => canPullComments(env, p));
+  if (!platforms.length) return out;
   const since = Date.now() - RECENT_REEL_MS;
-  let rows: { id: string; platform_video_id: string }[] = [];
+  let rows: { id: string; platform: string; platform_video_id: string }[] = [];
+  const inP = platforms.map((p) => `'${p}'`).join(",");
   try {
-    rows = (await env.DB_META.prepare("SELECT id, platform_video_id FROM hf_reels WHERE platform='youtube' AND visible=1 AND COALESCE(published_at, imported_at)>?1 ORDER BY COALESCE(published_at, imported_at) DESC LIMIT ?2").bind(since, limit).all<{ id: string; platform_video_id: string }>()).results ?? [];
+    rows = (await env.DB_META.prepare(`SELECT id, platform, platform_video_id FROM hf_reels WHERE platform IN (${inP}) AND visible=1 AND COALESCE(published_at, imported_at)>?1 ORDER BY COALESCE(published_at, imported_at) DESC LIMIT ?2`).bind(since, limit).all<{ id: string; platform: string; platform_video_id: string }>()).results ?? [];
     if (rows.length < limit && cfg.hfInviteReelsEnabled !== false) {
-      rows = rows.concat((await env.DB_META.prepare("SELECT id, platform_video_id FROM hf_invite_reels WHERE platform='youtube' AND COALESCE(published_at, fetched_at)>?1 ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?2").bind(since, limit - rows.length).all<{ id: string; platform_video_id: string }>()).results ?? []);
+      rows = rows.concat((await env.DB_META.prepare(`SELECT id, platform, platform_video_id FROM hf_invite_reels WHERE platform IN (${inP}) AND COALESCE(published_at, fetched_at)>?1 ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?2`).bind(since, limit - rows.length).all<{ id: string; platform: string; platform_video_id: string }>()).results ?? []);
     }
   } catch { return out; }
+  const dead = new Set<string>();
   for (const r of rows) {
+    if (dead.has(r.platform)) continue;
     out.scanned++;
-    const x = await refreshExtComments(env, r.id, r.platform_video_id, f);
+    const x = await refreshExtComments(env, r.id, r.platform_video_id, f, r.platform === "instagram" ? "instagram" : "youtube");
     if (x.ok) out.fetched++;
-    else if (x.reason === "provider_not_configured") break;
+    else if (x.reason === "provider_not_configured") dead.add(r.platform);
   }
   return out;
 }

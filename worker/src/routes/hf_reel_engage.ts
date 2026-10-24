@@ -18,7 +18,7 @@ import { isAdminUid } from "../lib/preview";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { obviousSexualPrompt } from "../lib/hf_merch_ai";
 import { optionalUid, visibleReel } from "./hf_reels";
-import { engageOn, extIsFresh, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
+import { canPullComments, engageOn, extIsFresh, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -26,9 +26,9 @@ const err = (status: number, error: string, message?: string) => json({ ok: fals
 const PAGE = 20;
 const RE_REEL = /^\/api\/hf\/reels\/((?:hfrl|hfiv)_[a-z0-9]{8,40})\/(like|comments)$/;
 const RE_DEL = /^\/api\/hf\/reels\/comments\/(hfrc_[a-f0-9]{20})$/;
-const RE_REPORT = /^\/api\/hf\/reels\/comments\/(hfrc_[a-f0-9]{20}|youtube:[A-Za-z0-9_.-]{8,80})\/report$/;
+const RE_REPORT = /^\/api\/hf\/reels\/comments\/(hfrc_[a-f0-9]{20}|youtube:[A-Za-z0-9_.-]{8,80}|instagram:[0-9]{5,30})\/report$/;
 const OURS_ID = /^hfrc_[a-f0-9]{20}$/;
-const EXT_ID = /^youtube:[A-Za-z0-9_.-]{8,80}$/;
+const EXT_ID = /^(?:youtube:[A-Za-z0-9_.-]{8,80}|instagram:[0-9]{5,30})$/;
 const LINK = /(https?:\/\/|www\.)/i;
 const NOT_VERIFIED = "Please verify your WhatsApp number first.";
 
@@ -93,7 +93,13 @@ export async function hfReelEngageRoute(req: Request, env: Env, p: string, ctx?:
       const cExt = cursor.match(/^x:(\d{1,5})$/);
       if (cursor && !cOurs && !cExt) return err(400, "invalid_field", "Bad page marker.");
       // Stale-while-revalidate: show what we have, refresh YouTube in the background (older than 6 h or never pulled).
-      if (!cursor && reel.platform === "youtube" && (env.YOUTUBE_API_KEY ?? "").trim() && !(await extIsFresh(env, id))) bg(refreshExtComments(env, id, reel.videoId));
+      // [HF-REEL-IG-COMMENTS-1] YouTube and Instagram. The very first pull for a reel is awaited so the sheet opens with the
+      // platform's comments in it (owner 2026-10-24: "a personal feel"); later refreshes run in the background.
+      if (!cursor && (reel.platform === "youtube" || reel.platform === "instagram") && canPullComments(env, reel.platform) && !(await extIsFresh(env, id))) {
+        const pull = refreshExtComments(env, id, reel.videoId, fetch, reel.platform);
+        const have = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reel_ext_comments WHERE reel_id=?1 LIMIT 1").bind(id).first().catch(() => null);
+        if (have) bg(pull); else await pull;
+      }
       const items: any[] = [];
       let nextCursor: string | null = null;
       let extOffset = 0;

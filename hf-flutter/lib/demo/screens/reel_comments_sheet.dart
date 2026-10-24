@@ -338,7 +338,7 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
           child: Column(
             children: [
               _header(context),
-              if (widget.platform == 'instagram') _instagramNote(context),
+              // [HF-REEL-IG-COMMENTS-1] no "stay on Instagram" note and no per-platform count line (owner 2026-10-24)
               Expanded(child: _list(controller)),
               if (_notice != null) _noticeBar(),
               _composer(context),
@@ -372,12 +372,6 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
                           key: const ValueKey('comments-title'),
                           style: t(20),
                         ),
-                        if (s != null)
-                          Text(
-                            engageBreakdown(s.likes, widget.platform),
-                            key: const ValueKey('comments-breakdown'),
-                            style: t(14, color: C.muted, w: FontWeight.w700),
-                          ),
                       ],
                     ),
                   ),
@@ -396,22 +390,6 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
     );
   }
 
-  Widget _instagramNote(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 0, 12, 4),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text('Instagram comments stay on Instagram', key: const ValueKey('ig-note'), style: t(14, color: C.muted, w: FontWeight.w700)),
-        ),
-        if (widget.canOpenOriginal)
-          TextButton(
-            key: const ValueKey('ig-open'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Open in Instagram', style: t(14, color: C.maroon)),
-          ),
-      ],
-    ),
-  );
 
   Widget _list(ScrollController controller) {
     if (_loading) {

@@ -238,3 +238,40 @@ export async function youtubeCommentThreads(env: Pick<Env, "YOUTUBE_API_KEY">, v
   }
   return { ok: true, disabled: false, items };
 }
+
+// ── [HF-REEL-IG-COMMENTS-1] Instagram comments through treg (owner 2026-10-24, HF-REEL-56 amended): read only, nothing is sent back ─────
+export const TREG_IG_COMMENTS = "scrapecreators.instagram.post.comments"; // GET /v2/instagram/post/comments?url=&cursor= -> {comments:[{id,text,comment_like_count,created_at,user{username}}], cursor}
+export const IG_COMMENT_PAGES = 3; // ~15 a page -> up to ~45 comments per reel per refresh
+
+/** Up to IG_COMMENT_PAGES pages of a reel's public comments. No avatar (Instagram picture links expire). Throws ProviderError on provider failure. */
+export async function instagramComments(env: Pick<Env, "TREG_API_KEY">, shortcode: string, f: FetchLike = fetch, pages = IG_COMMENT_PAGES): Promise<CommentPull> {
+  const token = (env.TREG_API_KEY ?? "").trim();
+  if (!token) throw new ProviderError("provider_not_configured");
+  if (!/^[A-Za-z0-9_-]{5,20}$/.test(shortcode)) return { ok: true, disabled: true, items: [] };
+  const items: ExtComment[] = [];
+  const seen = new Set<string>();
+  let cursor = "";
+  for (let p = 0; p < pages; p++) {
+    const q = new URLSearchParams({ url: `https://www.instagram.com/reel/${shortcode}/` });
+    if (cursor) q.set("cursor", cursor);
+    const body: any = await timedGet(f, `https://treg.to/call/${TREG_IG_COMMENTS}?${q.toString()}`, { headers: { "X-Treg-Token": token, accept: "application/json" } });
+    const list: any[] = Array.isArray(body?.comments) ? body.comments : Array.isArray(body?.data?.comments) ? body.data.comments : [];
+    for (const c of list) {
+      const cid = String(c?.id ?? c?.pk ?? "");
+      const text = typeof c?.text === "string" ? c.text.trim() : "";
+      if (!/^[0-9]{5,30}$/.test(cid) || !text || seen.has(cid)) continue;
+      seen.add(cid);
+      const user = String(c?.user?.username ?? "").replace(/[^A-Za-z0-9._]/g, "").slice(0, 30);
+      const pub = Date.parse(String(c?.created_at ?? ""));
+      const ts = Number(c?.created_at_utc ?? c?.created_at);
+      items.push({
+        id: `instagram:${cid}`, authorName: user ? `@${user}` : "Instagram user", authorAvatar: null,
+        authorUrl: user ? `https://www.instagram.com/${user}/` : null, body: text.slice(0, 1000), likeCount: num(c?.comment_like_count ?? c?.like_count),
+        publishedAt: Number.isFinite(pub) ? pub : Number.isFinite(ts) && ts > 0 ? ts * 1000 : null,
+      });
+    }
+    cursor = typeof (body?.cursor ?? body?.data?.cursor) === "string" ? (body?.cursor ?? body?.data?.cursor) : "";
+    if (!cursor || !list.length) break;
+  }
+  return { ok: true, disabled: false, items };
+}

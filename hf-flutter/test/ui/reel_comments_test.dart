@@ -165,7 +165,7 @@ void main() {
     await _settle(tester);
     expect(find.byKey(const ValueKey('comments-empty')), findsOneWidget);
     expect(find.text('34 comments'), findsOneWidget);
-    expect(find.textContaining('2,000 likes · 1,500 on YouTube · 500 on '), findsOneWidget);
+    expect(find.textContaining(' on YouTube'), findsNothing); // [HF-REEL-IG-COMMENTS-1] no per-platform count line
 
     await tester.enterText(find.byKey(const ValueKey('comment-field')), 'Lovely video');
     await tester.tap(find.byKey(const ValueKey('comment-send')));
@@ -218,13 +218,12 @@ void main() {
     expect(find.text('Report'), findsOneWidget);
   });
 
-  testWidgets('Instagram reel: the note and Open in Instagram show in the sheet', (tester) async {
+  testWidgets('Instagram reel: no "stay on Instagram" note and no per-platform count line', (tester) async {
     await _pump(tester, _reel(platform: 'instagram'), _Repo());
     await tester.tap(find.byKey(const ValueKey('reel-comment')));
     await _settle(tester);
-    expect(find.byKey(const ValueKey('ig-note')), findsOneWidget);
-    expect(find.byKey(const ValueKey('ig-open')), findsOneWidget);
-    expect(find.textContaining('on Instagram'), findsWidgets);
+    expect(find.textContaining('stay on Instagram'), findsNothing);
+    expect(find.textContaining(' on Instagram'), findsNothing);
   });
 
   testWidgets('a guest who taps Send gets the sign-up sheet and nothing is posted', (tester) async {
