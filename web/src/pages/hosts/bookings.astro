@@ -6,6 +6,6 @@ import '../../styles/hf-bookings.css';
 import { BRAND } from '../../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Base title={`Influencer calendar · ${BRAND.name}`} description="View upcoming and past influencer appointments." noindex keywords="" chrome={false}>
+<Base title={`Influencer calendar · ${BRAND.name}`} description="View upcoming and past influencer appointments." noindex keywords="" chrome={false} header>
   <HostBookings client:only="react" role="host" />
 </Base>

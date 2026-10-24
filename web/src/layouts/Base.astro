@@ -28,6 +28,9 @@ export interface Props {
   content?: PublicContent;
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
+  /** [HF-HEADER-EVERYWHERE-1] Owner 2026-10-24: the front-page header shows on every website page. true = show the
+   *  site header even when chrome={false} (auth pages keep no footer). */
+  header?: boolean;
   /**
    * Shared chrome uses plain links without an auth island. 'auto' and 'static'
    * use the existing client-side session hint to choose Sign in or Dashboards /
@@ -81,6 +84,7 @@ const {
   ogType = "website",
   content,
   chrome = true,
+  header = false,
   headerAuth = 'auto',
   navStatic = false,
   noindex: noindexProp = false,
@@ -199,7 +203,7 @@ const {
     <slot name="head" />
   </head>
   <body data-i18n-namespace="web-common" class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <SiteHeader auth={navStatic ? 'static' : headerAuth} hideAuth={hideNavCtas} bag={bag} />}
+    {(chrome || header) && <SiteHeader auth={navStatic ? 'static' : headerAuth} hideAuth={hideNavCtas} bag={bag} />}
     <script>
       import { initUiLocale } from '../lib/i18n/dom';
       initUiLocale();

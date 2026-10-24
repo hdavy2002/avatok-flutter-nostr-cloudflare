@@ -90,3 +90,9 @@ textarea.hob-input{min-height:120px;resize:vertical;line-height:1.5}
 .hob .hob-call-off{opacity:.55;cursor:default}
 .hob .people-grid .profile-card-voice>button:disabled{cursor:default}
 .hob .hob-preview-grid{display:block}
+
+/* [HF-HEADER-EVERYWHERE-1] Website: the site header sits on top, so the flow bar drops its own small logo and keeps
+   only the step count, progress and Exit. Inside the app (html.hf-app) the flow keeps its own compact bar. */
+html:not(.hf-app) .hf-flow-page .hob-top .hob-brand{display:none}
+html.hf-app .hf-flow-page .cv-header{display:none}
+.hf-flow-page{margin:0}

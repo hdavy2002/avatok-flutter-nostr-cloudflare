@@ -12187,5 +12187,12 @@
         "note": "A creator gaining a badge."
       }
     ]
+  },
+  "HF-HEADER-EVERYWHERE-1": {
+    "description": "[HF-HEADER-EVERYWHERE-1] Front-page site header on every website page (auth, creator sign-up, video KYC, influencer calendar).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Layout only: the shared header already emits nav_click; no new behaviour to measure."
   }
 }

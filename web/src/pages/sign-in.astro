@@ -26,6 +26,7 @@ const clerkHost = clerkFapiHost();
   title={`Log in · ${BRAND.name}`}
   description={`Log in to ${BRAND.name} — talk to your favourite influencer on a private call. Your number stays private.`}
   chrome={false}
+  header
 >
   <Fragment slot="head">
     <!-- The six brand faces (README §Type). Loaded here rather than globally so
@@ -44,7 +45,7 @@ const clerkHost = clerkFapiHost();
     )}
   </Fragment>
 
-  <!-- [HF-AUTH-GHAR-1 2026-10-17] No site header/footer here (owner). Shell + art: components/auth/AuthGhar.astro. -->
+  <!-- [HF-AUTH-GHAR-1 2026-10-17] No site footer here (owner); the site header shows on every page (owner 2026-10-24, HF-HEADER-EVERYWHERE-1). Shell + art: components/auth/AuthGhar.astro. -->
   <AuthGhar variant="in">
     <header class="auth-head">
       <p class="auth-hindi">We've been waiting for you</p>

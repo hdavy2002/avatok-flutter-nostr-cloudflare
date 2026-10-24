@@ -26,6 +26,7 @@ const clerkHost = clerkFapiHost();
   title={`Create account · ${BRAND.name}`}
   description={`Join ${BRAND.name} — book a private phone call with your favourite influencer, or join as an influencer and get paid.`}
   chrome={false}
+  header
 >
   <Fragment slot="head">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -42,7 +43,7 @@ const clerkHost = clerkFapiHost();
     )}
   </Fragment>
 
-  <!-- [HF-AUTH-GHAR-1 2026-10-17] No site header/footer here (owner). Shell + art: components/auth/AuthGhar.astro. -->
+  <!-- [HF-AUTH-GHAR-1 2026-10-17] No site footer here (owner); the site header shows on every page (owner 2026-10-24, HF-HEADER-EVERYWHERE-1). Shell + art: components/auth/AuthGhar.astro. -->
   <AuthGhar variant="up">
     <SignUpIsland client:load />
   </AuthGhar>
