@@ -97,6 +97,9 @@ jobs:
           # issue/error can be filtered by exactly which deploy produced it —
           # same idea as the app's git-SHA `release` prop (analytics.dart).
           PUBLIC_RELEASE_SHA: ${{ github.sha }}
+          # [HF-CREATOR-BADGES-1] Public Web OAuth client (Google Cloud project hello-fraands, account hdavy2005)
+          # used only by the creator "Connect with Google" YouTube button (youtube.readonly). Public, not a secret.
+          PUBLIC_GOOGLE_CLIENT_ID: 178256936494-9pt2gds4oc17ojk9gsa4m2kdci8ej7v9.apps.googleusercontent.com
         run: npm run build      # runs prebuild (zine tokens) + astro build
 
       - name: Check preview session readiness and account isolation
