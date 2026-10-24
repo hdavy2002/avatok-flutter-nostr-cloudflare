@@ -328,6 +328,9 @@ jobs:
           releaseFiles: hf-flutter/build/app/outputs/bundle/release/app-release.aab
           track: internal
           status: completed
+          # [HF-PLAY-NO-REVIEW-1] Play refuses to auto-send changes for review while other app changes are pending
+          # ("Changes cannot be sent for review automatically"). Commit the internal release without sending it.
+          changesNotSentForReview: true
 
       - name: Summary
         if: always()
