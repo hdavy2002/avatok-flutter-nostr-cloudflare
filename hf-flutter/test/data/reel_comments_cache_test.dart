@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 CommentsPage _page(String body, {String? cursor, bool mine = false}) => CommentsPage(
   items: [ReelComment(id: 'c_$body', source: 'youtube', authorName: 'Ravi', body: body, mine: mine, createdAt: 5, replies: [
-    const ReelComment(id: 'r_$body', authorName: 'Me', body: 'reply', parentId: 'x'),
+    ReelComment(id: 'r_$body', authorName: 'Me', body: 'reply', parentId: 'x'),
   ])],
   nextCursor: cursor,
   likes: const EngageCount(platform: 5, ours: 1),
