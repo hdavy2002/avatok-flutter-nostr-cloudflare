@@ -207,10 +207,10 @@ export type CommentPull = { ok: true; disabled: boolean; items: ExtComment[] };
 const httpsOrNull = (v: unknown): string | null => (typeof v === "string" && v.startsWith("https://") ? v.slice(0, 500) : null);
 
 /** commentThreads.list (1 quota unit): the top 50 comments by relevance. Comments turned off (or video gone) -> { disabled:true, items:[] }. Throws ProviderError otherwise. */
-export async function youtubeCommentThreads(env: Pick<Env, "YOUTUBE_API_KEY">, videoId: string, f: FetchLike = fetch): Promise<CommentPull> {
+export async function youtubeCommentThreads(env: Pick<Env, "YOUTUBE_API_KEY">, videoId: string, f: FetchLike = fetch, want = 50): Promise<CommentPull> {
   const key = ytKey(env);
   if (!YT_ID.test(videoId)) return { ok: true, disabled: true, items: [] };
-  const q = ytQuery({ part: "snippet", videoId, order: "relevance", maxResults: "50", textFormat: "plainText" }, key);
+  const q = ytQuery({ part: "snippet", videoId, order: "relevance", maxResults: String(Math.max(1, Math.min(100, Math.trunc(want) || 50))), textFormat: "plainText" }, key);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), PROVIDER_TIMEOUT_MS);
   let res: Response;
@@ -244,7 +244,7 @@ export const TREG_IG_COMMENTS = "scrapecreators.instagram.post.comments"; // GET
 export const IG_COMMENT_PAGES = 3; // ~15 a page -> up to ~45 comments per reel per refresh
 
 /** Up to IG_COMMENT_PAGES pages of a reel's public comments. No avatar (Instagram picture links expire). Throws ProviderError on provider failure. */
-export async function instagramComments(env: Pick<Env, "TREG_API_KEY">, shortcode: string, f: FetchLike = fetch, pages = IG_COMMENT_PAGES): Promise<CommentPull> {
+export async function instagramComments(env: Pick<Env, "TREG_API_KEY">, shortcode: string, f: FetchLike = fetch, pages = IG_COMMENT_PAGES, want = 1000): Promise<CommentPull> {
   const token = (env.TREG_API_KEY ?? "").trim();
   if (!token) throw new ProviderError("provider_not_configured");
   if (!/^[A-Za-z0-9_-]{5,20}$/.test(shortcode)) return { ok: true, disabled: true, items: [] };
@@ -271,7 +271,24 @@ export async function instagramComments(env: Pick<Env, "TREG_API_KEY">, shortcod
       });
     }
     cursor = typeof (body?.cursor ?? body?.data?.cursor) === "string" ? (body?.cursor ?? body?.data?.cursor) : "";
-    if (!cursor || !list.length) break;
+    if (!cursor || !list.length || items.length >= want) break; // [HF-REEL-COMMENTS-ONCE-1] stop paying once we have enough
   }
-  return { ok: true, disabled: false, items };
+  return { ok: true, disabled: false, items: items.slice(0, want) };
+}
+
+/** [HF-REEL-COMMENTS-ONCE-1] comments.list by id (1 quota unit, up to 50 ids, free): which stored YouTube comments still exist, with their
+ *  current text and likes. Lets us keep the imported set legal (YouTube asks stored data to be refreshed within 30 days) without pulling new ones. */
+export async function youtubeCommentsById(env: Pick<Env, "YOUTUBE_API_KEY">, ids: string[], f: FetchLike = fetch): Promise<Map<string, { body: string; likeCount: number }>> {
+  const key = ytKey(env);
+  const out = new Map<string, { body: string; likeCount: number }>();
+  const clean = ids.filter((i) => /^[A-Za-z0-9_.-]{8,80}$/.test(i)).slice(0, 50);
+  if (!clean.length) return out;
+  const q = ytQuery({ part: "snippet", id: clean.join(","), textFormat: "plainText", maxResults: "50" }, key);
+  const body: any = await timedGet(f, `https://www.googleapis.com/youtube/v3/comments?${q}`, { headers: ytHeaders() });
+  for (const c of Array.isArray(body?.items) ? body.items : []) {
+    const id = String(c?.id ?? "");
+    const text = typeof c?.snippet?.textDisplay === "string" ? c.snippet.textDisplay.trim() : "";
+    if (id && text) out.set(id, { body: text.slice(0, 1000), likeCount: num(c?.snippet?.likeCount) });
+  }
+  return out;
 }

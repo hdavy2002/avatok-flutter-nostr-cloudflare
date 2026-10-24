@@ -141,3 +141,7 @@ comment on our side; push / WhatsApp to the creator about new comments.
 - First open of a reel's sheet awaits the pull; later stale opens refresh in the background.
 - Refresh and the 30-day purge never delete an imported comment that has a visible reply from our users.
 - App: the header shows only "N comments"; the breakdown line (§3) and the Instagram note (§5) are removed. Rules HF-REEL-55/56 amended.
+
+## 9. Change 2026-10-24 — HF-REEL-COMMENTS-ONCE-1 (owner)
+- One-time import per reel: random 18–30 (`seedCount`), first sheet open (awaited) or the daily cron for new reels; KV marker `hfx:done:<reelId>` (permanent; 10-min retry block on failure); a reel that already holds imported rows counts as done. INSERT OR IGNORE, nothing replaced or purged.
+- `recheckYoutubeComments`: daily, stored YouTube comments older than 25 days are looked up by id (`comments.list`, 1 unit / 50) — update text/likes, delete ones gone from YouTube unless replied to by our users. Instagram is never re-checked.

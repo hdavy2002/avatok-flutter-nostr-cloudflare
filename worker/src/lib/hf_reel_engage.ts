@@ -6,13 +6,18 @@
 import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
-import { instagramComments, youtubeCommentThreads } from "./hf_reels_import";
+import { instagramComments, youtubeCommentThreads, youtubeCommentsById } from "./hf_reels_import";
 
 const APP = BRAND.slug;
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-export const EXT_FRESH_SEC = 6 * 3600; // an imported set younger than this is not pulled again
-export const EXT_KEEP_MS = 30 * 24 * 3600 * 1000; // imported comment not refreshed for this long is deleted
+// [HF-REEL-COMMENTS-ONCE-1] (owner 2026-10-24) Each reel's platform comments are imported ONCE, to start the conversation: a random
+// 18-30 of them, stored for good, never refreshed, never deleted. One YouTube call / at most 2 treg calls per reel, ever.
+export const SEED_MIN = 18;
+export const SEED_MAX = 30;
+export const YT_RECHECK_MS = 25 * 24 * 3600 * 1000; // stored YouTube comments are re-checked (free) before YouTube's 30-day limit
+
+export const seedCount = (rand: () => number = Math.random): number => SEED_MIN + Math.floor(Math.min(0.999999, Math.max(0, rand())) * (SEED_MAX - SEED_MIN + 1));
 export const RECENT_REEL_MS = 7 * 24 * 3600 * 1000; // the cron refreshes comments of reels published in this window
 
 export const engageOn = (cfg: Record<string, unknown>): boolean => cfg.hfReelsEnabled === true && cfg.hfReelEngageEnabled === true;
@@ -79,12 +84,16 @@ export function recountStmt(env: Env, reelId: string, now: number): D1PreparedSt
   ).bind(reelId, now);
 }
 
-/** An imported comment none of our users has replied to (only those are ever deleted). */
-const NO_OUR_REPLIES = "NOT EXISTS (SELECT 1 FROM hf_reel_comments oc WHERE oc.parent_id=hf_reel_ext_comments.id AND oc.status='visible')";
-
-const freshKey = (reelId: string) => `hfx:fresh:${reelId}`;
-export async function extIsFresh(env: Env, reelId: string): Promise<boolean> {
-  try { return !!(await env.TOKENS.get(freshKey(reelId))); } catch { return false; }
+const doneKey = (reelId: string) => `hfx:done:${reelId}`; // permanent once imported; 10-minute retry block after a failure
+/** True when this reel's one-time import already ran (or failed in the last 10 minutes). A reel that already holds imported rows
+ *  (imported before the one-time rule) counts as done and is marked so. */
+export async function extImportDone(env: Env, reelId: string): Promise<boolean> {
+  try {
+    if (await env.TOKENS.get(doneKey(reelId))) return true;
+    const have = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reel_ext_comments WHERE reel_id=?1 LIMIT 1").bind(reelId).first();
+    if (have) { await env.TOKENS.put(doneKey(reelId), "1"); return true; }
+    return false;
+  } catch { return true; } // unsure -> do not spend
 }
 
 /** Can this reel's comments be pulled here? YouTube needs YOUTUBE_API_KEY, Instagram needs TREG_API_KEY ([HF-REEL-IG-COMMENTS-1]). */
@@ -92,38 +101,35 @@ export function canPullComments(env: Env, platform: string): boolean {
   return platform === "youtube" ? !!(env.YOUTUBE_API_KEY ?? "").trim() : platform === "instagram" ? !!(env.TREG_API_KEY ?? "").trim() : false;
 }
 
-/** Pull one reel's comments (YouTube API / Instagram via treg) and REPLACE the stored set, so a comment deleted on the platform disappears here —
- *  EXCEPT an imported comment one of our users replied to: it stays on our network with its replies (owner 2026-10-24). Never throws. */
-export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch, platform: "youtube" | "instagram" = "youtube"): Promise<{ ok: boolean; count: number; reason: string }> {
+/** [HF-REEL-COMMENTS-ONCE-1] The one-time import of a reel's platform comments: a random 18-30 (or [want]), inserted, never replaced or
+ *  deleted later. Success (even with comments turned off) marks the reel done for good; a failure blocks retries for 10 minutes. Never throws. */
+export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch, platform: "youtube" | "instagram" = "youtube", want: number = seedCount()): Promise<{ ok: boolean; count: number; reason: string }> {
   const t0 = Date.now();
   let ok = false, count = 0, reason = "";
   try {
-    const pull = platform === "instagram" ? await instagramComments(env, videoId, f) : await youtubeCommentThreads(env, videoId, f);
+    const pull = platform === "instagram" ? await instagramComments(env, videoId, f, 2, want) : await youtubeCommentThreads(env, videoId, f, want);
     const now = Date.now();
-    const stmts: D1PreparedStatement[] = [env.DB_META.prepare(`DELETE FROM hf_reel_ext_comments WHERE reel_id=?1 AND ${NO_OUR_REPLIES}`).bind(reelId)];
-    for (const c of pull.items) {
+    const stmts: D1PreparedStatement[] = [];
+    for (const c of pull.items.slice(0, want)) {
       stmts.push(env.DB_META.prepare(
-        "INSERT OR REPLACE INTO hf_reel_ext_comments (id, reel_id, platform, author_name, author_avatar, author_url, body, like_count, published_at, fetched_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        "INSERT OR IGNORE INTO hf_reel_ext_comments (id, reel_id, platform, author_name, author_avatar, author_url, body, like_count, published_at, fetched_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
       ).bind(c.id, reelId, platform, c.authorName, c.authorAvatar, c.authorUrl, c.body, c.likeCount, c.publishedAt, now));
     }
-    await env.DB_META.batch(stmts);
-    ok = true; count = pull.items.length; reason = pull.disabled ? "comments_disabled" : "";
+    if (stmts.length) await env.DB_META.batch(stmts);
+    ok = true; count = stmts.length; reason = pull.disabled ? "comments_disabled" : "";
   } catch (e) {
     reason = String((e as { code?: string })?.code ?? (e as Error)?.name ?? "error").slice(0, 60);
     await trackException(env, e, { route: "hf_reel_ext_comments", handled: true, app_name: APP, extra: { area: "hf_reel_engage", reel_id: reelId } });
   }
-  try { await env.TOKENS.put(freshKey(reelId), "1", { expirationTtl: ok ? EXT_FRESH_SEC : 600 }); } catch { /* marker is best effort */ }
+  try { await env.TOKENS.put(doneKey(reelId), "1", ok ? undefined : { expirationTtl: 600 }); } catch { /* marker is best effort */ }
   await track(env, "server", "hf_reel_ext_comments_fetch", APP, { reel_id: reelId, platform, count, ms: Date.now() - t0, ok, reason });
   return { ok, count, reason };
 }
 
-/** Daily cron: delete imported comments not refreshed for 30 days (always), then refresh YouTube comments of reels published in the last 7 days (flag on). */
+/** Daily cron: the one-time import for new reels (published in the last 7 days) nobody has opened yet, so their sheet opens with
+ *  comments. Reels already imported are skipped; nothing is refreshed or purged (HF-REEL-COMMENTS-ONCE-1). */
 export async function refreshRecentReelComments(env: Env, cfg: Record<string, unknown>, f: FetchLike = fetch, limit = 40): Promise<{ purged: number; scanned: number; fetched: number }> {
   const out = { purged: 0, scanned: 0, fetched: 0 };
-  try {
-    const r = await env.DB_META.prepare(`DELETE FROM hf_reel_ext_comments WHERE fetched_at<?1 AND ${NO_OUR_REPLIES}`).bind(Date.now() - EXT_KEEP_MS).run();
-    out.purged = Number(r.meta?.changes ?? 0);
-  } catch { /* table not applied yet */ }
   if (!engageOn(cfg)) return out;
   const platforms = (["youtube", "instagram"] as const).filter((p) => canPullComments(env, p));
   if (!platforms.length) return out;
@@ -138,11 +144,38 @@ export async function refreshRecentReelComments(env: Env, cfg: Record<string, un
   } catch { return out; }
   const dead = new Set<string>();
   for (const r of rows) {
-    if (dead.has(r.platform)) continue;
+    if (dead.has(r.platform) || (await extImportDone(env, r.id))) continue;
     out.scanned++;
     const x = await refreshExtComments(env, r.id, r.platform_video_id, f, r.platform === "instagram" ? "instagram" : "youtube");
     if (x.ok) out.fetched++;
     else if (x.reason === "provider_not_configured") dead.add(r.platform);
   }
+  try { out.purged = await recheckYoutubeComments(env); } catch { /* best effort */ }
   return out;
+}
+
+/** [HF-REEL-COMMENTS-ONCE-1] Keep the stored YouTube comments within YouTube's rules for free: every ~25 days look the SAME comments up by id
+ *  (comments.list, 1 quota unit per 50) — update text / likes, drop any deleted on YouTube unless one of our users replied to it. Never adds
+ *  new comments and never calls treg. Instagram comments are not re-checked (paid). Returns how many were dropped. */
+export async function recheckYoutubeComments(env: Env, f: FetchLike = fetch, batches = 20): Promise<number> {
+  if (!(env.YOUTUBE_API_KEY ?? "").trim()) return 0;
+  let dropped = 0;
+  const now = Date.now();
+  for (let b = 0; b < batches; b++) {
+    const rows = (await env.DB_META.prepare("SELECT id FROM hf_reel_ext_comments WHERE platform='youtube' AND fetched_at<?1 ORDER BY fetched_at ASC LIMIT 50").bind(now - YT_RECHECK_MS).all<{ id: string }>()).results ?? [];
+    if (!rows.length) break;
+    const live = await youtubeCommentsById(env, rows.map((r) => r.id.replace(/^youtube:/, "")), f);
+    const stmts: D1PreparedStatement[] = [];
+    for (const r of rows) {
+      const c = live.get(r.id.replace(/^youtube:/, ""));
+      if (c) stmts.push(env.DB_META.prepare("UPDATE hf_reel_ext_comments SET body=?2, like_count=?3, fetched_at=?4 WHERE id=?1").bind(r.id, c.body, c.likeCount, now));
+      else {
+        stmts.push(env.DB_META.prepare("DELETE FROM hf_reel_ext_comments WHERE id=?1 AND NOT EXISTS (SELECT 1 FROM hf_reel_comments oc WHERE oc.parent_id=?1 AND oc.status='visible')").bind(r.id));
+        stmts.push(env.DB_META.prepare("UPDATE hf_reel_ext_comments SET fetched_at=?2 WHERE id=?1").bind(r.id, now)); // kept (has our replies): do not re-check every run
+        dropped++;
+      }
+    }
+    await env.DB_META.batch(stmts);
+  }
+  return dropped;
 }

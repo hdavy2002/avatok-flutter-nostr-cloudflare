@@ -18,7 +18,7 @@ import { isAdminUid } from "../lib/preview";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { obviousSexualPrompt } from "../lib/hf_merch_ai";
 import { optionalUid, visibleReel } from "./hf_reels";
-import { canPullComments, engageOn, extIsFresh, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
+import { canPullComments, engageOn, extImportDone, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -93,12 +93,10 @@ export async function hfReelEngageRoute(req: Request, env: Env, p: string, ctx?:
       const cExt = cursor.match(/^x:(\d{1,5})$/);
       if (cursor && !cOurs && !cExt) return err(400, "invalid_field", "Bad page marker.");
       // Stale-while-revalidate: show what we have, refresh YouTube in the background (older than 6 h or never pulled).
-      // [HF-REEL-IG-COMMENTS-1] YouTube and Instagram. The very first pull for a reel is awaited so the sheet opens with the
-      // platform's comments in it (owner 2026-10-24: "a personal feel"); later refreshes run in the background.
-      if (!cursor && (reel.platform === "youtube" || reel.platform === "instagram") && canPullComments(env, reel.platform) && !(await extIsFresh(env, id))) {
-        const pull = refreshExtComments(env, id, reel.videoId, fetch, reel.platform);
-        const have = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reel_ext_comments WHERE reel_id=?1 LIMIT 1").bind(id).first().catch(() => null);
-        if (have) bg(pull); else await pull;
+      // [HF-REEL-COMMENTS-ONCE-1] The reel's platform comments are imported ONCE (a random 18-30), the first time its sheet opens (or by the
+      // daily cron for new reels). We wait for it so the sheet opens with them; after that we never call YouTube / treg for this reel again.
+      if (!cursor && (reel.platform === "youtube" || reel.platform === "instagram") && canPullComments(env, reel.platform) && !(await extImportDone(env, id))) {
+        await refreshExtComments(env, id, reel.videoId, fetch, reel.platform);
       }
       const items: any[] = [];
       let nextCursor: string | null = null;

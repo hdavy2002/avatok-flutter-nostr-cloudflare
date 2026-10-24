@@ -12278,5 +12278,22 @@
       "hfReelEngageEnabled"
     ],
     "no_telemetry": "Uses the existing Telemetry.cacheOutcome helper; verified by widget tests and the owner's phone."
+  },
+  "HF-REEL-COMMENTS-ONCE-1": {
+    "description": "Platform comments imported once per reel (random 18-30), never refreshed; free YouTube re-check by id.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_ext_comments_fetch",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "One-time import per reel."
+      }
+    ]
   }
 }

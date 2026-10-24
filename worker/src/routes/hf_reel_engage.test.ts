@@ -21,7 +21,7 @@ vi.mock("../lib/whatsapp_notify", async (orig) => ({ ...(await orig()), verified
 
 import { hfReelEngageRoute } from "./hf_reel_engage";
 import { hfReelsRoute } from "./hf_reels";
-import { refreshExtComments, refreshRecentReelComments } from "../lib/hf_reel_engage";
+import { recheckYoutubeComments, refreshExtComments, refreshRecentReelComments, seedCount, SEED_MAX, SEED_MIN } from "../lib/hf_reel_engage";
 import { purgeHfUser } from "../lib/hf_purge";
 
 const require_ = createRequire(import.meta.url);
@@ -209,33 +209,78 @@ describe("YouTube comments (read only)", () => {
   const thread = (id: string, text: string, likes = 0) => ({ id, snippet: { topLevelComment: { snippet: { authorDisplayName: "Viewer " + id, authorProfileImageUrl: "https://yt/a.png", authorChannelUrl: "https://yt/c/" + id, textDisplay: text, likeCount: likes, publishedAt: "2026-10-20T10:00:00Z" } } } });
   const fakeFetch = (items: any[]) => async (url: string) => { expect(url).toContain("commentThreads"); return new Response(JSON.stringify({ items }), { status: 200 }); };
 
-  it("a refresh REPLACES the stored set and the list shows ours first, then YouTube by likes", async () => {
-    env.YOUTUBE_API_KEY = "k";
-    const vid = db.prepare("SELECT platform_video_id AS v FROM hf_reels WHERE id=?").get(R1).v;
-    let r = await refreshExtComments(env, R1, vid, fakeFetch([thread("Ugx11111111", "old A", 1), thread("Ugx22222222", "old B", 9)]));
-    expect(r).toEqual({ ok: true, count: 2, reason: "" });
-    r = await refreshExtComments(env, R1, vid, fakeFetch([thread("Ugx22222222", "old B", 12), thread("Ugx33333333", "new C", 3)]));
-    expect(r.count).toBe(2);
-    expect(db.prepare("SELECT id FROM hf_reel_ext_comments ORDER BY id").all().map((x: any) => x.id)).toEqual(["youtube:Ugx22222222", "youtube:Ugx33333333"]);
-    await comment("ours");
-    kv.set(`hfx:fresh:${R1}`, "1"); // fresh: the GET must not refetch
-    waits.length = 0;
-    const j = await body(await route(`/api/hf/reels/${R1}/comments`));
-    expect(j.items.map((i: any) => [i.source, i.body])).toEqual([["ours", "ours"], ["youtube", "old B"], ["youtube", "new C"]]);
-    expect(j.items[1]).toMatchObject({ likeCount: 12, mine: false, author: { name: "Viewer Ugx22222222", url: "https://yt/c/Ugx22222222" } });
-    expect(waits).toHaveLength(0);
-    const ev = events.filter((e) => e.event === "hf_reel_ext_comments_fetch");
-    expect(ev[0].props).toMatchObject({ reel_id: R1, platform: "youtube", count: 2, ok: true });
+  it("[ONCE] seedCount is a random 18-30", () => {
+    expect(seedCount(() => 0)).toBe(SEED_MIN);
+    expect(seedCount(() => 0.9999999)).toBe(SEED_MAX);
+    for (let i = 0; i < 200; i++) { const n = seedCount(); expect(n).toBeGreaterThanOrEqual(18); expect(n).toBeLessThanOrEqual(30); }
   });
-  it("commentsDisabled stores none (and clears an older set)", async () => {
-    const vid = db.prepare("SELECT platform_video_id AS v FROM hf_reels WHERE id=?").get(R1).v;
+  it("[ONCE] the first open imports a random 18-30 and waits for it; later opens never call YouTube again", async () => {
     env.YOUTUBE_API_KEY = "k";
-    await refreshExtComments(env, R1, vid, fakeFetch([thread("Ugx11111111", "hello")]));
-    const off = async () => new Response(JSON.stringify({ error: { errors: [{ reason: "commentsDisabled" }] } }), { status: 403 });
-    const r = await refreshExtComments(env, R1, vid, off);
-    expect(r).toEqual({ ok: true, count: 0, reason: "comments_disabled" });
-    expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments").get().c).toBe(0);
-    expect(events.filter((e) => e.event === "hf_reel_ext_comments_fetch").pop().props).toMatchObject({ ok: true, count: 0 });
+    const orig = globalThis.fetch;
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (u: any) => { urls.push(String(u)); return new Response(JSON.stringify({ items: Array.from({ length: 40 }, (_, i) => thread("Ugx" + String(10000000 + i), "c" + i, i)) }), { status: 200 }); }) as any;
+    try {
+      const j = await body(await route(`/api/hf/reels/${R1}/comments`));
+      const n = db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id=?").get(R1).c;
+      expect(n).toBeGreaterThanOrEqual(18);
+      expect(n).toBeLessThanOrEqual(30);
+      expect(urls[0]).toMatch(/maxResults=(1[89]|2\d|30)(&|$)/);
+      expect(j.items.filter((i: any) => i.source === "youtube").length).toBe(Math.min(n, 20)); // first page of 20
+      expect(waits).toHaveLength(0);
+      await route(`/api/hf/reels/${R1}/comments`);
+      kv.delete(`hfx:done:${R1}`); // even with the marker gone, stored rows count as done
+      await route(`/api/hf/reels/${R1}/comments`);
+      expect(urls).toHaveLength(1);
+      expect(events.filter((e) => e.event === "hf_reel_ext_comments_fetch").pop().props).toMatchObject({ reel_id: R1, platform: "youtube", ok: true, count: n });
+    } finally { globalThis.fetch = orig; }
+  });
+  it("[ONCE] comments turned off: nothing stored, marked done, never asked again", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    const orig = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => { calls++; return new Response(JSON.stringify({ error: { errors: [{ reason: "commentsDisabled" }] } }), { status: 403 }); }) as any;
+    try {
+      await route(`/api/hf/reels/${R1}/comments`);
+      await route(`/api/hf/reels/${R1}/comments`);
+      expect(calls).toBe(1);
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments").get().c).toBe(0);
+    } finally { globalThis.fetch = orig; }
+  });
+  it("[ONCE] a failure blocks retries for 10 minutes only", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    const r = await refreshExtComments(env, R1, "vidabcdef12", async () => new Response("{}", { status: 500 }));
+    expect(r.ok).toBe(false);
+    expect(kv.get(`hfx:done:${R1}`)).toBeTruthy();
+  });
+  it("[ONCE] cron imports new reels once, skips reels already imported; YouTube re-check (free) updates text and drops deleted ones unless replied to", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    const calls: string[] = [];
+    const f = async (url: string) => {
+      calls.push(url);
+      if (url.includes("/comments?")) return new Response(JSON.stringify({ items: [{ id: "Ugx11111111", snippet: { textDisplay: "edited", likeCount: 5 } }] }), { status: 200 });
+      return new Response(JSON.stringify({ items: [thread("Ugx11111111", "a"), thread("Ugx22222222", "b"), thread("Ugx33333333", "c")] }), { status: 200 });
+    };
+    let out = await refreshRecentReelComments(env, cfg, f);
+    expect(out).toMatchObject({ scanned: 1, fetched: 1 });
+    expect(calls.filter((u) => u.includes("commentThreads"))).toHaveLength(1);
+    calls.length = 0;
+    out = await refreshRecentReelComments(env, cfg, f);
+    expect(out.scanned).toBe(0);
+    expect(calls).toHaveLength(0);
+    await comment("reply", "u1", { parentId: "youtube:Ugx33333333" });
+    db.prepare("UPDATE hf_reel_ext_comments SET fetched_at=?").run(Date.now() - 26 * 86400000);
+    const dropped = await recheckYoutubeComments(env, f as any);
+    expect(dropped).toBe(2);
+    expect(db.prepare("SELECT id, body FROM hf_reel_ext_comments ORDER BY id").all()).toEqual([{ id: "youtube:Ugx11111111", body: "edited" }, { id: "youtube:Ugx33333333", body: "c" }]);
+    expect(calls.some((u) => u.includes("commentThreads"))).toBe(false); // never pulls new ones
+  });
+  it("[ONCE] Instagram stops paying once it has enough", async () => {
+    env.TREG_API_KEY = "t";
+    let calls = 0;
+    const f = async () => { calls++; return new Response(JSON.stringify({ comments: Array.from({ length: 15 }, (_, i) => ({ id: String(2000000000 + calls * 100 + i), text: "x" + i, user: { username: "u" } })), cursor: "more" }), { status: 200 }); };
+    const r = await refreshExtComments(env, R1, "DOq6eV6iIgD", f as any, "instagram", 20);
+    expect(calls).toBe(2);
+    expect(r.count).toBe(20);
   });
   it("a provider failure keeps the old set and reports ok=false", async () => {
     env.YOUTUBE_API_KEY = "k";
@@ -243,30 +288,6 @@ describe("YouTube comments (read only)", () => {
     const r = await refreshExtComments(env, R1, "vidabcdef12", async () => new Response("{}", { status: 500 }));
     expect(r.ok).toBe(false);
     expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments").get().c).toBe(1);
-  });
-  it("first open waits for the pull (sheet opens with comments); a later stale open refreshes in the background", async () => {
-    env.YOUTUBE_API_KEY = "k";
-    const orig = globalThis.fetch;
-    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ items: [thread("Ugx44444444", "fresh from yt")] }), { status: 200 })) as any;
-    try {
-      const j = await body(await route(`/api/hf/reels/${R1}/comments`));
-      expect(j.items.map((i: any) => i.body)).toEqual(["fresh from yt"]); // [HF-REEL-IG-COMMENTS-1] awaited on the first pull
-      expect(waits).toHaveLength(0);
-      kv.delete(`hfx:fresh:${R1}`); // stale again, rows exist now
-      await route(`/api/hf/reels/${R1}/comments`);
-      expect(waits).toHaveLength(1);
-      await Promise.all(waits);
-      waits.length = 0;
-      await route(`/api/hf/reels/${R1}/comments`);
-      expect(waits).toHaveLength(0); // marker is fresh now
-    } finally { globalThis.fetch = orig; }
-  });
-  it("a refresh keeps an imported comment one of our users replied to, even when the platform dropped it", async () => {
-    env.YOUTUBE_API_KEY = "k";
-    await refreshExtComments(env, R1, "vidabcdef12", fakeFetch([thread("Ugx11111111", "keep me"), thread("Ugx22222222", "drop me")]));
-    await comment("nice", "u1", { parentId: "youtube:Ugx11111111" });
-    await refreshExtComments(env, R1, "vidabcdef12", fakeFetch([thread("Ugx33333333", "new")]));
-    expect(db.prepare("SELECT id FROM hf_reel_ext_comments ORDER BY id").all().map((x: any) => x.id)).toEqual(["youtube:Ugx11111111", "youtube:Ugx33333333"]);
   });
   it("Instagram: comments come through treg (2 pages), tagged instagram, and can be replied to", async () => {
     env.TREG_API_KEY = "t";
@@ -283,7 +304,7 @@ describe("YouTube comments (read only)", () => {
     expect(r.count).toBe(2);
     expect(urls[0]).toContain("scrapecreators.instagram.post.comments");
     expect(urls[0]).toContain(encodeURIComponent("https://www.instagram.com/reel/DOq6eV6iIgD/"));
-    kv.set(`hfx:fresh:${R1}`, "1");
+    kv.set(`hfx:done:${R1}`, "1");
     const j = await body(await route(`/api/hf/reels/${R1}/comments`));
     const ig = j.items.filter((i: any) => i.source === "instagram");
     expect(ig.map((i: any) => i.author.name)).toEqual(["@a_user", "@b.user"]);
@@ -296,27 +317,12 @@ describe("YouTube comments (read only)", () => {
     await refreshExtComments(env, R1, "vidabcdef12", fakeFetch([thread("Ugx11111111", "spammy")]));
     const rep = await comment("good point", "u1", { parentId: "youtube:Ugx11111111" });
     expect(rep.item.parentId).toBe("youtube:Ugx11111111");
-    kv.set(`hfx:fresh:${R1}`, "1");
+    kv.set(`hfx:done:${R1}`, "1");
     let j = await body(await route(`/api/hf/reels/${R1}/comments`));
     expect(j.items[0].replies.map((r: any) => r.body)).toEqual(["good point"]);
     for (const u of ["r1", "r2", "r3"]) await post(`/api/hf/reels/comments/youtube:Ugx11111111/report`, { reason: "spam" }, u);
     j = await body(await route(`/api/hf/reels/${R1}/comments`));
     expect(j.items.filter((i: any) => i.source === "youtube")).toHaveLength(0);
-  });
-  it("cron: purges imported comments older than 30 days and refreshes reels of the last 7 days", async () => {
-    env.YOUTUBE_API_KEY = "k";
-    reel("hfrl_oldoldold01", "h1", { at: Date.now() - 20 * 86400000 });
-    db.prepare("INSERT INTO hf_reel_ext_comments (id, reel_id, platform, body, like_count, fetched_at) VALUES ('youtube:oldoldold1', ?, 'youtube', 'ancient', 0, ?)").run("hfrl_oldoldold01", Date.now() - 31 * 86400000);
-    const calls: string[] = [];
-    const f = async (url: string) => { calls.push(url); return new Response(JSON.stringify({ items: [thread("Ugx55555555", "daily")] }), { status: 200 }); };
-    const out = await refreshRecentReelComments(env, cfg, f);
-    expect(out).toMatchObject({ purged: 1, scanned: 1, fetched: 1 });
-    expect(calls).toHaveLength(1);
-    expect(db.prepare("SELECT reel_id FROM hf_reel_ext_comments").all().map((x: any) => x.reel_id)).toEqual([R1]);
-    cfg.hfReelEngageEnabled = false;
-    calls.length = 0;
-    await refreshRecentReelComments(env, cfg, f);
-    expect(calls).toHaveLength(0);
   });
 });
 
