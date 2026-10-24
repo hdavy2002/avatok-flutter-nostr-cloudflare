@@ -12120,5 +12120,22 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "merch_product_created carries moderation; merch_scan_skipped records why a scan did not run. Verified by creating a studio product and reading studio_designs.art_checks_json / admin Merch > Products."
+  },
+  "HF-PARITY-POLISH-1": {
+    "description": "[HF-PARITY-POLISH-1] Web shows all booking lengths (15 min-5 h) with h labels; one booking-money note on web+app (held in wallet, back if not accepted; web shows the approval note from the new approvalMode in the public availability answer); app influencer home capitalises a lower-case name; withdrawal ID page drops the selfie video; AI tag removed from sign-up preview + photo tips.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfBookingLengthsEnabled"
+    ],
+    "success": [
+      {
+        "event": "channel_slot_requested",
+        "property": "duration_minutes",
+        "gt": 120,
+        "min_events": 1,
+        "note": "A fan on the website asked for a booking longer than 2 hours (only possible now)."
+      }
+    ]
   }
 }

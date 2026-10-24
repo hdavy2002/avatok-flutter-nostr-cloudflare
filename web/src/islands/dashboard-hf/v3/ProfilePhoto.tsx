@@ -1,6 +1,6 @@
 /* [HF-CHANNEL-PHOTO-1] Dashboard "Profile photo": an influencer picks a picture, drags and zooms it inside a fixed 4:5 window,
  * and saves a 1200x1500 JPEG. Worker: GET /api/hosts/me (avatarUrl), PUT /api/hosts/me/photo (raw body, Specs/SPEC-HF-CHANNEL C1).
- * The photo keeps the label "AI avatar chosen by the influencer" on the public page (rule HF-AVA-1/5: no real photos). */
+ * The photo must be the chosen AI avatar, never a real photo (HF-AVA-5). The visible AI tag was removed from the public page by the owner on 2026-10-24 (HF-AVA-1 changed). */
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent as RPointerEvent } from 'react';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { hfCall } from '../../../lib/hfCallsApi';
@@ -268,7 +268,7 @@ function Editor({ account }: { account: DashboardAccount }) {
               onChange={e => { takeFile(e.target.files?.[0]); e.target.value = ''; }} />
           </div>
           <div className="pp-do">
-            <div><span className="m" aria-hidden="true">✓</span><span><b>Use your AI avatar.</b> Fans see the label “AI avatar chosen by the influencer”.</span></div>
+            <div><span className="m" aria-hidden="true">✓</span><span><b>Use your AI avatar.</b> The one you chose, not a real photo.</span></div>
             <div><span className="m x" aria-hidden="true">✕</span><span><b>No real photo of yourself</b> — this keeps you safe. Our team removes real photos.</span></div>
             <div><span className="m" aria-hidden="true">✓</span><span><b>Face in the middle,</b> no text or logos on the picture.</span></div>
           </div>

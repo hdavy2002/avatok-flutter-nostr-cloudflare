@@ -84,7 +84,6 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
       <section className="hob-card hob-f-profile">
         <div className="hob-f-hero">
           <img src={g.profileImage} alt={`${draft.displayName}, AI avatar`} />
-          <span className="hob-ai-label">AI avatar chosen by the influencer</span>
         </div>
         <h3 className="hob-f-name">{draft.displayName}</h3>
 

@@ -18,7 +18,7 @@ export default function PreviewCard({ draft, avatar }: { draft: Draft; avatar: A
           {avatar
             ? <img className="person-portrait" src={avatar.image} alt="Illustrative avatar chosen by the influencer" width={1254} height={1254} />
             : <div className="hob-portrait-empty">Pick an avatar</div>}
-          <span className="hob-ai-label">AI avatar chosen by the influencer</span>
+          {/* [HF-PARITY-POLISH-1] the public card no longer shows the AI-avatar tag (owner 2026-10-24), so the preview does not either */}
           <p className="person-status is-preview"><span aria-hidden="true" />Preview</p>
         </div>
         <div className="person-copy">

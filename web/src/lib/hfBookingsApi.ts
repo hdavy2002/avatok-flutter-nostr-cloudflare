@@ -111,12 +111,12 @@ export async function saveHostSchedule(schedule: AvailabilitySchedule, expectedV
     throw error;
   }
 }
-export async function getPublicSlotsInfo(slug: string, from: string, to: string, durationMinutes: number): Promise<{ slots: AvailabilitySlot[]; durationsMinutes: number[] | null }> {
-  const data = await request<{ slots: AvailabilitySlot[]; durationsMinutes?: number[] }>(
+export async function getPublicSlotsInfo(slug: string, from: string, to: string, durationMinutes: number): Promise<{ slots: AvailabilitySlot[]; durationsMinutes: number[] | null; needsApproval: boolean }> {
+  const data = await request<{ slots: AvailabilitySlot[]; durationsMinutes?: number[]; approvalMode?: string }>(
     '/api/hf/hosts/' + encodeURIComponent(slug) + '/availability',
     { query: { from, to, durationMinutes } },
   );
-  return { slots: data.slots, durationsMinutes: Array.isArray(data.durationsMinutes) ? data.durationsMinutes : null };
+  return { slots: data.slots, durationsMinutes: Array.isArray(data.durationsMinutes) ? data.durationsMinutes : null, needsApproval: data.approvalMode === 'manual' };
 }
 export async function getPublicSlots(slug: string, from: string, to: string, durationMinutes: number): Promise<AvailabilitySlot[]> {
   return (await getPublicSlotsInfo(slug, from, to, durationMinutes)).slots;

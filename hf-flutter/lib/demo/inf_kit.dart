@@ -12,10 +12,18 @@ import 'widgets.dart';
 class InfHero extends StatelessWidget {
   const InfHero({super.key, required this.name});
   final String name;
+  /// [HF-PARITY-POLISH-1] An account name saved in lower case ("humphrey davy") is shown as "Humphrey Davy", like the website.
+  /// A name with any capital in it is left exactly as the person typed it.
+  static String niceName(String raw) {
+    final n = raw.trim();
+    if (n.isEmpty || n != n.toLowerCase()) return n;
+    return n.split(RegExp(r'\s+')).map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
+  }
+
   @override
   Widget build(BuildContext context) => DesiHero(
         eyebrow: 'Namaste',
-        title: name,
+        title: niceName(name),
         sub: 'Your stage for calls, bookings and reels.',
         ghost: 'Manch',
         tone: DesiTone.rani,

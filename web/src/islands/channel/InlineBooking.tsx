@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { capture } from '../../lib/analytics';
 import { bookingError, bookingsEnabled, getPublicSlotsInfo, offeredDurations, type AvailabilitySlot } from '../../lib/hfBookingsApi';
-import { callModeFlags, offeredLengths } from '../../lib/hfCallModes';
+import { callModeFlags, lengthLabel, offeredLengths } from '../../lib/hfCallModes';
 import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
 import SessionBridge from '../calls/SessionBridge';
 import { spaceOf, useSpaceGate } from '../../lib/hfSpaces';
@@ -48,6 +48,7 @@ function InlineBookingInner({ hostSlug, hostName, paisePerMin, plan, priceTiers 
   const [day, setDay] = useState('');
   const [slot, setSlot] = useState('');
   const [msg, setMsg] = useState('');
+  const [needsApproval, setNeedsApproval] = useState(false); // [HF-PARITY-POLISH-1]
   const lengthsOn = useRef(false);
   const seq = useRef(0);
   const start = addDays(today, week * 7);
@@ -82,6 +83,7 @@ function InlineBookingInner({ hostSlug, hostName, paisePerMin, plan, priceTiers 
           if (mine !== seq.current) return;
           if (found.durationsMinutes) setDurations(lengthsOn.current ? offeredLengths(found.durationsMinutes) : found.durationsMinutes);
           setSlots(found.slots);
+          setNeedsApproval(found.needsApproval);
           setState('ready');
           return;
         } catch (error) {
@@ -136,7 +138,7 @@ function InlineBookingInner({ hostSlug, hostName, paisePerMin, plan, priceTiers 
   };
 
   if (state === 'off') return null;
-  const lens = durations.slice(0, 4);
+  const lens = durations; // [HF-PARITY-POLISH-1] every length the influencer offers (15 min to 5 h), same as the app
   const anyOpen = days.some(d => (byDay.get(d) ?? []).some(pastNow));
 
   return <div className="cal" aria-label="Booking calendar" aria-busy={state === 'loading' || state === 'checking'}>
@@ -165,13 +167,14 @@ function InlineBookingInner({ hostSlug, hostName, paisePerMin, plan, priceTiers 
       </div>
       <p className="nun lbl2" style={{ margin: '22px 0 10px' }}>How long?</p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }} role="group" aria-label="Call length">
-        {lens.map(m => <button key={m} type="button" className={`chip${m === duration ? ' on' : ''}`} aria-pressed={m === duration} onClick={() => setDuration(m)}>{m} min</button>)}
+        {lens.map(m => <button key={m} type="button" className={`chip${m === duration ? ' on' : ''}`} aria-pressed={m === duration} onClick={() => setDuration(m)}>{lengthLabel(m)}</button>)}
       </div>
       <div className="meter">
         {meterArt && <img className="meter-ic" src={meterArt} width={ART_DIMS.meterIcon.w} height={ART_DIMS.meterIcon.h} alt="" loading="lazy" decoding="async" />}
-        <div className="msum"><span className="disp">{money(priceFor(duration))}</span><small>{chosen ? `${dayFmt(day, { weekday: 'short', day: 'numeric', month: 'short' })} · ${timeFmt(chosen.startUtc)} · ${duration} min` : 'Pick a time'}</small></div>
+        <div className="msum"><span className="disp">{money(priceFor(duration))}</span><small>{chosen ? `${dayFmt(day, { weekday: 'short', day: 'numeric', month: 'short' })} · ${timeFmt(chosen.startUtc)} · ${lengthLabel(duration)}` : 'Pick a time'}</small></div>
         <button type="button" className="btn btn-y" disabled={!chosen} onClick={request}>Request this slot</button>
       </div>
+      {needsApproval && <p className="cal-msg" style={{ marginTop: 10 }}>Each booking needs the influencer&rsquo;s approval. If it isn&rsquo;t accepted within 24 hours, your money returns to your wallet.</p>}
     </>}
   </div>;
 }

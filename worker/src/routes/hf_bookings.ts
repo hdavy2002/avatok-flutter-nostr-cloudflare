@@ -181,7 +181,9 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
   if (!isBookingDateRangeWithinHorizon(schedule, from, to)) return err(400, "date_range_out_of_bounds");
   // An unconfigured schedule has no public slots; legacy hours_json is not a
   // public booking preview and requires a separate owner-confirmed import.
-  if (schedule.version === 0) return json({ slots: [], durationsMinutes: schedule.durationsMinutes }, 200, { "cache-control": "public, max-age=30" });
+  // [HF-PARITY-POLISH-1] Same as the app's availability answer: tell the page whether bookings wait for the influencer, so web and app show the same note.
+  const approvalMode = (await approvalOn(env)) ? await hostApprovalMode(env, host.uid) : null;
+  if (schedule.version === 0) return json({ slots: [], durationsMinutes: schedule.durationsMinutes, ...(approvalMode ? { approvalMode } : {}) }, 200, { "cache-control": "public, max-age=30" });
   const range = utcRangeForDates(from, to);
   const busy = await listHfBusyIntervals(env, host.uid, range.from, range.to);
   const slots = slotsForRange(schedule, from, to, durationMinutes, busy).map((slot) => ({
@@ -190,7 +192,7 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
     hostLocalLabel: localLabel(slot.startAt, schedule.timezone),
     offsetLabel: offsetLabel(slot.offsetMinutes),
   }));
-  return json({ slots, durationsMinutes: schedule.durationsMinutes }, 200, { "cache-control": "public, max-age=30" });
+  return json({ slots, durationsMinutes: schedule.durationsMinutes, ...(approvalMode ? { approvalMode } : {}) }, 200, { "cache-control": "public, max-age=30" });
 }
 
 type BookingStatus = "confirming" | "confirmed" | "pending_approval" | "starting" | "active" | "settling" | "completed" | "cancelled" | "failed";

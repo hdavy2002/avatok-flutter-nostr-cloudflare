@@ -418,7 +418,7 @@ class _ChannelBookSectionState extends State<ChannelBookSection> {
         GpSectionHead(
           eyebrow: 'Book a time',
           title: TextSpan(text: 'Pick a slot. Skip the wait.', style: t(30, color: GP.ink, w: FontWeight.w900, h: 1.08)),
-          sub: approval ? 'Pay only when $first confirms.' : null,
+          sub: approval ? 'The money is held in your wallet when you ask. If $first doesn’t accept, it all comes back.' : null, // [HF-PARITY-POLISH-1] same words as the website
           sticker: const GpSticker('Meter down, baat shuru.', tone: GpStickerTone.blue, angle: 0.04),
         ),
         const SizedBox(height: 12),
