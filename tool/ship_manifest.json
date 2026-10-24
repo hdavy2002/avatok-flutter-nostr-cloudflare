@@ -12237,5 +12237,20 @@
         "note": "The YouTube comment pull completed (including videos with comments turned off, which store none)."
       }
     ]
+  },
+  "HF-PLAY-REVIEWER-1": {
+    "description": "[HF-PLAY-REVIEWER-1] Play reviewer test login: a fixed code for one hashed reviewer number in KV.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "auth_reviewer_login",
+        "property": "step",
+        "equals": "verify",
+        "min_events": 1,
+        "note": "The reviewer (or owner test) signing in with the fixed code."
+      }
+    ]
   }
 }

@@ -232,3 +232,40 @@ describe("rate limits stay", () => {
     expect(clerkPosts).toHaveLength(0);
   });
 });
+
+describe("[HF-PLAY-REVIEWER-1] Play reviewer test login", () => {
+  const RPHONE = "+919000000001";
+  async function reviewerOn(until = Date.now() + 86400000) {
+    const val = JSON.stringify({ phoneHash: await sha(RPHONE), codeHash: await sha("hf-reviewer|424242"), until });
+    const base = env.TOKENS.get;
+    env.TOKENS.get = async (k: string) => (k === "hf_play_reviewer_login:v1" ? val : base(k));
+    db.prepare("INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at) VALUES ('u_rev',1,?,1,1)").run(await sha(RPHONE));
+  }
+  const send = (phone: string) => whatsappAuthSend(post("/api/auth/whatsapp/send", { phone, client: "android" }, { "cf-connecting-ip": "9.9.9.9" }), env);
+  const signIn = (code: string, phone = RPHONE) => whatsappAuthVerify(post("/api/auth/whatsapp/verify", { phone, code, client: "android" }), env);
+
+  it("the reviewer number signs in with the fixed code, no WhatsApp provider involved", async () => {
+    await reviewerOn();
+    expect((await send(RPHONE)).status).toBe(200);
+    const b = await (await signIn("424242")).json();
+    expect(b).toMatchObject({ ok: true, status: "signed_in", ticket: "tkt_u_rev" });
+  });
+
+  it("a wrong code on the reviewer number is refused", async () => {
+    await reviewerOn();
+    await send(RPHONE);
+    expect((await signIn("123456")).status).toBe(400);
+  });
+
+  it("expired switch = normal flow (the fixed code no longer works)", async () => {
+    await reviewerOn(Date.now() - 1000);
+    await send(RPHONE);
+    expect((await signIn("424242")).status).toBe(400);
+  });
+
+  it("another number with the fixed code is refused", async () => {
+    await reviewerOn();
+    await seedCode(PHONE);
+    expect((await signIn("424242", PHONE)).status).toBe(400);
+  });
+});

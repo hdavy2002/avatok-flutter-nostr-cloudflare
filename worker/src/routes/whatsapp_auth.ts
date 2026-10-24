@@ -72,6 +72,7 @@ import { readEmailProof, burnEmailProof } from "./signup_email_otp";
 import { attachVerifiedClerkEmail } from "../lib/clerk_verified_email";
 
 import { reserveAndSendOtp } from "../lib/otp_send_reservation";
+import { isReviewerPhone, reviewerCodeMatches, REVIEWER_SESSION_PREFIX } from "../lib/hf_reviewer_login"; // [HF-PLAY-REVIEWER-1]
 
 const APP = "avatok";
 
@@ -115,6 +116,15 @@ export async function whatsappAuthSend(req: Request, env: Env): Promise<Response
   const ip = req.headers.get("cf-connecting-ip") ?? "";
   const ipHash = await sha256Hex(`wa-login-ip|${ip}`);
   const anonUid = `anon:${ipHash.slice(0, 40)}`;
+
+  // [HF-PLAY-REVIEWER-1] The Play reviewer's number: record a code row but send nothing (the code is fixed).
+  if (await isReviewerPhone(env, hash)) {
+    await env.DB_META.prepare(
+      "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,'sent',0,?5)",
+    ).bind("anon:play-reviewer", hash, e164, `${REVIEWER_SESSION_PREFIX}${now}`, now).run();
+    void track(env, "anon_wa_login", "auth_reviewer_login", APP, { step: "send" });
+    return json({ ok: true, phone_masked: mask(e164), expires_in_s: OTP_TTL_MS / 1000, resend_after_s: RESEND_GAP_MS / 1000 });
+  }
 
   const sent = await reserveAndSendOtp(env, {
     uid: anonUid, phoneHash: hash, e164, now, cooldown: "phone",
@@ -179,7 +189,12 @@ export async function whatsappAuthVerify(req: Request, env: Env): Promise<Respon
   }
   await db.prepare("UPDATE phone_otp SET attempts=attempts+1 WHERE id=?1").bind(row.id).run();
 
-  const res = await checkOtp(env, row.session_id, row.e164, code);
+  // [HF-PLAY-REVIEWER-1] A reviewer row is checked against the fixed code, never the WhatsApp provider.
+  const reviewerRow = typeof row.session_id === "string" && row.session_id.startsWith(REVIEWER_SESSION_PREFIX);
+  const res = reviewerRow
+    ? ((await reviewerCodeMatches(env, hash, code)) ? "match" : "mismatch")
+    : await checkOtp(env, row.session_id, row.e164, code);
+  if (reviewerRow) void track(env, "anon_wa_login", "auth_reviewer_login", APP, { step: "verify", outcome: res });
   if (res === "unreachable") {
     void trackException(env, new Error("whatsapp_auth_verify: provider_unreachable"), {
       route: "/api/auth/whatsapp/verify", method: "POST", handled: true, app_name: APP,
