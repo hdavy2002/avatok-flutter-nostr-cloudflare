@@ -167,6 +167,15 @@ class _Dashboard extends StatelessWidget {
               tone: DesiTone.rani,
               onTap: () => isInfluencer ? context.go('/inf/home') : context.push('/influencer/join'),
             ),
+            // [HF-APP-ME-VERIF-1] owner: My verifications also in the Me tab's Influencer list
+            if (isInfluencer)
+              _MenuRow(
+                icon: Icons.verified_user_rounded,
+                label: 'My verifications',
+                meta: '',
+                tone: DesiTone.lav,
+                onTap: () => unawaited(context.push('/inf/verifications')),
+              ),
           ]),
           if (live && isInfluencer) const SharePageCard(), // [HF-SHARE-APP-1]
           if (live) MerchMeSection(isInfluencer: isInfluencer), // [HF-MERCH-APP-1] hidden while hfMerchEnabled is off
