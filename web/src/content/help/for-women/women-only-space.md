@@ -1,28 +1,39 @@
 ---
-title: "Can I choose who calls me?"
-description: "Influencers on the monthly influencer plan can take calls from verified customers only. Here is what that means for women and LGBTQ+ influencers."
+title: "Women-only channels"
+description: "How Women-only channels work: who can start one, who can call, and what video KYC means."
 section: for-women
 order: 2
-updated: 2026-10-18
-keywords: ["women only", "mahila only", "ladies only", "verified callers", "verified customers only", "kyc callers", "women influencer", "safe calls"]
+updated: 2026-10-24
+keywords: ["women only", "mahila only", "ladies only", "women-only channel", "video kyc", "verified women", "women influencer", "safe calls"]
 audience: both
 faq:
-  - q: "Can I take calls only from verified customers?"
-    a: "Yes, if you are on the monthly influencer plan. Turn on Verified customers only in your dashboard. Only customers who have completed full KYC can then call you."
-  - q: "Does verification check that the caller is a woman?"
-    a: "No. Full KYC confirms who the customer is. It does not check gender, and it does not guarantee how anyone will behave."
+  - q: "Who can start a Women-only channel?"
+    a: "A woman with a verified WhatsApp number, an Aadhaar that shows female, and an approved video KYC selfie video. You do not need a YouTube or Instagram channel."
+  - q: "Who can call a Women-only channel?"
+    a: "Only verified women. You complete video KYC once (WhatsApp, Aadhaar and a selfie video), and it works for every Women-only channel."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-Every influencer on {{brand.name}} decides who they talk to. Influencers on the **monthly influencer plan** get one more control: **Verified customers only**.
+A **Women-only channel** is started by a verified woman, for verified women. Its profile shows a **Women-only channel** tag, and anyone can find it in Explore, search and Google. Only verified women can call, book, join the queue or ask to be notified.
 
-## What it does
+## Starting a Women-only channel
 
-When it is on, only customers who have completed full KYC can call you. Your profile shows **Verified customers only**, so customers know before they try. You can turn it on or off from your dashboard at any time.
+1. Verify your WhatsApp number.
+2. Verify your Aadhaar with an OTP (DigiLocker if the OTP does not work). It must show female.
+3. Record a 10-second selfie video reading a short code. This is your **video KYC**. Our team compares your face with your Aadhaar photo.
+4. Once it is approved, your channel can go live.
 
-Verification confirms who the customer is. It does not check gender, and it does not guarantee behaviour. Your usual controls still work on every call.
+## Calling a Women-only channel
+
+You complete the same video KYC: WhatsApp number, Aadhaar (it must show female) and a selfie video. Until it is approved, the Call, Book, Join queue and Notify buttons stay locked and show **Verify to call**. You verify once, and it works for every Women-only channel. We WhatsApp you when your video is approved.
+
+People who finished video KYC show a green **Video KYC verified** badge. Verification confirms who someone is. It does not guarantee behaviour. Your usual controls still work on every call.
+
+## Your privacy
+
+Only you and our verification team see your Aadhaar check and your video. We keep only the last 4 digits of your Aadhaar number.
 
 ## Controls every influencer has
 
@@ -30,13 +41,9 @@ Verification confirms who the customer is. It does not check gender, and it does
 - Press **#** at any time. The call ends, the caller is blocked and the incident is flagged.
 - Report the account. Our team reviews every report.
 
-## An example
-
-Neha is a fitness influencer from Jaipur. She wants to talk only to callers whose identity is known. She is on the monthly influencer plan, so she turns on Verified customers only. Customers who have not completed full KYC see that they need to do it before they can call her.
-
 ## Rules still apply
 
-Harassment and sexual pressure are never allowed, verified or not. No human monitors your call.
+Harassment and sexual pressure are never allowed. No human monitors your call.
 
 ## Learn more
 

@@ -23,7 +23,13 @@ class Influencer {
     this.callState,
     this.queueOpen = false,
     this.queueWaiting = 0,
+    this.space,
+    this.videoKycVerified = false,
   });
+
+  /// [HF-CREATOR-SPACES-1] `women` / `lgbtq` for a space channel, else null; and the green Video KYC badge.
+  final String? space;
+  final bool videoKycVerified;
 
   /// [HF-CALL-MODES-E2] What a fan sees (spec 2.1), when the server sent it. Null = behave as before (online / offline).
   final HostCallState? callState;

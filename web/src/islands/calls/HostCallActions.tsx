@@ -19,10 +19,12 @@ import {
 import '../../styles/hf-calls.css';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import QueueSheet from './QueueSheet'; // [HF-CALL-MODES-E1]
+import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
+import { LOCK_TEXT, parseSpace, spaceOf, trackGate, useSpaceGate } from '../../lib/hfSpaces';
 import { NO_FLAGS, callModeFlags, deriveCallState, fanButtons, minutesLeft, refusalText, type CallModeFlags, type PublicCallState } from '../../lib/hfCallModes';
 
 /** [HF-STD-PLAN-1] pricePerMin may be fractional (3.99); pricePaisePerMin / priceTiers come from the worker's host card. */
-export interface CallHost { slug: string; displayName: string; pricePerMin: number; pricePaisePerMin?: number; priceTiers?: PriceTier[]; plan?: string; status?: HostPresence; womenOnly?: boolean }
+export interface CallHost { slug: string; displayName: string; pricePerMin: number; pricePaisePerMin?: number; priceTiers?: PriceTier[]; plan?: string; status?: HostPresence; womenOnly?: boolean; space?: 'women' | 'lgbtq' | null }
 const hostRateLabel = (h: CallHost): string => h.plan === 'standard'
   ? stdRateLabel(h.pricePaisePerMin ?? Math.round(Number(h.pricePerMin) * 100))
   : `₹${Number(h.pricePerMin).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/min`;
@@ -50,6 +52,7 @@ export function NotifyButton({ host, variant, prefix, initial, big }: { host: Ca
     if (r.ok) { const next = !on; setOn(next); setMsg(next ? `We’ll WhatsApp you when ${name} is online.` : 'Okay, we won’t message you.'); return; }
     if (r.status === 401) { window.location.assign(signInUrl()); return; }
     if (r.code === 'not_verified') setMsg('Please verify your WhatsApp number first so we can message you.');
+    else if (r.code === 'lane_required') setMsg(r.body.lane === 'lgbtq' ? 'Only verified LGBTQ+ members can call this channel. Open the channel page to verify.' : 'Only verified women can call this channel. Open the channel page to verify.');
     else setMsg(r.message || 'We could not do that. Please try again.');
   };
   // [HF-CHANNEL-QA-1] The phone bar is narrow: the status is already on the photo, so the bar says just "Notify me" (owner: the 3-line pill was ugly).
@@ -166,7 +169,11 @@ function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false }:
     const lane = typeof r.body.lane === 'string' ? r.body.lane : host.womenOnly ? 'women' : '';
     let p: Problem;
     if (r.code === 'not_verified') p = { text: 'Please verify your WhatsApp number first. We use it to ring you.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
-    else if (r.code === 'lane_required') p = { text: lane === 'lgbtq' ? 'This is an LGBTQ+ space influencer. Verify to call.' : 'This is a women-only space influencer. Verify to call.', link: { href: `/verify/lane?lane=${encodeURIComponent(lane || 'women')}`, label: 'Verify to call' } };
+    else if (r.code === 'lane_required') { // [HF-CREATOR-SPACES-1]
+      const ln = parseSpace(lane) ?? spaceOf(host) ?? 'women';
+      trackGate(ln, 'server_403');
+      p = { text: LOCK_TEXT[ln], link: { href: `/verify/lane?lane=${ln}&next=${encodeURIComponent(location.pathname + location.search)}`, label: 'Verify to call' } };
+    }
     else if (r.code === 'low_balance' && (typeof r.body.shortfallRupees === 'string' || typeof r.body.shortfallTokens === 'string')) {
       const short = typeof r.body.shortfallRupees === 'string' ? r.body.shortfallRupees : typeof r.body.shortfallPaise === 'number' ? formatPaise(r.body.shortfallPaise) : '';
       p = { text: short ? `You need ${short} more to start this call.` : (r.message || 'You need more money in your wallet to start this call.'), addMoney: true };
@@ -233,7 +240,6 @@ function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false }:
             <li><Icon name="lock" size={22} /><span><strong>Your number stays hidden.</strong> We ring your phone and {name}’s phone, then connect you.</span></li>
             <li><Icon name="shield" size={22} /><span>{SAFETY}</span></li>
           </ul>
-          {host.womenOnly && <p className="hfc-note">This is a women-only space influencer. You may be asked to verify.</p>}
           {lowBalance && tok && (
             <div className="hfc-note hfc-warn" role="status">
               {tok.hasDebt
@@ -352,7 +358,22 @@ function webHasTestCredits(): Promise<boolean> {
 
 /* ── Public component ──────────────────────────────────────────────────── */
 /** [HF-CHANNEL-WEB-1] callLabel replaces the "Call ₹x/min" text on the call button (the channel page shows the rate beside it: "Call now"); bookHref points "Book a time" at the page's own calendar. Both optional: other pages are unchanged. */
-export default function HostCallActions({ host, variant, refresh, callLabel, bookHref }: { host: CallHost; variant: Variant; refresh?: boolean; callLabel?: string; bookHref?: string }) {
+type ActionsProps = { host: CallHost; variant: Variant; refresh?: boolean; callLabel?: string; bookHref?: string };
+/** [HF-CREATOR-SPACES-1] On a Women-only / LGBTQ+ channel, Call / Book / Queue / Notify stay locked until the viewer's video KYC is approved. The server enforces it too (403 lane_required). */
+export default function HostCallActions(props: ActionsProps) {
+  const space = spaceOf(props.host);
+  const gate = useSpaceGate(space);
+  if (!space) return <HostCallActionsInner {...props} />;
+  return (
+    <>
+      <SessionBridge on={gate.needsBridge} />
+      {gate.state === 'ok' ? <HostCallActionsInner {...props} />
+        : <SpaceLock lane={space} wait={gate.state === 'loading'} signedOut={gate.state === 'signedout'} missing={gate.missing} />}
+    </>
+  );
+}
+
+function HostCallActionsInner({ host, variant, refresh, callLabel, bookHref }: ActionsProps) {
   const [on, setOn] = useState<boolean | null>(null);
   const [bookingOn, setBookingOn] = useState(false);
   const [status, setStatus] = useState<HostPresence>(host.status ?? 'offline');

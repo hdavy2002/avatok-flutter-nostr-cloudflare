@@ -4,6 +4,7 @@ import '../data/api_exception.dart';
 import '../data/repos/presence_repo.dart';
 import '../data/services.dart';
 import 'presence_bridge.dart';
+import 'space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -43,6 +44,7 @@ class _NotifyMeButtonState extends State<NotifyMeButton> {
       setState(() => _done = true);
       toast(context, msg);
     } on ApiException catch (e) {
+      if (mounted && await handleLaneRequired(context, e)) return; // [HF-CREATOR-SPACES-1]
       if (mounted) toast(context, e.userMessage);
     } catch (_) {
       if (mounted) toast(context, ApiException.genericText);

@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/demo_mode.dart';
+import '../../data/models/spaces.dart'; // [HF-CREATOR-SPACES-1]
 import '../../data/repos/auth_repo.dart';
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../data.dart';
+import '../space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -175,6 +179,18 @@ class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
 /// Call now: sign-up if needed → confirm sheet → call screen. Low balance sends to Top up.
 Future<void> startCall(BuildContext context, Influencer who) {
   return requireAccount(context, () {
+    // [HF-CREATOR-SPACES-1] A Women-only / LGBTQ+ channel: locked until the viewer finished video KYC.
+    final lane = SpaceLane.parse(who.space);
+    if (lane != null && CallsBridge.real) {
+      unawaited(spaceGateThen(context, lane, () => _openCallSheet(context, who)));
+      return;
+    }
+    _openCallSheet(context, who);
+  }, reason: 'to call ${who.name.split(' ').first}');
+}
+
+void _openCallSheet(BuildContext context, Influencer who) {
+  {
     // [HF-CALL-MODES-E2] With call modes on and a callState from the server, the sheet offers what fits (queue / book / notify).
     if (CallsBridge.real && needsCallStateSheet(who)) {
       showCallStateSheet(context, who);
@@ -186,7 +202,7 @@ Future<void> startCall(BuildContext context, Influencer who) {
       backgroundColor: C.clear,
       builder: (_) => CallsBridge.real ? RealCallConfirmSheet(who: who) : CallConfirmSheet(who: who),
     );
-  }, reason: 'to call ${who.name.split(' ').first}');
+  }
 }
 
 class CallConfirmSheet extends StatelessWidget {

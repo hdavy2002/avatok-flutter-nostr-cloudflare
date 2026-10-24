@@ -35,6 +35,13 @@ abstract final class Telemetry {
     'channel_slot_requested',
     'profile_photo_saved',
     'api_error',
+    // [HF-CREATOR-SPACES-1] never carries gender, the declaration or any Aadhaar detail
+    'hf_space_creator_chosen', // {kind}
+    'hf_channel_threshold', // {result, followers, views}
+    'hf_space_gate_shown', // {lane, missing}
+    'hf_space_filter', // {space, surface}
+    'hf_video_kyc_badge_shown', // {surface}
+    'hf_space_verify_step', // {lane, step}
     'hf_app_cache', // [HF-APP-CACHE-1]
     'app_crash',
     'hf_app_open',

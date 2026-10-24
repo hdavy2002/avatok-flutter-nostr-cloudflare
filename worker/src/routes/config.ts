@@ -2210,7 +2210,9 @@ export interface PlatformConfig {
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
   hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 50 (HF-WIRE-14), max 200
   hfReelUnplayableHideAt: number; // [HF-REEL-SKIP-2] NUMERIC (numericKeys): distinct phones that must report a reel as unplayable inside the app before it is hidden from everyone (30 days). 0 = never hide. Default 2.
-  hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 10
+  hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 20 [HF-CREATOR-SPACES-1]
+  hfInfluencerMinViews: number; // [HF-CREATOR-SPACES-1] NUMERIC (numericKeys): total channel views needed on a YouTube channel (Instagram has no total views); default 1000
+  hfCreatorSpacesEnabled: boolean; // [HF-CREATOR-SPACES-1] kill switch: Women-only / LGBTQ+ creator spaces + video KYC (off -> 404 not_enabled on /api/hf/spaces/*)
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -3009,7 +3011,9 @@ const DEFAULTS: PlatformConfig = {
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
   hfReelUnplayableHideAt: 2, // [HF-REEL-SKIP-2] owner 2026-10-22: unplayable reels leave the feed for everyone
-  hfInfluencerMinFollowers: 10, // [HF-WIRE-1B] owner 2026-10-19 (handover 10 asks whether 10 or 10,000)
+  hfInfluencerMinFollowers: 20, // [HF-WIRE-1B] owner 2026-10-19; raised 10 -> 20 by [HF-CREATOR-SPACES-1] 2026-10-24
+  hfInfluencerMinViews: 1000, // [HF-CREATOR-SPACES-1] owner 2026-10-24: >= 1,000 total views on a YouTube channel
+  hfCreatorSpacesEnabled: true, // [HF-CREATOR-SPACES-1] kill switch
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
   hfTopupPacks: "100,200,500,1000",
@@ -3252,7 +3256,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", /* [HF-CALL-MODES-P0] */ "hfCallChunkMinutes", "hfCallMaxMinutes", "hfQueueMaxLength", "hfQueueBreakSeconds", "hfQueueMaxWaitMinutes", "hfQueuePauseExpireMinutes", "hfBookingHoldMinutes", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", /* [HF-CALL-MODES-P0] */ "hfCallChunkMinutes", "hfCallMaxMinutes", "hfQueueMaxLength", "hfQueueBreakSeconds", "hfQueueMaxWaitMinutes", "hfQueuePauseExpireMinutes", "hfBookingHoldMinutes", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfInfluencerMinViews", /* [HF-CREATOR-SPACES-1] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",
@@ -3519,6 +3523,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfInfluencerMinFollowers" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
       return json({ error: "hfInfluencerMinFollowers must be a whole number 0-100000000" }, 400); // [HF-WIRE-1B]
+    }
+    if (k === "hfInfluencerMinViews" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000_000)) {
+      return json({ error: "hfInfluencerMinViews must be a whole number 0-1000000000" }, 400); // [HF-CREATOR-SPACES-1]
     }
     if (k === "hfInvoicePrefix" && !/^[A-Za-z0-9]{1,4}$/.test(String(v))) {
       return json({ error: "hfInvoicePrefix must be 1-4 letters or digits" }, 400);

@@ -6,11 +6,14 @@
  * Spec: Specs/SPEC-2026-10-09-HF-HOST-ONBOARDING.md */
 
 export type StepKey =
-  | 'welcome' | 'phone' | 'aadhaar' | 'selfie' | 'payout'
+  | 'welcome' | 'path' | 'phone' | 'channel' | 'aadhaar' | 'declare' | 'selfie' | 'payout'
   | 'avatar' | 'about' | 'languages' | 'topics' | 'price' | 'hours'
   | 'voice' | 'review' | 'generating' | 'preview' | 'done';
 
 export type StepGroup = 'start' | 'verify' | 'profile' | 'voice' | 'finish';
+
+/** [HF-CREATOR-SPACES-1] Which kind of creator this person is becoming. */
+export type CreatorPath = 'channel' | 'women' | 'lgbtq';
 
 export type Gender = 'woman' | 'man';
 /** What the (mock) UIDAI record says; avatars stay woman/man. */
@@ -37,6 +40,10 @@ export interface GeneratedProfile {
 }
 
 export interface Draft {
+  /** [HF-CREATOR-SPACES-1] null until the path step. Never holds the private LGBTQ+ declaration itself, only that it was sent. */
+  path: CreatorPath | null;
+  lgbtqDeclared: boolean;      // the declare step was sent to the server
+  channelQualified: boolean;   // GET /api/hf/channels said qualified
   phone: string;               // 10 digits, no +91
   phoneVerified: boolean;
   kycGender: KycGender | null; // gender on the Aadhaar record (mock: chosen on the Aadhaar screen)
@@ -84,6 +91,21 @@ export interface ServerDraft {
  *  `attemptsLeft` = tries left on this OTP. `field` names the form field the error belongs to ('aadhaar' | 'consent'). */
 export interface KycOtpResult extends ApiResult { fallback?: 'digilocker'; attemptsLeft?: number }
 
+/** [HF-CREATOR-SPACES-1] GET /api/hf/spaces/me */
+export interface SpacesMe {
+  kind: CreatorPath | null; whatsappVerified: boolean; aadhaarVerified: boolean; gender: 'F' | 'M' | 'T' | null;
+  selfie: { status: 'none' | 'pending' | 'approved' | 'rejected'; reason: string | null };
+  lgbtqDeclared: boolean; videoKycVerified: boolean; qualified: boolean; hostStatus: string | null; minFollowers: number; minViews: number;
+}
+
+export type ChannelState = 'checking' | 'approved' | 'needs_followers' | 'needs_views' | 'disconnected';
+export interface ChannelItem {
+  id: string; platform: 'instagram' | 'youtube'; handle: string; url: string | null; followers: number; views: number;
+  state: ChannelState; verified: boolean; needsCode: boolean; verifyCode?: string | null;
+}
+export interface ChannelsInfo { channels: ChannelItem[]; minFollowers: number; minViews: number; qualified: boolean }
+export interface ChannelAction extends ApiResult { channel?: ChannelItem; result?: string; message?: string; info?: ChannelsInfo }
+
 export interface OnboardingApi {
   /** 'mock' = clickable preview, nothing is sent. 'real' = talks to the worker. */
   readonly mode: 'mock' | 'real';
@@ -123,6 +145,19 @@ export interface OnboardingApi {
   /** Real only: host edits of the generated tagline / about / quote. */
   editGenerated(patch: { tagline?: string; aboutPolished?: string; quote?: string }): Promise<ApiResult>;
   submitForReview(draft: Draft): Promise<ApiResult>;
+  /** [HF-CREATOR-SPACES-1] What the server knows about the creator type. Null in mock or when the call fails. */
+  getSpacesMe(): Promise<SpacesMe | null>;
+  /** POST /api/hf/spaces/creator. Errors carry the worker message (not_eligible, consent_required, declare_required). */
+  setCreator(body: { kind: CreatorPath; declare?: true; acceptTerms?: true; publicTagConsent?: true }): Promise<ApiResult>;
+  /** GET /api/hf/channels. */
+  listChannels(): Promise<ChannelsInfo | null>;
+  /** POST /api/hf/channels (bio-code route). */
+  addChannel(platform: 'instagram' | 'youtube', handleOrUrl: string): Promise<ChannelAction>;
+  /** POST /api/hf/channels/:id/check */
+  checkChannel(id: string): Promise<ChannelAction>;
+  /** POST /api/hf/channels/youtube/connect with a Google access token (youtube.readonly). */
+  connectYoutube(accessToken: string): Promise<ChannelAction>;
+  removeChannel(id: string): Promise<ApiResult>;
 }
 
 /** What the shell's sticky bottom bar does on this step. A step sets it with

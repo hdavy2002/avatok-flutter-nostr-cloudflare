@@ -1,6 +1,7 @@
 // [HF-NATIVE-S2] Pure parsing + SQL building for GET /api/hf/hosts (native app host list). No env / network here.
 import { TOPICS, TOPIC_SLUGS, LANGUAGE_CODES, LANGUAGES } from "./hf_options";
 import { parseLane, type Lane } from "./hf_lanes";
+import { parseSpace, type SpaceName } from "./hf_spaces"; // [HF-CREATOR-SPACES-1]
 import { isHostCategory, CREATOR_MAX_RUPEES, type HostCategory } from "./hf_creator_pricing";
 
 export const LIST_DEFAULT_LIMIT = 24;
@@ -11,7 +12,7 @@ export type HostSort = (typeof SORTS)[number];
 
 export interface HostListQuery {
   topics: string[]; langs: string[]; minPrice: number | null; maxPrice: number | null;
-  online: boolean; lane: Lane | null; sort: HostSort; limit: number; offset: number;
+  online: boolean; lane: Lane | null; space?: SpaceName | null; sort: HostSort; limit: number; offset: number;
   category?: HostCategory | "creators" | null;
   search?: string;
 }
@@ -40,6 +41,9 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
   const laneRaw = sp.get("lane");
   const lane = parseLane(laneRaw);
   if (laneRaw && !lane) return { ok: false, status: 400, error: "bad_lane" };
+  const spaceRaw = sp.get("space");
+  const space = parseSpace(spaceRaw);
+  if (spaceRaw && !space) return { ok: false, status: 400, error: "bad_space" };
   const sortRaw = sp.get("sort");
   const category = sp.get("category");
   if (category && category !== "creators" && !isHostCategory(category)) return { ok: false, status: 400, error: "bad_category" };
@@ -58,6 +62,7 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
       ...(search ? { search } : {}),
       online: sp.get("online") === "1" || sp.get("online") === "true",
       lane,
+      ...(space ? { space } : {}),
       sort: (sortRaw as HostSort) || "online_first",
       limit: lim == null ? LIST_DEFAULT_LIMIT : clamp(Math.floor(lim), 1, LIST_MAX_LIMIT),
       offset: off == null ? 0 : clamp(Math.floor(off), 0, LIST_MAX_OFFSET),
@@ -73,6 +78,7 @@ export function listCacheKey(q: HostListQuery): string {
   if (q.minPrice != null) p.set("minPrice", String(q.minPrice));
   if (q.maxPrice != null) p.set("maxPrice", String(q.maxPrice));
   if (q.online) p.set("online", "1");
+  if (q.space) p.set("space", q.space);
   if (q.category) p.set("category", q.category);
   if (q.search) p.set("q", q.search);
   p.set("sort", q.sort); p.set("limit", String(q.limit)); p.set("offset", String(q.offset));
@@ -109,6 +115,7 @@ export function buildWhere(q: HostListQuery, standardPaise?: number): { where: s
     } else w.push(text);
   }
   const price = effectivePriceSql(standardPaise);
+  if (q.space) w.push(q.space === "women" ? "h.women_lane=1" : "h.lgbtq_lane=1 AND h.lgbtq_public=1"); // [HF-CREATOR-SPACES-1]
   if (q.lane) w.push(q.lane === "women" ? "h.women_lane=1" : "h.lgbtq_lane=1");
   if (q.topics.length) {
     const from = binds.length + 1; binds.push(...q.topics);

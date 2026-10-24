@@ -135,6 +135,15 @@ const livePoster=c=>c.img?`<img class="poster" src="${esc(c.img)}" alt="" loadin
 const heartBtn=c=>!FAV.on?'':`<button class="heart" type="button" data-heart="${esc(c.id)}" data-name="${esc(c.name)}" aria-pressed="${FAV.set.has(c.id)}" aria-label="${FAV.set.has(c.id)?'Remove '+esc(c.name)+' from My Fraands':'Save '+esc(c.name)+' to My Fraands'}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="${FAV.set.has(c.id)?'currentColor':'none'}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-8-4.6-8-10a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.4-8 10-8 10Z"/></svg></button>`;
 const ratingTxt=c=>c.rc>0&&c.rating!=null?`★ ${Number(c.rating).toFixed(1)} (${c.rc}) &middot; `:'';
 const stTxtOf=st=>({online:'Online now',busy:'On a call',offline:'Offline'}[st]||'Offline');
+/* [HF-CREATOR-SPACES-1] green "Video KYC verified" pill (the only green on the site) + Women-only / LGBTQ+ channel tag */
+const SPACE_TXT={women:'Women-only channel',lgbtq:'LGBTQ+ channel'};
+const KYC_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none" opacity=".16"/><path d="m7.5 12.5 3 3 6-6.5"/></svg>';
+let kycSeen=false;
+function spaceBadges(c){
+ if(!c.kyc&&!c.space)return '';
+ if(c.kyc&&!kycSeen){kycSeen=true;ev('hf_video_kyc_badge_shown',{surface:'explore'})}
+ return `<ul class="hf-sb" aria-label="Verification and channel type">${c.kyc?`<li class="hf-kyc-pill">${KYC_SVG}Video KYC verified</li>`:''}${c.space?`<li class="hf-space-tag">${esc(SPACE_TXT[c.space])}</li>`:''}</ul>`;
+}
 function lcard(c,i){
  const url=profileUrl(c);
  return `<article class="card" style="--tile:url(${IMG[TILES[i%4]]})" data-id="${esc(c.id)}">
@@ -147,6 +156,7 @@ function lcard(c,i){
   <div class="info">
    <div class="nm"><h3><a href="${url}" data-card-link="${esc(c.id)}">${esc(c.name)}</a></h3>${c.ver?`<img class="vbadge" src="${IMG.verified}" alt="Verified" title="ID-verified influencer">`:''}</div>
    <div class="handle">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div>
+   ${spaceBadges(c)}
    <div class="chips">${c.cat.slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}${c.lang.slice(0,2).map(x=>`<span class="lang">${esc(x)}</span>`).join('')}</div>
    <div class="buy"><div class="rate">${money0(c.rate)}<small>/min</small></div><a class="book" href="${url}" data-card-link="${esc(c.id)}">${I.phone}Book call</a></div>
   </div>
@@ -157,7 +167,7 @@ function lrow(c){
  return `<article class="row" data-id="${esc(c.id)}">
   <div class="th">${c.img?`<img src="${esc(c.img)}" alt="" loading="lazy">`:initial(c)}</div>
   <div style="min-width:0"><div class="nm"><h3><a href="${url}" data-card-link="${esc(c.id)}">${esc(c.name)}</a></h3>${c.ver?`<img class="vbadge" src="${IMG.verified}" alt="Verified">`:''}</div>
-   <div class="handle" style="margin-top:2px">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div></div>
+   <div class="handle" style="margin-top:2px">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div>${spaceBadges(c)}</div>
   <div class="chips row-chips">${c.cat.map(x=>`<span>${esc(x)}</span>`).join('')}${c.lang.map(x=>`<span class="lang">${esc(x)}</span>`).join('')}</div>
   <span class="status ${c.st} row-status"><i></i>${c.appt?'By appointment':stTxtOf(c.st)}</span>
   <div style="display:flex;align-items:center;gap:14px">${heartBtn(c)}<div class="rate">${money0(c.rate)}<small>/min</small></div><a class="book" href="${url}" data-card-link="${esc(c.id)}">${I.phone}<span>Book</span></a></div>
@@ -184,7 +194,7 @@ const ROWF=c=>LIVE?lrow(c):row(c);
 const compactN=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1).replace(/\.0$/,'')+'M':n>=1e3?(n/1e3).toFixed(n>=1e4?0:1).replace(/\.0$/,'')+'K':String(n||0);
 
 /* ---------- state ---------- */
-const S={q:'',platform:new Set(),category:new Set(),language:new Set(),gender:new Set(),avail:'any',pmin:'',pmax:'',sort:'rec',view:'grid'};
+const S={q:'',platform:new Set(),category:new Set(),language:new Set(),gender:new Set(),avail:'any',pmin:'',pmax:'',sort:'rec',view:'grid',space:''};
 const LANGS=['Hindi','English','Tamil','Telugu','Punjabi','Bengali','Marathi','Gujarati','Malayalam','Garhwali'];
 const F=[
  {k:'platform',liveHide:true,label:'Platform',type:'multi',opts:[['ig','Instagram'],['yt','YouTube'],['fb','Facebook']]},
@@ -195,6 +205,7 @@ const F=[
  {k:'price',label:'Price / min',type:'price'},
  {k:'sort',label:'Sort',type:'radio',opts:[['rec','Recommended'],['pop','Popular'],['recent','Recently active'],['plo','Price: low to high'],['phi','Price: high to low']]}
 ];
+try{const sp=new URLSearchParams(location.search).get('space');if(sp==='women'||sp==='lgbtq')S.space=sp}catch(e){}
 const views=v=>parseFloat(v)*(/M/.test(v)?1e6:/K/.test(v)?1e3:1)||0;
 function matchQ(c,q){
  if(!q)return true; q=q.toLowerCase().replace(/^@/,'');
@@ -206,6 +217,7 @@ function filtered(){
   &&(!S.category.size||c.cat.some(x=>S.category.has(x)))
   &&(!S.language.size||c.lang.some(x=>S.language.has(x)))
   &&(!S.gender.size||S.gender.has(c.g))
+  &&(!S.space||c.space===S.space)/* [HF-CREATOR-SPACES-1] */
   &&(S.avail==='any'||(S.avail==='online'&&c.st==='online')||(S.avail==='today'&&c.today)||S.avail==='schedule')
   &&(S.pmin===''||c.rate>=+S.pmin)&&(S.pmax===''||c.rate<=+S.pmax));
  const st={online:0,busy:1,offline:2};
@@ -216,7 +228,7 @@ function filtered(){
  else r.sort((a,b)=>(b.ver-a.ver)||(st[a.st]-st[b.st]));
  return r;
 }
-const active=()=>!!(S.q||S.platform.size||S.category.size||S.language.size||S.gender.size||S.avail!=='any'||S.pmin!==''||S.pmax!==''||S.sort!=='rec');
+const active=()=>!!(S.q||S.platform.size||S.category.size||S.language.size||S.gender.size||S.avail!=='any'||S.pmin!==''||S.pmax!==''||S.sort!=='rec'||S.space!=='');
 
 /* ---------- render ---------- */
 function renderList(list,el,kind){
@@ -245,6 +257,7 @@ function renderResults(){
  ['platform','category','language','gender'].forEach(k=>S[k].forEach(v=>pills.push([k,v,k==='platform'?PLN[v]:v])));
  if(S.avail!=='any')pills.push(['avail','',F[4].opts.find(o=>o[0]===S.avail)[1]]);
  if(S.pmin!==''||S.pmax!=='')pills.push(['price','',`₹${S.pmin||0}–${S.pmax||'∞'}/min`]);
+ if(S.space)pills.push(['space','',SPACE_TXT[S.space]]);
  if(S.sort!=='rec')pills.push(['sort','','Sort: '+F[6].opts.find(o=>o[0]===S.sort)[1]]);
  $('#pills').innerHTML=pills.map(([k,v,t])=>`<button class="pill" type="button" data-rm="${k}" data-v="${esc(v)}" aria-label="Remove ${esc(t)}">${esc(t)}${I.x}</button>`).join('')+`<button class="clear" type="button" id="clearAll">Clear all</button>`;
  const body=$('#resBody');
@@ -267,7 +280,7 @@ function renderFilters(){
  $('#frow').innerHTML=F.filter(f=>!(LIVE&&f.liveHide)).map(f=>{
   let n=0;if(f.type==='multi')n=S[f.k].size;else if(f.k==='avail')n=S.avail!=='any'?1:0;else if(f.k==='price')n=(S.pmin!==''||S.pmax!=='')?1:0;else if(f.k==='sort')n=0;
   const lab=f.k==='sort'?'Sort: '+F[6].opts.find(o=>o[0]===S.sort)[1]:f.label;
-  return `<div class="fdrop"><button class="fbtn${n?' on':''}" type="button" data-f="${f.k}" aria-expanded="false" aria-haspopup="true">${lab}${n?`<span class="n">${n}</span>`:''}${I.down}</button></div>`}).join('');
+  return `<div class="fdrop"><button class="fbtn${n?' on':''}" type="button" data-f="${f.k}" aria-expanded="false" aria-haspopup="true">${lab}${n?`<span class="n">${n}</span>`:''}${I.down}</button></div>`}).join('')+(LIVE?`<div class="frow-space" role="group" aria-label="Channel type">${[['women','Women-only'],['lgbtq','LGBTQ+']].map(([v,t])=>`<button class="fbtn space-chip" type="button" data-space="${v}" aria-pressed="${S.space===v}">${t}</button>`).join('')}</div>`:'');
 }
 function renderCats(){
  if(LIVE){const w=$('#cats');if(w)w.closest('.wrap').hidden=true;const t=$('#tiles');if(t)t.closest('section').hidden=true;return}
@@ -352,13 +365,14 @@ document.addEventListener('click',e=>{
  if(pop&&!pop.el.contains(t)&&!t.closest('[data-f]'))closePop();
  if(!t.closest('#searchBox'))sg.hidden=true;
  let b;
+ if(b=t.closest('[data-space]')){const v=b.dataset.space;S.space=S.space===v?'':v;ev('hf_space_filter',{space:S.space||'none',surface:'explore'});update(false);return}
  if(b=t.closest('[data-f]')){pop&&pop.btn.dataset.f===b.dataset.f?closePop():openPop(b);return}
  if(b=t.closest('[data-view]')){S.view=b.dataset.view;$$('[data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));renderShelves();renderResults();return}
  if(b=t.closest('.cat,.tile')){const k=b.dataset.cat;if(!k){S.category.clear()}else{S.category.has(k)&&b.classList.contains('cat')?S.category.delete(k):S.category.add(k)}update();if(b.classList.contains('tile'))scrollToResults();return}
  if(b=t.closest('[data-q]')){q.value=b.dataset.q;S.q=b.dataset.q;update();scrollToResults();return}
  if(b=t.closest('[data-quick]')){e.preventDefault();S.avail='online';update();scrollToResults();return}
- if(b=t.closest('[data-rm]')){const k=b.dataset.rm,v=b.dataset.v;if(k==='q'){S.q='';q.value=''}else if(k==='avail')S.avail='any';else if(k==='sort')S.sort='rec';else if(k==='price'){S.pmin='';S.pmax=''}else S[k].delete(v);update();return}
- if(t.closest('#clearAll')){Object.assign(S,{q:'',avail:'any',pmin:'',pmax:'',sort:'rec'});['platform','category','language','gender'].forEach(k=>S[k].clear());q.value='';update();return}
+ if(b=t.closest('[data-rm]')){const k=b.dataset.rm,v=b.dataset.v;if(k==='q'){S.q='';q.value=''}else if(k==='avail')S.avail='any';else if(k==='sort')S.sort='rec';else if(k==='space')S.space='';else if(k==='price'){S.pmin='';S.pmax=''}else S[k].delete(v);update();return}
+ if(t.closest('#clearAll')){Object.assign(S,{q:'',avail:'any',pmin:'',pmax:'',sort:'rec',space:''});['platform','category','language','gender'].forEach(k=>S[k].clear());q.value='';update();return}
  if(b=t.closest('[data-rail]')){const r=$('#rail-'+b.dataset.rail);r&&r.scrollBy({left:+b.dataset.dir*r.clientWidth*.8,behavior:'smooth'});return}
  if(!LIVE&&(b=t.closest('[data-play]'))){play(b);return}
  if(b=t.closest('[data-stop]')){b.closest('.state').remove();return}
@@ -510,7 +524,7 @@ async function loadLive(){
  F[4].opts=F[4].opts.filter(o=>o[0]==='any'||o[0]==='online');
  if(hosts===null){const e=$('#liveEmpty');if(e){e.querySelector('h2').textContent='We could not load influencers right now.';e.querySelector('p').textContent='Please refresh in a moment.'}}
  C=(hosts||[]).map(h=>({id:h.slug,name:h.displayName,h:h.slug,tag:h.tagline||'',cat:(h.topics||[]).map(t=>topicLabel[t]||t),lang:(h.languages||[]).map(langLabel),
-  rate:Number(h.pricePerMin)||0,st:h.status||'offline',appt:h.callState==='appointments'&&h.status!=='online'&&h.status!=='busy',/* [HF-IDV-WHATSAPP-3] same label as the profile page */ver:!!h.identityVerified,g:'',img:h.avatarUrl||null,rating:h.rating,rc:h.reviewCount||0,pop:(h.reviewCount||0)*10+(h.talkedTo||0),tags:[],today:true,kw:h.tagline||''}));
+  rate:Number(h.pricePerMin)||0,st:h.status||'offline',appt:h.callState==='appointments'&&h.status!=='online'&&h.status!=='busy',/* [HF-IDV-WHATSAPP-3] same label as the profile page */ver:!!h.identityVerified,kyc:h.videoKycVerified===true,space:(h.space==='women'||h.space==='lgbtq')?h.space:(h.womenOnly?'women':null),g:'',img:h.avatarUrl||null,rating:h.rating,rc:h.reviewCount||0,pop:(h.reviewCount||0)*10+(h.talkedTo||0),tags:[],today:true,kw:h.tagline||''}));
  // creators fans can ask to join: invite creators seen in the reels feed (real names, followers and vote counts)
  const seen=new Set();D=[];
  ((reels&&reels.items)||[]).forEach(it=>{

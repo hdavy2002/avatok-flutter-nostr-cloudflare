@@ -10,9 +10,9 @@ export function parseLane(v: unknown): Lane | null {
   return s === "women" || s === "lgbtq" ? s : null;
 }
 
-/** Women-only space: Aadhaar gender must be female or transgender (/women-only page states this). */
+/** Women-only space: Aadhaar gender must be female ONLY ([HF-CREATOR-SPACES-1] 2026-10-24: transgender is no longer accepted here, T goes to the LGBTQ+ space). */
 export function womenEligible(gender: string | null | undefined): boolean {
-  return gender === "F" || gender === "T";
+  return gender === "F";
 }
 
 /** Eligibility for a lane given the Aadhaar record. LGBTQ+ accepts any gender once Aadhaar is verified. */
@@ -21,7 +21,7 @@ export function laneEligible(lane: Lane, aadhaarVerified: boolean, gender: strin
   return lane === "women" ? womenEligible(gender) : true;
 }
 
-export const WOMEN_NOT_ELIGIBLE_MESSAGE = "The women-only space is open to callers whose Aadhaar shows female or transgender.";
+export const WOMEN_NOT_ELIGIBLE_MESSAGE = "The women-only space is open to callers whose Aadhaar shows female.";
 
 export type LaneSelfieStatus = "none" | "pending" | "approved" | "rejected";
 
@@ -35,7 +35,8 @@ export async function latestLaneSelfie(env: Env, uid: string): Promise<{ status:
   return { status, reason: status === "rejected" ? row?.review_reason ?? null : null };
 }
 
-/** Single authority for discovery, profile visibility and direct call requests. Fail closed. */
+/** Single authority for discovery, profile visibility and direct call requests. Fail closed.
+ *  [HF-CREATOR-SPACES-1] women = joined + Aadhaar F + latest selfie APPROVED; lgbtq = declared + Aadhaar verified + latest selfie APPROVED. */
 export async function getLaneAccess(env: Env, uid: string): Promise<{ women: boolean; lgbtq: boolean }> {
   const rows = (await env.DB_META.prepare(
     `SELECT a.lane AS lane, a.declared_at AS declared_at, k.gender AS gender FROM hf_lane_access a
@@ -43,10 +44,11 @@ export async function getLaneAccess(env: Env, uid: string): Promise<{ women: boo
       WHERE a.uid = ?1`,
   ).bind(uid).all<{ lane: string; declared_at: number | null; gender: string | null }>().catch(() => null))?.results ?? [];
   const out = { women: false, lgbtq: false };
+  if (!rows.length) return out;
+  if ((await latestLaneSelfie(env, uid)).status !== "approved") return out;
   for (const r of rows) {
     if (r.lane === "women" && womenEligible(r.gender)) out.women = true;
+    if (r.lane === "lgbtq" && r.declared_at != null) out.lgbtq = true;
   }
-  // [HF-IDV-WHATSAPP-1 2026-10-24] No selfie video any more: LGBTQ+ needs the declaration + a verified Aadhaar (rows are already joined on verified hf_kyc).
-  if (rows.some((r) => r.lane === "lgbtq" && r.declared_at != null)) out.lgbtq = true;
   return out;
 }

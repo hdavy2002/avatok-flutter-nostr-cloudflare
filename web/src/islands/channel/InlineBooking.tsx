@@ -9,6 +9,9 @@ import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { capture } from '../../lib/analytics';
 import { bookingError, bookingsEnabled, getPublicSlotsInfo, offeredDurations, type AvailabilitySlot } from '../../lib/hfBookingsApi';
 import { callModeFlags, offeredLengths } from '../../lib/hfCallModes';
+import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
+import SessionBridge from '../calls/SessionBridge';
+import { spaceOf, useSpaceGate } from '../../lib/hfSpaces';
 import { chargeForSeconds, type PriceTier } from '../../lib/hfStdPlan';
 import { formatPaise } from '../../lib/money';
 
@@ -20,11 +23,22 @@ const timeFmt = (iso: string) => new Intl.DateTimeFormat('en-IN', { hour: 'numer
 
 const money = (paise: number) => (paise % 100 === 0 ? `₹${(paise / 100).toLocaleString('en-IN')}` : formatPaise(paise));
 
-interface Props { hostSlug: string; hostName: string; paisePerMin: number; plan?: string; priceTiers?: PriceTier[] }
+interface Props { hostSlug: string; hostName: string; paisePerMin: number; plan?: string; priceTiers?: PriceTier[]; space?: 'women' | 'lgbtq' | null }
 
 const meterArt = artUrl('meterIcon');
 
-export default function InlineBooking({ hostSlug, hostName, paisePerMin, plan, priceTiers }: Props) {
+/** [HF-CREATOR-SPACES-1] Booking on a Women-only / LGBTQ+ channel is locked until the viewer's video KYC is approved (the server checks too). */
+export default function InlineBooking(props: Props) {
+  const space = spaceOf({ space: props.space });
+  const gate = useSpaceGate(space);
+  if (!space) return <InlineBookingInner {...props} />;
+  return <>
+    <SessionBridge on={gate.needsBridge} />
+    {gate.state === 'ok' ? <InlineBookingInner {...props} /> : <SpaceLock lane={space} wait={gate.state === 'loading'} signedOut={gate.state === 'signedout'} missing={gate.missing} />}
+  </>;
+}
+
+function InlineBookingInner({ hostSlug, hostName, paisePerMin, plan, priceTiers }: Props) {
   const today = useMemo(() => ymd(new Date()), []);
   const [state, setState] = useState<'checking' | 'off' | 'loading' | 'ready' | 'error'>('checking');
   const [week, setWeek] = useState(0);

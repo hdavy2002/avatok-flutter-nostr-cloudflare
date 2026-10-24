@@ -1,5 +1,5 @@
 // [HF-NATIVE-S2/S3] Native-app host list + options. The web's GET /api/hosts/public is untouched (bare array, web depends on it).
-//   GET /api/hf/hosts?topic=a,b&lang=hi,en&minPrice=&maxPrice=&online=1&lane=women|lgbtq&sort=online_first|price_low|rating&limit=24&offset=
+//   GET /api/hf/hosts?topic=a,b&lang=hi,en&minPrice=&maxPrice=&online=1&lane=women|lgbtq&space=women|lgbtq&sort=online_first|price_low|rating&limit=24&offset=
 //        -> { items:[card], nextOffset:number|null, total }   same card shape as /api/hosts/public (flag hostsPublicEnabled)
 //   GET /api/hf/options  -> topics/moodGroups/languages/styles/priceMin/priceMax, public, cached 1 h
 // Lane lists follow the public route's rule: bearer + lane access, else 403 lane_required; never cached.

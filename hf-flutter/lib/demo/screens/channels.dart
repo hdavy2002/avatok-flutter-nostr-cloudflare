@@ -28,6 +28,7 @@ String channelChipLabel(Channel c, int minFollowers) => switch (c.state) {
       ChannelState.checking => 'Checking…',
       ChannelState.approved => 'Approved',
       ChannelState.needsFollowers => 'Needs $minFollowers+ followers',
+      ChannelState.needsViews => 'Needs more views',
       ChannelState.disconnected => 'Disconnected',
     };
 
@@ -74,6 +75,7 @@ class ChannelCard extends StatelessWidget {
       ChannelState.approved => (C.teatint, const Color(0xFF0B5F66), Icons.check_rounded, const Color(0xFFF8C4D9)),
       ChannelState.checking => (C.goldtint, C.amber, Icons.hourglass_top_rounded, const Color(0xFFF3DFB3)),
       ChannelState.needsFollowers => (const Color(0xFFF3EEF2), C.ruby, null, const Color(0xFFDDD2FB)),
+      ChannelState.needsViews => (const Color(0xFFF3EEF2), C.ruby, null, const Color(0xFFDDD2FB)),
       ChannelState.disconnected => (const Color(0xFFF3EEF2), C.muted, null, C.line),
     };
     final live = c.state != ChannelState.disconnected;
@@ -226,7 +228,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                     Text(
                       v.qualified
                           ? 'You are approved. Keep at least one channel with ${v.minFollowers}+ followers or subscribers.'
-                          : 'We need at least ${v.minFollowers} followers or subscribers on one YouTube or Instagram channel.',
+                          : 'We need at least ${v.minFollowers} followers or subscribers on one YouTube or Instagram channel, and ${v.minViews} total views on YouTube (Instagram is checked on followers only).',
                       style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4),
                     ),
                     const SizedBox(height: 14),
@@ -631,7 +633,9 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
     Telemetry.event('hf_channel_check_tap');
     AsyncState<ChannelCheck> next;
     try {
-      next = AsyncData<ChannelCheck>(await _repo.check(widget.id));
+      final checked = await _repo.check(widget.id);
+      Telemetry.event('hf_channel_threshold', {'result': checked.result.name, 'followers': checked.channel.followers, 'views': checked.channel.views}); // [HF-CREATOR-SPACES-1]
+      next = AsyncData<ChannelCheck>(checked);
     } catch (e) {
       next = AsyncFailure<ChannelCheck>(e);
     }
@@ -699,6 +703,18 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
             art: 'influencer/offline-mode.webp',
             title: 'Not yet',
             message: 'We need at least ${r.minFollowers} followers or subscribers on YouTube or Instagram. ${ch.handle.isEmpty ? '' : '${ch.handle} has ${_count(ch.followers)}.'}'.trim(),
+          ),
+          buttons: [
+            ChannelBigButton(label: 'TRY ANOTHER CHANNEL', onTap: () => context.go('/inf/channels/add${_fromQuery(widget.from)}')),
+            ChannelBigButton(label: 'CHECK AGAIN LATER', ghost: true, onTap: _leave),
+          ],
+        );
+      case CheckResult.needsViews:
+        return _panel(
+          card: ResultCard(
+            art: 'influencer/offline-mode.webp',
+            title: 'Not yet',
+            message: r.message.isEmpty ? 'We need at least ${r.minViews} total views on your YouTube channel.' : r.message,
           ),
           buttons: [
             ChannelBigButton(label: 'TRY ANOTHER CHANNEL', onTap: () => context.go('/inf/channels/add${_fromQuery(widget.from)}')),
@@ -802,7 +818,7 @@ class _ChannelsStepState extends State<ChannelsStep> {
       builder: (context, v) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('We need at least ${v.minFollowers} followers or subscribers on one YouTube or Instagram channel.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
+          Text('We need at least ${v.minFollowers} followers or subscribers on one YouTube or Instagram channel, and ${v.minViews} total views on YouTube (Instagram is checked on followers only).', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
           const SizedBox(height: 12),
           for (final c in v.active)
             ChannelCard(

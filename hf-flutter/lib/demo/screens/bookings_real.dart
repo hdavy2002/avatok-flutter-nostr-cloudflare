@@ -23,6 +23,7 @@ import '../desi.dart';
 import '../profile_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import 'call_real.dart' show callPerson, paiseText, recoverHfAgeConfirmation, BookingAgeConfirmation;
 
 /// Real bookings (HF-WIRE-8). While [DemoMode.on] the dummy flow in booking.dart / influencer.dart / me.dart stays.
@@ -434,6 +435,8 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
         await recoverHfAgeConfirmation(context);
         return;
       }
+      if (await handleLaneRequired(context, e)) return; // [HF-CREATOR-SPACES-1]
+      if (!mounted) return;
       switch (bookingProblemOf(e)) {
         case BookingProblem.tooSoon:
         case BookingProblem.badTopic:

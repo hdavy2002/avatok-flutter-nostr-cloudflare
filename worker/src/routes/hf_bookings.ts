@@ -265,16 +265,17 @@ export function parseUtcIso(value: unknown): number | null {
 }
 
 function laneGuardSql(customerParam: number, hostParam: number, lane: string | null): string {
-  const gates = [
-    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND women_lane=1) OR EXISTS (` +
+  // [HF-CREATOR-SPACES-1] women host: customer joined + Aadhaar F + latest selfie approved. LGBTQ+ host (or an lgbtq booking): declared + Aadhaar verified + latest selfie approved.
+  void lane;
+  const selfieOk = `(SELECT s.review_status FROM hf_selfie s WHERE s.uid=?${customerParam} ORDER BY s.created_at DESC, s.id DESC LIMIT 1)='approved'`;
+  return [
+    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND women_lane=1) OR (EXISTS (` +
       `SELECT 1 FROM hf_lane_access la JOIN hf_kyc k ON k.uid=la.uid AND k.verified_at IS NOT NULL ` +
-      `WHERE la.uid=?${customerParam} AND la.lane='women' AND k.gender IN ('F','T')))` ,
-  ];
-  if (lane === "lgbtq") gates.push(
-    `EXISTS (SELECT 1 FROM hf_lane_access WHERE uid=?${customerParam} AND lane='lgbtq' AND declared_at IS NOT NULL)`,
-    `EXISTS (SELECT 1 FROM hf_kyc WHERE uid=?${customerParam} AND verified_at IS NOT NULL)`, // [HF-IDV-WHATSAPP-1] Aadhaar replaces the selfie video
-  );
-  return gates.join(" AND ");
+      `WHERE la.uid=?${customerParam} AND la.lane='women' AND k.gender='F') AND ${selfieOk}))`,
+    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND lgbtq_lane=1) OR (EXISTS (` +
+      `SELECT 1 FROM hf_lane_access la JOIN hf_kyc k ON k.uid=la.uid AND k.verified_at IS NOT NULL ` +
+      `WHERE la.uid=?${customerParam} AND la.lane='lgbtq' AND la.declared_at IS NOT NULL) AND ${selfieOk}))`,
+  ].join(" AND ");
 }
 
 function activeConflictSql(a: number, b: number, start: number, end: number, buffer: number): string {
@@ -296,10 +297,9 @@ async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow,
   if (!(await verifiedWhatsAppNumber(env, uid)) || !(await verifiedWhatsAppNumber(env, host.uid))) return err(403, "not_verified");
   if (await isBlockedEitherWay(env, uid, host.uid)) return err(409, "host_unavailable");
   if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", { lane: "women" });
-  if (lane === "lgbtq") {
-    if (host.lgbtq_lane !== 1) return err(409, "host_unavailable");
-    if (!(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", { lane: "lgbtq" });
-  } else if (lane != null && lane !== "women") return err(400, "invalid_lane");
+  if (lane === "lgbtq" && host.lgbtq_lane !== 1) return err(409, "host_unavailable");
+  if (lane != null && lane !== "women" && lane !== "lgbtq") return err(400, "invalid_lane");
+  if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
   return null;
 }
 

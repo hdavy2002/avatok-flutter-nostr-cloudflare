@@ -22,6 +22,7 @@ import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
 import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
 import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
+import { spaceQualified } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 import { isPhoneVerified } from "../lib/hf_public_verification";
 import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
 import { acquireHfScheduleWriteLock, drainHfBookingHolds, getHfBookingSchedule, releaseHfScheduleWriteLock } from "../lib/hf_booking_store";
@@ -294,6 +295,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
       isPhoneVerified(env, uid),
       env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE uid=?1 AND status='active' AND kind IN ('profile','gallery')").bind(uid).first<{ n: number }>(),
     ]);
+    if (!(await spaceQualified(env, uid))) return err(409, "video_kyc_required", { message: "This Women-only / LGBTQ+ creator has not passed video KYC yet." }); // [HF-CREATOR-SPACES-1]
     const missing: string[] = [];
     if (!phoneOk) missing.push("whatsapp_not_verified");
     if (!media?.n) missing.push("no_media");

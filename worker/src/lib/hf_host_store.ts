@@ -5,7 +5,7 @@ import { introStatusOf, INTRO_MEDIA_KIND } from "./hf_intro";
 
 export interface HostRow {
   uid: string; slug: string | null; status: string;
-  category?: string; private_phone_enc?: string | null; listing_revision?: number;
+  category?: string; creator_kind?: string; private_phone_enc?: string | null; listing_revision?: number;
   display_name: string | null; about: string | null; tagline: string | null; quote: string | null; about_polished: string | null;
   languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;
@@ -29,7 +29,7 @@ export async function avatarUrlFor(env: Env, avatarId: string | null): Promise<s
 export function hostToJson(env: Env, r: HostRow, avatarUrl: string | null = null) {
   return {
     uid: r.uid, slug: r.slug, status: r.status, displayName: r.display_name, about: r.about, tagline: r.tagline, quote: r.quote,
-    category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1, hasPrivatePhone: !!r.private_phone_enc,
+    creatorKind: r.creator_kind ?? "channel", category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1, hasPrivatePhone: !!r.private_phone_enc,
     aboutPolished: r.about_polished, languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []),
     conversationLang: r.conversation_lang, pricePerMin: r.price_per_min, hours: parse<Record<string, unknown>>(r.hours_json, {}),
     healthConsent: r.health_consent === 1, womenLane: r.women_lane === 1, lgbtqLane: r.lgbtq_lane === 1, lgbtqPublic: r.lgbtq_public === 1,

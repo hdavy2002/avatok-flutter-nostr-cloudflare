@@ -178,7 +178,7 @@ export async function getBookingSummary(): Promise<BookingSummary> {
   return value(data, 'summary');
 }
 
-export function bookingError(error: unknown): { status: number; code: string; message: string } {
+export function bookingError(error: unknown): { status: number; code: string; message: string; lane?: 'women' | 'lgbtq' } {
   if (error instanceof ApiError) {
     const body = (error.body && typeof error.body === 'object' ? error.body : {}) as Record<string, unknown>;
     // [HF-CHANNEL-QA-1] Never show a raw code ("no_session") to a fan.
@@ -188,6 +188,10 @@ export function bookingError(error: unknown): { status: number; code: string; me
       slot_unavailable: 'That time is no longer free. Please pick another.',
     };
     const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : KNOWN[error.error] ?? 'Something went wrong. Please try again.';
+    if (error.error === 'lane_required') { // [HF-CREATOR-SPACES-1]
+      const lane = body.lane === 'lgbtq' ? 'lgbtq' : 'women';
+      return { status: error.status, code: error.error, lane, message: lane === 'lgbtq' ? 'Only verified LGBTQ+ members can call this channel' : 'Only verified women can call this channel' };
+    }
     return { status: error.status, code: error.error, message: typeof body.message === 'string' ? body.message : friendly };
   }
   return { status: 0, code: 'network', message: 'We could not reach the server. Check your connection and try again.' };

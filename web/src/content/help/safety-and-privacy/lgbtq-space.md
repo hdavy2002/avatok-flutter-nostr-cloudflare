@@ -1,16 +1,18 @@
 ---
 title: "LGBTQ+ safety"
-description: "How to find LGBTQ+ friendly influencers, and how influencers can take calls from verified customers only."
+description: "How LGBTQ+ channels work, who can start one, who can call, and how your declaration stays private."
 section: safety-and-privacy
 order: 9
-updated: 2026-10-18
-keywords: ["LGBTQ", "LGBTQ+", "queer", "gay", "lesbian", "trans", "LGBTQ+ friendly", "pride", "safe space", "verified customers only"]
+updated: 2026-10-24
+keywords: ["LGBTQ", "LGBTQ+", "queer", "gay", "lesbian", "trans", "LGBTQ+ channel", "pride", "safe space", "video kyc"]
 audience: both
 faq:
-  - q: "How do I find LGBTQ+ friendly influencers?"
-    a: "Look for the LGBTQ+ friendly label on an influencer's profile. Influencers turn it on themselves."
-  - q: "Will I be asked about my orientation?"
-    a: "No. Customers are never asked about their orientation or gender identity to make a call."
+  - q: "Who can start an LGBTQ+ channel?"
+    a: "Someone with a verified WhatsApp number and Aadhaar, an approved video KYC selfie video, and either an Aadhaar that shows transgender or a private self-declaration. The creator also agrees that the LGBTQ+ channel tag is public."
+  - q: "Who can call an LGBTQ+ channel?"
+    a: "Only verified LGBTQ+ members: WhatsApp, Aadhaar, a private declaration and a selfie video, done once."
+  - q: "Is my declaration shown to anyone?"
+    a: "No. Aadhaar cannot show orientation, so you declare it yourself, privately. It is never shown. Only a creator's channel tag is public."
 draft: false
 ---
 
@@ -18,21 +20,30 @@ draft: false
 
 {{brand.name}} wants LGBTQ+ people to talk without fear. You can read more on the [LGBTQ+ safety page](/lgbtq).
 
+## LGBTQ+ channels
+
+An **LGBTQ+ channel** is started by a verified LGBTQ+ creator, for verified LGBTQ+ members. Its profile shows an **LGBTQ+ channel** tag, and anyone can find it in Explore, search and Google. Only verified members can call, book, join the queue or ask to be notified.
+
+## Starting one
+
+1. Verify your WhatsApp number and your Aadhaar (OTP, or DigiLocker if the OTP does not work).
+2. If your Aadhaar shows transgender, that is enough. Otherwise make a private self-declaration and accept the LGBTQ+ channel rules.
+3. Agree that the **LGBTQ+ channel** tag is public on your profile, in search and on Google.
+4. Record a 10-second selfie video reading a short code (**video KYC**). Our team compares your face with your Aadhaar photo.
+
+## Calling one
+
+You complete video KYC once: WhatsApp, Aadhaar, a private declaration and a selfie video. Until it is approved, the Call, Book, Join queue and Notify buttons stay locked and show **Verify to call**. One verification works for every LGBTQ+ channel.
+
+People who finished video KYC show a green **Video KYC verified** badge. Verification confirms who someone is. It does not guarantee behaviour.
+
+## Your declaration stays private
+
+Aadhaar cannot show orientation, so it is a private self-declaration. It is never shown on any profile, to creators or to other callers. Only the creator's channel tag is public, and only because the creator agreed.
+
 ## LGBTQ+ friendly influencers
 
-- Influencers can show **LGBTQ+ friendly** on their profile.
-- It is **their own choice**, off by default, and they can change it at any time.
-- We never guess anything about anyone.
-
-## Verified customers only
-
-Influencers on the **monthly influencer plan** can take calls only from customers who have completed full KYC. Verification confirms who the customer is. It does not check orientation or gender identity, and it does not guarantee behaviour.
-
-*Example: Arjun is an LGBTQ+ friendly influencer. He turns on Verified customers only, so every caller's identity is known before they can ring him.*
-
-## You never have to tell us
-
-Customers are never asked about their orientation to make a call. Share only what you are comfortable saying aloud.
+Any influencer can also show **LGBTQ+ friendly** on their profile. It is their own choice, off by default. We never guess anything about anyone.
 
 ## Friendly conversation only
 

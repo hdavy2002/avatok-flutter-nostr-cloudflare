@@ -6,12 +6,14 @@ import 'package:go_router/go_router.dart';
 import '../../data/call_flags.dart';
 import '../../data/favourites_store.dart';
 import '../../data/models/queue.dart';
+import '../../data/models/spaces.dart'; // [HF-CREATOR-SPACES-1]
 import '../../data/models/reel.dart';
 import '../../data/repos/channel_repo.dart';
 import '../../data/repos/merch_repo.dart';
 import '../../data/repos/reels_repo.dart';
 import '../../data/services.dart';
 import '../../data/share.dart'; // [HF-SHARE-APP-1]
+import '../../data/telemetry.dart'; // [HF-CREATOR-SPACES-1]
 import '../../ui/async_view.dart';
 import '../channel_pop_kit.dart';
 import '../data.dart';
@@ -20,6 +22,7 @@ import '../presence_bridge.dart';
 import '../profile_kit.dart';
 import '../reels_real.dart';
 import '../safety_sheets.dart'; // [HF-APP-PARITY-SAFETY]
+import '../space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -56,6 +59,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ChannelShop? _shop;
   bool _shopEmpty = false; // the shop is on and loaded, but has no products
   bool _viewed = false;
+  SpaceStatus? _space; // [HF-CREATOR-SPACES-1] what GET /api/hf/lanes/me said about this viewer (null: not read yet / signed out)
+  bool _gateShown = false;
 
   final ScrollController _scroll = ScrollController();
   final GlobalKey _stackKey = GlobalKey();
@@ -93,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final p = await (widget.repo ?? Services.instance.reelsRepo).profile(widget.id);
       if (!mounted) return;
       setState(() => _ps = AsyncData(p));
+      if (SpaceLane.parse(p.host.space) != null) unawaited(_loadSpace(p.host));
       if (!_viewed) {
         _viewed = true;
         channelEvent('channel_viewed', {'slug': widget.id, 'surface': 'app', 'online': p.host.presence == 'online', 'videos': p.reels.length});
@@ -100,6 +106,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (mounted) setState(() => _ps = AsyncFailure(e));
     }
+  }
+
+  /// [HF-CREATOR-SPACES-1] A Women-only / LGBTQ+ channel: read the viewer's verification so Call / Book / Queue / Notify can unlock.
+  Future<void> _loadSpace(ReelHost host) async {
+    final lane = SpaceLane.parse(host.space);
+    if (lane == null) return;
+    SpaceStatus? st;
+    if (Services.instance.isSignedIn) {
+      try {
+        st = await Services.instance.spacesRepo.laneStatus();
+      } catch (_) {
+        st = null; // stays locked in the UI; the server decides anyway
+      }
+    }
+    if (!mounted) return;
+    setState(() => _space = st);
+    final own = Services.instance.me?.hostSlug == host.slug;
+    if (!own && !_gateShown && !(st?.grantedFor(lane) ?? false)) {
+      _gateShown = true;
+      Telemetry.event('hf_space_gate_shown', {'lane': lane.name, 'missing': st == null ? 'signin' : st.missingFor(lane)});
+    }
+  }
+
+  Future<void> _verifySpace(ReelHost host, SpaceLane lane) async {
+    await openSpaceVerify(context, lane);
+    if (mounted) await _loadSpace(host);
   }
 
   /// The merch tiles. Nothing is shown while the shop is off, still loading, failed, or empty (the page works without it).
@@ -205,7 +237,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final hasVideos = prof != null && prof.reels.isNotEmpty;
     // [HF-APP-CHANNEL-PARITY-1] same rule as the website: no Call / Book unless the profile is verified and live.
     final eligible = prof == null || prof.callEligible;
-    final hasBook = prof != null && BookingsBridge.real && eligible;
+    // [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel: Call / Book / Queue / Notify stay locked until the viewer finished video KYC.
+    final spaceLane = SpaceLane.parse(prof?.host.space);
+    final ownPage = prof != null && Services.instance.me?.hostSlug == prof.host.slug;
+    final spaceLocked = spaceLane != null && !ownPage && !(_space?.grantedFor(spaceLane) ?? false);
+    final hasBook = prof != null && BookingsBridge.real && eligible && !spaceLocked;
     final hasAbout = who.bio.trim().isNotEmpty;
     final hasFacts = prof != null;
     final hasReviews = prof != null;
@@ -269,6 +305,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       who: who,
                       badge: badge,
                       tagline: prof != null && prof.tagline.trim().isNotEmpty ? prof.tagline.trim() : _tagline(who.bio),
+                      badges: prof == null ? null : SpaceBadges(space: prof.host.space, videoKycVerified: prof.host.videoKycVerified, surface: 'app_profile'),
                       stats: stats,
                       faved: faved,
                       onHeart: onHeart,
@@ -315,6 +352,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               if (!eligible)
                 const Expanded(child: ChannelCallsUnavailable())
+              else if (spaceLocked && spaceLane != null && prof != null)
+                Expanded(
+                  child: SpaceLockedBar(
+                    lane: spaceLane,
+                    status: _space,
+                    onVerify: () => requireAccount(context, () => unawaited(_verifySpace(prof.host, spaceLane)), reason: 'to verify'),
+                  ),
+                )
               else ...[
                 if (showBook) ...[
                   Expanded(child: GpButton('Book', kind: GpBtn.outline, onTap: () => context.push('/book/${who.id}'))),
@@ -385,7 +430,7 @@ class _SectionNav extends StatelessWidget {
 /// Full-width photo (Online now / Offline on it), then the eyebrow, name, tagline, stats and Save / Share.
 /// No decorative border, arch or curtain round the photo (decision D2).
 class _ChannelHero extends StatelessWidget {
-  const _ChannelHero({required this.who, required this.badge, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore});
+  const _ChannelHero({required this.who, required this.badge, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore, this.badges});
 
   final Influencer who;
 
@@ -397,6 +442,9 @@ class _ChannelHero extends StatelessWidget {
   final VoidCallback? onHeart;
   final VoidCallback? onShare;
   final VoidCallback? onMore;
+
+  /// [HF-CREATOR-SPACES-1] Channel tag + green Video KYC pill (nothing when the host has neither).
+  final Widget? badges;
 
   Widget _round(IconData icon, String label, Color color, VoidCallback onTap) => Semantics(
         button: true,
@@ -447,6 +495,10 @@ class _ChannelHero extends StatelessWidget {
           Text(['Creator', if (who.handle.isNotEmpty) who.handle].join(' · ').toUpperCase(), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: gpEyebrow()),
           const SizedBox(height: 6),
           Semantics(header: true, child: Text(who.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(48, color: GP.ink, w: FontWeight.w900, h: .98))),
+          if (badges != null) ...[
+            const SizedBox(height: 12),
+            badges!,
+          ],
           if (tagline.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(tagline, textAlign: TextAlign.center, style: t(18, color: GP.muted, w: FontWeight.w700, h: 1.35)),

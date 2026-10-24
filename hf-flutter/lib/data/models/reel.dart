@@ -9,6 +9,12 @@ String? _str(Object? v) {
   return (s == null || s.isEmpty) ? null : s;
 }
 
+/// [HF-CREATOR-SPACES-1] `women` / `lgbtq`, anything else (or missing) is null.
+String? _spaceOf(Object? v) {
+  final s = v?.toString();
+  return (s == 'women' || s == 'lgbtq') ? s : null;
+}
+
 /// The influencer shown on a reel or at the top of a profile.
 class ReelHost {
   const ReelHost({
@@ -23,10 +29,18 @@ class ReelHost {
     this.callState,
     this.queueOpen = false,
     this.queueWaiting = 0,
+    this.videoKycVerified = false,
+    this.space,
   });
 
   final String slug;
   final String name;
+
+  /// [HF-CREATOR-SPACES-1] Aadhaar verified and the selfie video approved: the green badge. False when the server does not send it.
+  final bool videoKycVerified;
+
+  /// [HF-CREATOR-SPACES-1] `women` or `lgbtq` for a space channel, else null.
+  final String? space;
 
   /// With the leading "@", or null.
   final String? handle;
@@ -61,6 +75,8 @@ class ReelHost {
         callState: hostCallStateOf(j['callState']),
         queueOpen: j['queue'] is Map && (j['queue'] as Map)['open'] == true,
         queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
+        videoKycVerified: j['videoKycVerified'] == true,
+        space: _spaceOf(j['space']),
         platforms: [
           for (final p in (j['platforms'] is List ? j['platforms'] as List : const []))
             if (p is String && p.isNotEmpty) p,
@@ -295,6 +311,8 @@ class PublicProfile {
       callState: hostCallStateOf(j['callState']),
       queueOpen: j['queue'] is Map && (j['queue'] as Map)['open'] == true,
       queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
+      videoKycVerified: j['videoKycVerified'] == true,
+      space: _spaceOf(j['space']),
     );
     final reels = [
       for (final e in (j['reels'] is List ? j['reels'] as List : const []))

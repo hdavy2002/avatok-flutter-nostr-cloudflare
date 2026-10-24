@@ -101,6 +101,10 @@ export function queueJoinProblem(code: string, body: Record<string, unknown>, na
       const s = typeof body.shortfallPaise === 'number' && body.shortfallPaise > 0 ? `₹${(body.shortfallPaise / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '';
       return { text: s ? `Add ${s} more to your wallet to join. Nothing is charged until you talk.` : 'Add a little money to your wallet to join. Nothing is charged until you talk.', link: { href: '/dashboard/wallet#add', label: 'Top up' } };
     }
+    case 'lane_required': { // [HF-CREATOR-SPACES-1]
+      const ln = body.lane === 'lgbtq' ? 'lgbtq' : 'women';
+      return { text: ln === 'lgbtq' ? 'Only verified LGBTQ+ members can call this channel' : 'Only verified women can call this channel', link: { href: `/verify/lane?lane=${ln}&next=${encodeURIComponent(typeof location !== 'undefined' ? location.pathname + location.search : '/')}`, label: 'Verify to call' } };
+    }
     case 'not_verified': return { text: 'Please verify your WhatsApp number first. We use it to tell you when it is your turn.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
     default: return { text: fallback || 'We could not add you to the queue. Please try again.' };
   }

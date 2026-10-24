@@ -193,7 +193,8 @@ export async function startInstantCall(env: Env, input: StartInstantCallInput): 
     if (!(await verifiedWhatsAppNumber(env, uid))) return { ok: false, error: "not_verified", status: 403 };
     if (!(await verifiedWhatsAppNumber(env, host.uid))) return { ok: false, error: "host_unavailable", status: 409 };
     if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return { ok: false, error: "lane_required", status: 403 };
-    const lane = host.women_lane === 1 ? "women" : null;
+    if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return { ok: false, error: "lane_required", status: 403 }; // [HF-CREATOR-SPACES-1]
+    const lane = host.women_lane === 1 ? "women" : host.lgbtq_lane === 1 ? "lgbtq" : null;
     const open = await env.DB_META.prepare(
       "SELECT 1 AS x FROM hf_calls WHERE caller_uid=?1 AND status IN ('ringing_host','ringing_caller','connected') AND created_at>?2 LIMIT 1",
     ).bind(uid, Date.now() - 25 * 3600_000).first();

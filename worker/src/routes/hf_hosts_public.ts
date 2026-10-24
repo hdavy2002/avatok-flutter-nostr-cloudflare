@@ -1,6 +1,7 @@
 // [HF-HOST-PLATFORM-1] Public HF host cards. Flag hostsPublicEnabled. Only status='live'. Never exposes uid, KYC, phone, or an unapproved voice intro.
-//   GET /api/hosts/public?limit=&offset=[&lane=women|lgbtq]   [HF-LANE-VERIFY-1] lane needs a bearer token + lane access (403 lane_required); women-lane hosts carry womenOnly:true in the default list   GET /api/hosts/public/:slug
+//   GET /api/hosts/public?limit=&offset=[&lane=women|lgbtq][&space=women|lgbtq]   [HF-CREATOR-SPACES-1] space = public filter (everyone); cards carry videoKycVerified + space   [HF-LANE-VERIFY-1] lane needs a bearer token + lane access (403 lane_required); women-lane hosts carry womenOnly:true in the default list   GET /api/hosts/public/:slug
 import { publicVerification, phoneVerifiedSql } from "../lib/hf_public_verification";
+import { videoKycSql, spaceOfRow, parseSpace, type SpaceName } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 import type { Env } from "../types";
 import { json } from "../util";
 import { trackException, track } from "../hooks";
@@ -19,12 +20,12 @@ const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
 
-export type LiveRow = HostRow & { phone_verified?: number | null; presence?: string | null; image_key: string | null; image_source: "uploaded" | "ai" | null; audio_key: string | null; audio_caption: string | null };
+export type LiveRow = HostRow & { phone_verified?: number | null; video_kyc?: number | null; presence?: string | null; image_key: string | null; image_source: "uploaded" | "ai" | null; audio_key: string | null; audio_caption: string | null };
 import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { formatRupees } from "../lib/hf_token_math";
 import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
-export const SEL = `SELECT h.*, ${phoneVerifiedSql("h.uid")} AS phone_verified /* [HF-IDV-WHATSAPP-1] */, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
+export const SEL = `SELECT h.*, ${phoneVerifiedSql("h.uid")} AS phone_verified /* [HF-IDV-WHATSAPP-1] */, ${videoKycSql("h.uid")} AS video_kyc /* [HF-CREATOR-SPACES-1] */, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
   CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active')
     THEN CASE WHEN (SELECT job_id FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) IS NOT NULL THEN 'ai' ELSE 'uploaded' END
     WHEN a.image_key IS NOT NULL THEN 'ai' ELSE NULL END AS image_source,
@@ -63,6 +64,7 @@ export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan 
     category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1,
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), ...priceFields(r, std),
     ...aggregateFields(agg), lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,
+    videoKycVerified: Number(r.video_kyc) === 1, space: spaceOfRow(r), // [HF-CREATOR-SPACES-1] green "Video KYC verified" + Women-only / LGBTQ+ tag; space hosts are visible to everyone
     ...intro(env, r), status: (r.presence === "online" || r.presence === "busy" ? r.presence : "offline") as "online" | "busy" | "offline",
     ...(line ? { mode: line.mode, callState: line.callState, queue: line.queue } : {}), // [HF-CALL-MODES-A] only while hfCallModesEnabled is on
   };
@@ -81,12 +83,15 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
     const laneRaw = url.searchParams.get("lane");
     const lane = parseLane(laneRaw);
     if (laneRaw && !lane) return err(400, "bad_lane");
-    let laneWhere = "";
+    const spaceRaw = url.searchParams.get("space"); // [HF-CREATOR-SPACES-1] public filter, no sign-in needed
+    const space: SpaceName | null = parseSpace(spaceRaw);
+    if (spaceRaw && !space) return err(400, "bad_space");
+    let laneWhere = space === "women" ? " AND h.women_lane=1" : space === "lgbtq" ? " AND h.lgbtq_lane=1 AND h.lgbtq_public=1" : "";
     if (lane) {
       const u = await requireUser(req, env);
       if (isFail(u)) return err(u.status, u.error);
       if (!(await getLaneAccess(env, u.uid))[lane]) return err(403, "lane_required");
-      laneWhere = lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
+      laneWhere += lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
     }
     if (one) {
       const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND (h.status='live' OR (h.status='approved' AND ?2=1))`).bind(one[1], cfgAll.hfReelsEnabled === true ? 1 : 0).first<LiveRow>();

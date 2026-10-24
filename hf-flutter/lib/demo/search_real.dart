@@ -8,12 +8,14 @@ import '../data/api_exception.dart';
 import '../data/models/reel.dart';
 import '../data/models/search.dart';
 import '../data/repos/search_repo.dart';
+import '../data/telemetry.dart'; // [HF-CREATOR-SPACES-1]
 import '../ui/async_view.dart';
 import 'reels_real.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'desi.dart';
 import 'search_kit.dart';
+import 'space_kit.dart'; // [HF-CREATOR-SPACES-1]
 
 /// The real Search screen (HF-WIRE-9): `GET /api/hf/search` debounced 350 ms, results Online then Offline,
 /// "Most-wanted, not here yet" with INVITE votes, and topic chips from `GET /api/hf/options`.
@@ -33,13 +35,14 @@ class _RealSearchState extends State<RealSearch> {
   int _run = 0;
   String? _topic;
   String _platform = 'all'; // [HF-WIRE-22] HF-REEL-41: all | youtube | instagram
+  String? _space; // [HF-CREATOR-SPACES-1] null | women | lgbtq
   AsyncState<SearchResult> _state = const AsyncLoading();
   List<TopicOption> _topics = const [];
   List<MissingCreator> _top = const [];
   final Set<String> _voted = {};
   final Map<String, int> _votes = {};
 
-  bool get _browsing => _q.text.trim().isEmpty && _topic == null;
+  bool get _browsing => _q.text.trim().isEmpty && _topic == null && _space == null;
 
   @override
   void initState() {
@@ -85,7 +88,7 @@ class _RealSearchState extends State<RealSearch> {
     AsyncState<SearchResult> next;
     try {
       // [HF-APP-CACHE-1] the same search seen before paints at once, then the server's answer replaces it
-      await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform)) {
+      await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform, space: _space)) {
         if (!mounted || run != _run) return;
         setState(() => _state = AsyncData(r));
       }
@@ -146,6 +149,53 @@ class _RealSearchState extends State<RealSearch> {
     );
   }
 
+  /// [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel filter. Tap the chosen one again to clear it.
+  void _pickSpace(String space) {
+    _timer?.cancel();
+    final next = _space == space ? null : space;
+    setState(() => _space = next);
+    if (next != null) Telemetry.event('hf_space_filter', {'space': next, 'surface': 'app_search'});
+    unawaited(_search());
+  }
+
+  Widget _spaceFilter() {
+    const options = [('women', 'Women-only'), ('lgbtq', 'LGBTQ+')];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        key: const ValueKey('space-filter'),
+        children: [
+          for (final o in options)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Semantics(
+                  button: true,
+                  selected: _space == o.$1,
+                  label: 'Show ${o.$2} channels',
+                  child: InkWell(
+                    key: ValueKey('space-${o.$1}'),
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => _pickSpace(o.$1),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _space == o.$1 ? C.rani : C.white,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: _space == o.$1 ? C.rani : C.line, width: 1.5),
+                      ),
+                      child: Text(o.$2, style: t(15, color: _space == o.$1 ? C.white : C.rani, w: FontWeight.w800)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// A small platform mark next to a result.
   Widget _platformIcon(String platform) {
     final yt = platform == 'youtube';
@@ -196,6 +246,7 @@ class _RealSearchState extends State<RealSearch> {
               ),
             ),
             _platformFilter(),
+            _spaceFilter(),
             const SizedBox(height: 14),
             if (_topics.isNotEmpty) ...[
               SearchTopics(
@@ -273,6 +324,7 @@ class _RealSearchState extends State<RealSearch> {
       rate: h.rateRupees,
       last: last,
       subtitle: Row(children: [
+        SpaceBadges(space: h.space, videoKycVerified: h.videoKycVerified, surface: 'app_search', compact: true),
         for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
         Flexible(child: Text(h.handle ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w600))),
       ]),

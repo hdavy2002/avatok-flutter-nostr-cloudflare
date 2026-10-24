@@ -5,18 +5,21 @@ import type { ComponentType } from 'react';
 import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
 import { capture } from '../../lib/analytics';
-import { EMPTY_DRAFT, GROUP_LABEL, STEPS } from './data';
+import { EMPTY_DRAFT, GROUP_LABEL, stepsFor } from './data';
 import { mockApi } from './api';
 import { realApi, setOnboardingStandardPlan } from './api_real';
 import { request } from '../../lib/apiClient';
 import { loadDraft, saveDraft } from './storage';
 import PreviewCard from './PreviewCard';
 import Icon from './Icon';
-import type { Avatar, Draft, OnboardingApi, StepAction, StepGroup, StepKey, StepProps } from './types';
+import type { Avatar, CreatorPath, Draft, OnboardingApi, StepAction, StepGroup, StepKey, StepProps } from './types';
 
 const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>> = {
   welcome: lazy(() => import('./steps/WelcomeStep')),
+  path: lazy(() => import('./steps/PathStep')),
   phone: lazy(() => import('./steps/PhoneStep')),
+  channel: lazy(() => import('./steps/ChannelStep')),
+  declare: lazy(() => import('./steps/DeclareStep')),
   aadhaar: lazy(() => import('./steps/AadhaarStep')),
   selfie: lazy(() => import('./steps/SelfieStep')),
   payout: lazy(() => import('./steps/PayoutStep')),
@@ -40,30 +43,39 @@ type Phase = 'boot' | 'auth' | 'gate' | 'error' | 'ready';
 const SIGN_IN_URL = `/sign-in?redirect_url=${encodeURIComponent('/hosts/onboarding')}`;
 
 /** Real mode only when the worker says both flags are on (cache-busted) and the URL does not ask for ?mock=1. */
-let ACTIVE_STEPS = STEPS;
+// [HF-CREATOR-SPACES-1] The step list depends on the chosen path (channel / women / lgbtq) and on the Standard plan.
+let STANDARD_PLAN = false;
+let ACTIVE_STEPS = stepsFor(null, STANDARD_PLAN);
 let KEYS = ACTIVE_STEPS.map(s => s.key);
+function setActivePath(path: CreatorPath | null) {
+  ACTIVE_STEPS = stepsFor(path, STANDARD_PLAN);
+  KEYS = ACTIVE_STEPS.map(s => s.key);
+}
 async function pickApi(): Promise<OnboardingApi> {
   try { if (new URLSearchParams(window.location.search).get('mock') === '1') return mockApi; } catch { /* ignore */ }
   try {
     const cfg = await request<{ hostOnboardingEnabled?: boolean; hostKycEnabled?: boolean; hfStdPlan?: { enabled?: boolean } }>('/api/config', { query: { _: Date.now() }, timeoutMs: 8000 });
     const standard = cfg?.hfStdPlan?.enabled === true;
     setOnboardingStandardPlan(standard);
-    ACTIVE_STEPS = standard ? STEPS.filter(s => s.key !== 'price') : STEPS;
-    KEYS = ACTIVE_STEPS.map(s => s.key);
+    STANDARD_PLAN = standard;
+    setActivePath(null);
     return cfg && cfg.hostOnboardingEnabled === true && cfg.hostKycEnabled === true ? realApi : mockApi;
   } catch { return mockApi; }
 }
 
 const DEFAULT_ACTION: StepAction = { label: 'Continue' };
-const NO_PREVIEW: StepKey[] = ['welcome', 'generating', 'done'];
+const NO_PREVIEW: StepKey[] = ['welcome', 'path', 'channel', 'declare', 'generating', 'done'];
 const NO_BACK: StepKey[] = ['welcome', 'generating', 'done'];
 const BAR_GROUPS: StepGroup[] = ['verify', 'profile', 'voice', 'finish'];
 
 function isComplete(key: StepKey, d: Draft): boolean {
   switch (key) {
     case 'welcome': return true;
+    case 'path': return d.path !== null;
     case 'phone': return d.phoneVerified;
-    case 'aadhaar': return d.aadhaarDone;
+    case 'channel': return d.channelQualified;
+    case 'declare': return d.lgbtqDeclared;
+    case 'aadhaar': return d.aadhaarDone && !(d.path === 'women' && d.kycGender !== null && d.kycGender !== 'woman');
     case 'selfie': return d.selfie.recorded && d.selfie.consent;
     case 'payout': return d.payout.verified;
     case 'avatar': return !!d.avatarId;
@@ -120,10 +132,12 @@ export default function HostOnboarding() {
   apiRef.current = api;
   const update = useCallback((patch: Partial<Draft>) => {
     touched.current = true;
+    if ('path' in patch) setActivePath(patch.path ?? null); // the step list changes with the path, before anything reads it
     setDraft(prev => { const next = { ...prev, ...patch }; if (apiRef.current.mode === 'mock') saveDraft(next); return next; });
   }, []);
 
   const finishBoot = useCallback((d: Draft) => {
+    setActivePath(d.path);
     setDraft(d);
     draftRef.current = d;
     const k = stepFromUrl(d);

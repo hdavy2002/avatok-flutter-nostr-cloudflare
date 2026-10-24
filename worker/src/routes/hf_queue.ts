@@ -67,8 +67,9 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   if (limited) return limited;
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return err(409, "queue_closed", JOIN_MESSAGE.queue_closed, { reason: "unavailable" });
   try {
-    const lane = await env.DB_META.prepare("SELECT women_lane FROM hf_hosts WHERE uid=?1").bind(host.uid).first<{ women_lane: number }>().catch(() => null);
+    const lane = await env.DB_META.prepare("SELECT women_lane, lgbtq_lane FROM hf_hosts WHERE uid=?1").bind(host.uid).first<{ women_lane: number; lgbtq_lane: number }>().catch(() => null);
     if (lane?.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
+    if (lane?.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/hf/hosts/:slug/queue", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_queue", step: "lane" } }).catch(() => undefined);
   }

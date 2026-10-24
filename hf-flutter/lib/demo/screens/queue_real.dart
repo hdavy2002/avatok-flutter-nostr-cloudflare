@@ -14,6 +14,7 @@ import '../call_kit.dart';
 import '../desi.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import 'call_real.dart';
 
 /// [HF-CALL-MODES-E2] Join the queue for an influencer who is on a call (dark behind `hfCallQueueEnabled`). `/queue/:slug`.
@@ -207,6 +208,12 @@ class _QueueScreenState extends State<QueueScreen> {
       _enter(MyQueueEntry(entryId: r.entryId, hostSlug: widget.slug, hostName: _name.isEmpty ? 'the influencer' : _name, position: r.position, status: 'waiting'));
     } catch (e) {
       Telemetry.event('hf_app_queue_failed', {'reason': e is ApiException ? e.code : 'error'});
+      if (!mounted) return;
+      // [HF-CREATOR-SPACES-1] 403 lane_required: the locked prompt with "Verify to call".
+      if (await handleLaneRequired(context, e)) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _busy = false;

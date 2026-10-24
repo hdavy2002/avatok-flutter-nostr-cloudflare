@@ -31,6 +31,7 @@ function makeEnv() {
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
     CREATE TABLE hf_blocks (blocker_uid TEXT NOT NULL, blocked_uid TEXT NOT NULL, call_id TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (blocker_uid, blocked_uid));
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
   `);
   db.exec(`INSERT INTO hf_hosts (uid,slug,status,display_name,tagline,presence) VALUES
@@ -106,11 +107,10 @@ describe("hf favourites", () => {
     expect(rows()).toEqual([]);
   });
 
-  it("a women-lane host is hidden from a caller without lane access", async () => {
-    expect((await call("PUT", "/api/hf/favourites/women-four")).status).toBe(404);
-    db.exec("INSERT INTO hf_favourites VALUES ('u1','h4',5)"); // saved earlier, access since lost
+  it("[HF-CREATOR-SPACES-1] a women-only space host is visible to everyone: it can be saved and listed (only calling is locked)", async () => {
+    expect((await call("PUT", "/api/hf/favourites/women-four")).status).toBe(200);
     const list = await (await call("GET")).json();
-    expect(list.items).toEqual([]);
+    expect(list.items.map((i: any) => i.slug)).toEqual(["women-four"]);
   });
 
   it("closing accounts cannot write but can read", async () => {

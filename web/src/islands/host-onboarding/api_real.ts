@@ -4,7 +4,7 @@ import { ApiError, request } from '../../lib/apiClient';
 import { API_BASE } from '../../lib/env';
 import { DAYS, EMPTY_DRAFT } from './data';
 import type {
-  ApiResult, Avatar, AgeBand, AvatarStyle, Draft, GeneratedProfile, GenerationStage, KycGender,
+  ApiResult, Avatar, ChannelAction, ChannelItem, ChannelsInfo, CreatorPath, SpacesMe, AgeBand, AvatarStyle, Draft, GeneratedProfile, GenerationStage, KycGender,
   OnboardingApi, ServerDraft, StageState, StageStates, VoiceStatus,
 } from './types';
 
@@ -152,7 +152,7 @@ function buildGenerated(me: MeJson): GeneratedProfile | null {
   };
 }
 
-function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string | null } | null): Partial<Draft> {
+function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string | null } | null, spaces: SpacesMe | null = null, ch: ChannelsInfo | null = null): Partial<Draft> {
   const h = me.host;
   const k = me.kyc;
   const selfieSent = k.selfie.status !== 'none' && k.selfie.status !== 'rejected';
@@ -166,6 +166,10 @@ function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string |
     kycGender: kycGender(k.aadhaar.gender),
     selfie: { recorded: selfieSent, consent: selfieSent, code: '' },
     payout: { upi: '', accountLast4: k.payout.accountLast4 || '', ifsc: '', nameAtBank: '', verified: k.payout.done },
+    // [HF-CREATOR-SPACES-1] The server's copy of the creator type wins, so a reload resumes on the same path.
+    path: spaces?.kind ?? null,
+    lgbtqDeclared: !!spaces?.lgbtqDeclared,
+    channelQualified: !!(ch?.qualified),
   };
   if (h) {
     const days = Array.isArray(h.hours?.days) ? h.hours.days.map(i => DAYS[i]).filter(Boolean) : [];
@@ -215,9 +219,12 @@ function fieldsOf(d: Draft): Field[] {
     f.push(['hours', { days: d.hours.days.map(x => DAYS.indexOf(x)).filter(i => i >= 0).sort(), from: d.hours.from, to: d.hours.to }]);
   }
   f.push(['healthConsent', d.healthConsent]);
-  f.push(['lgbtqLane', d.lgbtqLane]);
-  if (d.lgbtqLane) f.push(['lgbtqPublic', d.lgbtqShowOnProfile]);
-  if (d.kycGender === 'woman') f.push(['womenLane', d.womenOnlyLane]);
+  // [HF-CREATOR-SPACES-1] On a Women-only / LGBTQ+ channel the server owns the lane flags (set by /api/hf/spaces/creator); never overwrite them here.
+  if (d.path !== 'women' && d.path !== 'lgbtq') {
+    f.push(['lgbtqLane', d.lgbtqLane]);
+    if (d.lgbtqLane) f.push(['lgbtqPublic', d.lgbtqShowOnProfile]);
+    if (d.kycGender === 'woman') f.push(['womenLane', d.womenOnlyLane]);
+  }
   if (d.agreements.rules && d.agreements.agreement && d.agreements.welfare) f.push(['agreements', true]);
   return f;
 }
@@ -257,8 +264,54 @@ function chain(): Promise<void> {
 }
 
 // ── the client ──────────────────────────────────────────────────────────────
+/** [HF-CREATOR-SPACES-1] Channel JSON from the worker -> what the screens show. */
+interface ChannelJson { id: string; platform: string; handle: string; url?: string | null; followers?: number; views?: number; state?: string; verified?: boolean; needsCode?: boolean; verifyCode?: string | null }
+const toChannel = (c: ChannelJson): ChannelItem => ({
+  id: c.id, platform: c.platform === 'youtube' ? 'youtube' : 'instagram', handle: c.handle, url: c.url ?? null,
+  followers: Number(c.followers) || 0, views: Number(c.views) || 0,
+  state: (['checking', 'approved', 'needs_followers', 'needs_views', 'disconnected'].includes(String(c.state)) ? c.state : 'checking') as ChannelItem['state'],
+  verified: !!c.verified, needsCode: !!c.needsCode, verifyCode: c.verifyCode ?? null,
+});
+const CONSENT = { version: 'web-ch-1', embeds: true, counts: true, ownChannel: true, feed: true };
+interface ChanResp { ok: boolean; result?: string; message?: string; channel?: ChannelJson; channels?: ChannelJson[]; minFollowers?: number; minViews?: number; qualified?: boolean }
+const infoOf = (d: ChanResp, prev?: ChannelItem[]): ChannelsInfo => ({
+  channels: (d.channels ?? prev ?? []).map(toChannel), minFollowers: Number(d.minFollowers) || 20, minViews: Number(d.minViews) || 1000, qualified: !!d.qualified,
+});
+async function channelCall(method: 'POST' | 'GET', path: string, body: unknown, fallback: string): Promise<ChannelAction> {
+  const r = await call<ChanResp>(method, path, body, fallback);
+  if (!r.ok) return { ok: false, error: r.error, field: r.field, code: r.code };
+  const list = await realApi.listChannels(); // one place to read the bar + qualified, whatever the action returned
+  return { ok: true, result: r.data.result, message: r.data.message, channel: r.data.channel ? toChannel(r.data.channel) : undefined, info: list ?? undefined };
+}
+
 export const realApi: OnboardingApi = {
   mode: 'real',
+
+  async getSpacesMe() {
+    const r = await call<SpacesMe & { ok: boolean }>('GET', '/api/hf/spaces/me');
+    return r.ok ? r.data : null;
+  },
+  async setCreator(body) {
+    const r = await call<{ ok: boolean; kind: CreatorPath }>('POST', '/api/hf/spaces/creator', body, 'We could not save your choice. Please try again.');
+    return r.ok ? { ok: true } : { ok: false, error: r.error, code: r.code };
+  },
+  async listChannels() {
+    const r = await call<ChanResp>('GET', '/api/hf/channels');
+    return r.ok ? infoOf(r.data) : null;
+  },
+  addChannel(platform, handleOrUrl) {
+    return channelCall('POST', '/api/hf/channels', { platform, handleOrUrl: handleOrUrl.trim(), consent: CONSENT }, 'We could not add your channel. Please try again.');
+  },
+  checkChannel(id) {
+    return channelCall('POST', `/api/hf/channels/${encodeURIComponent(id)}/check`, {}, 'We could not check your channel. Please try again.');
+  },
+  connectYoutube(accessToken) {
+    return channelCall('POST', '/api/hf/channels/youtube/connect', { accessToken }, 'We could not connect your YouTube channel. Please try again.');
+  },
+  async removeChannel(id) {
+    const r = await call<{ ok: boolean }>('DELETE', `/api/hf/channels/${encodeURIComponent(id)}`);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
 
   async sendOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
   async verifyOtp() { return { ok: false, error: 'Your WhatsApp number is verified when you sign in.' }; },
@@ -380,12 +433,14 @@ export const realApi: OnboardingApi = {
   },
 
   async loadServerDraft(): Promise<ServerDraft> {
-    const [me, ph] = await Promise.all([
+    const [me, ph, sp, ch] = await Promise.all([
       call<MeJson>('GET', '/api/hosts/me'),
       call<{ verified: boolean; phone: string | null }>('GET', '/api/account/phone/status'),
+      realApi.getSpacesMe(),
+      realApi.listChannels(),
     ]);
     if (!me.ok) throw new Error(me.error || 'We could not load your details.');
-    return { draft: draftFromServer(me.data, ph.ok ? ph.data : null), hostStatus: me.data.host?.status ?? null };
+    return { draft: draftFromServer(me.data, ph.ok ? ph.data : null, sp, ch), hostStatus: me.data.host?.status ?? null };
   },
 
   saveServerDraft(draft, onResult) {

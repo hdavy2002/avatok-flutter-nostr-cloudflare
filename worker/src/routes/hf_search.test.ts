@@ -24,10 +24,13 @@ function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
     category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, topics_json TEXT NOT NULL DEFAULT '[]', phone TEXT,
-    women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0);
+    women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0, lgbtq_public INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
   db.exec(mig("2026-10-19-hf-channels.sql"));
+  db.exec(mig("hf_creator_spaces.sql")); // [HF-CREATOR-SPACES-1]
   db.exec(mig("2026-10-19-hf-demo-hosts.sql"));
   db.exec(mig("2026-10-19-hf-invite-votes.sql"));
   kv = new Map();
@@ -81,7 +84,7 @@ describe("GET /api/hf/search", () => {
     host("d", { name: "Maya Draft", status: "draft" });
     host("e", { name: "Zed", presence: "busy", topics: ["travel-and-food"] });
     const j = await body(await call("GET", "/api/hf/search?q=maya"));
-    expect(j.online.map((h: any) => h.slug)).toEqual(["slug-a"]);
+    expect(j.online.map((h: any) => h.slug)).toEqual(["slug-a", "slug-c"]); // [HF-CREATOR-SPACES-1] space hosts are no longer excluded
     expect(j.offline.map((h: any) => h.slug)).toEqual(["slug-b"]);
     expect(j.online[0].handle).toBe("@maya_r");
     const byHandle = await body(await call("GET", "/api/hf/search?q=maya_r"));
@@ -90,6 +93,29 @@ describe("GET /api/hf/search", () => {
     expect(byTopicLabel.online.map((h: any) => h.slug).sort()).toEqual(["slug-a", "slug-e"]);
     const byTopicChip = await body(await call("GET", "/api/hf/search?topic=travel-and-food"));
     expect(byTopicChip.online.length).toBe(2);
+  });
+  it("[HF-CREATOR-SPACES-1] space=women|lgbtq filters, carries space + videoKycVerified, and rejects junk", async () => {
+    host("a", { name: "Maya Rao", presence: "online" });
+    host("w", { name: "Maya Women", presence: "online", women: 1 });
+    host("l", { name: "Maya Pride", presence: "online" });
+    db.prepare("UPDATE hf_hosts SET lgbtq_lane=1, lgbtq_public=1 WHERE uid='l'").run();
+    host("p", { name: "Maya Private", presence: "online" });
+    db.prepare("UPDATE hf_hosts SET lgbtq_lane=1, lgbtq_public=0 WHERE uid='p'").run();
+    db.prepare("INSERT INTO hf_kyc VALUES ('w','F',1)").run();
+    db.prepare("INSERT INTO hf_selfie VALUES ('s1','w',1,'approved',NULL)").run();
+    db.prepare("INSERT INTO hf_kyc VALUES ('l','T',1)").run();
+    db.prepare("INSERT INTO hf_selfie VALUES ('s2','l',1,'pending',NULL)").run();
+    const all = await body(await call("GET", "/api/hf/search?q=maya"));
+    const by = Object.fromEntries(all.online.map((h: any) => [h.slug, h]));
+    expect(by["slug-a"]).toMatchObject({ space: null, videoKycVerified: false });
+    expect(by["slug-w"]).toMatchObject({ space: "women", videoKycVerified: true });
+    expect(by["slug-l"]).toMatchObject({ space: "lgbtq", videoKycVerified: false }); // selfie still pending
+    expect(by["slug-p"]).toMatchObject({ space: null }); // the public tag was not consented to
+    const w = await body(await call("GET", "/api/hf/search?q=maya&space=women"));
+    expect(w.online.map((h: any) => h.slug)).toEqual(["slug-w"]);
+    const l = await body(await call("GET", "/api/hf/search?space=lgbtq"));
+    expect(l.online.map((h: any) => h.slug)).toEqual(["slug-l"]);
+    expect((await call("GET", "/api/hf/search?space=men")).status).toBe(400);
   });
   it("never returns phone numbers, uids or emails", async () => {
     host("a", { name: "Maya", handle: "@maya_r" });

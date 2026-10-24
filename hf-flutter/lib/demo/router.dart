@@ -31,6 +31,8 @@ import 'screens/page_moved.dart';
 import 'screens/profile.dart';
 import 'screens/queue_real.dart'; // [HF-CALL-MODES-E2]
 import 'screens/search.dart';
+import 'screens/space_verify.dart'; // [HF-CREATOR-SPACES-1]
+import '../data/models/spaces.dart'; // [HF-CREATOR-SPACES-1]
 import 'reel_player.dart';
 import 'theme.dart';
 
@@ -238,6 +240,15 @@ final router = GoRouter(
       path: '/influencer/join',
       builder: (_, s) => InfluencerJoinScreen(
         initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0,
+      ),
+    ),
+    // [HF-CREATOR-SPACES-1] Video KYC for Women-only / LGBTQ+ channels (customers and creators).
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/verify/space',
+      builder: (_, s) => SpaceVerifyScreen(
+        lane: SpaceLane.parse(s.uri.queryParameters['lane']) ?? SpaceLane.women,
+        creator: s.uri.queryParameters['creator'] == '1',
       ),
     ),
     // [HF-WIRE-3] Channels. `?from=join` keeps the person inside "Join as influencer".

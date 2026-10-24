@@ -39,6 +39,13 @@ export default function KycReviews() {
     setBusy(null);
   };
 
+  const spaceOf = (i: KycItem) => i.space ?? (i.creatorKind === 'women' || i.creatorKind === 'lgbtq' ? i.creatorKind : null);
+  const spaceLabel = (v: 'women' | 'lgbtq' | null) => (v === 'women' ? 'Women-only channel' : v === 'lgbtq' ? 'LGBTQ+ channel' : '');
+  const whoLabel = (i: KycItem) => {
+    const sp = spaceLabel(spaceOf(i));
+    if (i.aadhaar?.role === 'host') return sp ? `Space creator · ${sp}` : 'Creator applicant';
+    return sp ? `Customer · ${sp}` : 'Customer (caller)';
+  };
   const applicants = items?.filter((i) => i.aadhaar?.role === 'host').length ?? 0;
   return <div className="hfa-stack">
     <div role="tablist" aria-label="Video KYC status" className="hfa-pills">
@@ -46,8 +53,8 @@ export default function KycReviews() {
     </div>
     <DesiKpis>
       <DesiKpi tone="plum" label={tabs.find((t) => t.key === tab)?.label ?? ''} value={items ? items.length : '…'} sub="IDs in this list" icon={<IdCard aria-hidden="true" />} />
-      <DesiKpi tone="lav" label="Creator applicants" value={items ? applicants : '…'} icon={<Clapperboard aria-hidden="true" />} />
-      <DesiKpi tone="gold" label="Caller verifications" value={items ? items.length - applicants : '…'} icon={<Phone aria-hidden="true" />} />
+      <DesiKpi tone="lav" label="Creators" value={items ? applicants : '…'} icon={<Clapperboard aria-hidden="true" />} />
+      <DesiKpi tone="gold" label="Customers" value={items ? items.length - applicants : '…'} icon={<Phone aria-hidden="true" />} />
     </DesiKpis>
     {error && <HBanner tone="error">{error}</HBanner>}
     {info && <HBanner tone="info">{info}</HBanner>}
@@ -62,7 +69,7 @@ export default function KycReviews() {
             <div><p className="hfh-id-cap">Identity photo</p>{item.photoUrl ? <div className="hfh-id-photo"><img src={apiUrl(item.photoUrl)} alt="Identity document portrait" /></div> : <p className="hfa-note">No identity photo supplied.</p>}</div>
           </div>
           <div className="hfh-id-det">
-            <DesiChip tone="lav">{item.aadhaar?.role === 'host' ? 'Creator applicant' : 'Caller verification'}</DesiChip>
+            <DesiChip tone="lav">{whoLabel(item)}</DesiChip>
             <h3 className="hfh-id-name">{item.aadhaar?.name || item.email || item.uid}</h3>
             {item.email && <span className="hfa-note">{item.email}</span>}
             {item.createdAt && <span className="hfa-note">{dateIST(item.createdAt)}</span>}
@@ -76,7 +83,7 @@ export default function KycReviews() {
             </label>
             <div className="hfh-acts">
               <button type="button" className="hfa-btn tea" disabled={busy === item.selfieId} onClick={() => void decide(item, 'approve')}>Approve video KYC</button>
-              <button type="button" className="hfa-btn danger" disabled={busy === item.selfieId || (reason[item.selfieId] || '').trim().length < 3} onClick={() => void decide(item, 'reject')}>Record again</button>
+              <button type="button" className="hfa-btn danger" disabled={busy === item.selfieId || (reason[item.selfieId] || '').trim().length < 3} onClick={() => void decide(item, 'reject')}>Reject and ask to record again</button>
             </div>
           </div>}
         </div>

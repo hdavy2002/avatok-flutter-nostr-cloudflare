@@ -49,9 +49,9 @@ Some people think, "I am paying per minute, so I can say anything." This is wron
 
 Kavya is an influencer. A caller starts with normal chat. After a few minutes he says, "You have a sweet voice. Why don't we talk about something more private?" Kavya does not reply. She presses #. The call ends, he is blocked and the incident is reported. She did not have to say a word.
 
-## Want to choose who can call you?
+## Want a calmer place to talk?
 
-Influencers on the monthly influencer plan can take calls from verified customers only. See [Can I choose who calls me?](/help/for-women/women-only-space) or visit [women's safety](/women-only).
+Women-only channels are started and called only by verified women. See [Women-only channels](/help/for-women/women-only-space) or visit [women's safety](/women-only).
 
 ## If something goes wrong
 

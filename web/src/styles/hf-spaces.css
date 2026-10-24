@@ -1,0 +1,25 @@
+/* [HF-CREATOR-SPACES-1] Video KYC badge, Women-only / LGBTQ+ channel tags, the locked-call prompt and the Explore space chips.
+ * GREEN IS ALLOWED ONLY FOR THE "Video KYC verified" BADGE (owner's explicit request, 2026-10-24). Never reuse --hf-kyc-green elsewhere.
+ * Contrast: --hf-kyc-ink on --hf-kyc-bg is about 6.3:1 (WCAG AA for normal text). */
+:root{--hf-kyc-green:#0a6b35;--hf-kyc-ink:#0a6b35;--hf-kyc-bg:#e4f6ea;--hf-kyc-line:#8fd0a5;--hf-space-ink:#46113e;--hf-space-bg:#fde7f1;--hf-space-line:#e9a9c8}
+.hf-sb{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0;padding:0;list-style:none}
+.hf-kyc-pill,.hf-space-tag{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 12px;border-radius:999px;font-family:Nunito,system-ui,sans-serif;font-weight:800;font-size:.9375rem;line-height:1.2;white-space:nowrap}
+.hf-kyc-pill{background:var(--hf-kyc-bg);color:var(--hf-kyc-ink);border:1.5px solid var(--hf-kyc-line)}
+.hf-kyc-pill svg{width:18px;height:18px;flex:none;color:var(--hf-kyc-green)}
+.hf-space-tag{background:var(--hf-space-bg);color:var(--hf-space-ink);border:1.5px solid var(--hf-space-line)}
+.hf-space-tag svg{width:18px;height:18px;flex:none}
+.hf-sb-lg .hf-kyc-pill,.hf-sb-lg .hf-space-tag{min-height:40px;padding:6px 16px;font-size:1rem}
+
+/* Locked call prompt */
+.hf-space-lock{display:grid;gap:12px;padding:16px 18px;border-radius:20px;background:var(--hf-space-bg);border:1.5px solid var(--hf-space-line);color:var(--hf-space-ink);font-family:Nunito,system-ui,sans-serif;max-width:420px}
+.hf-space-lock p{margin:0;font-weight:800;font-size:1rem;line-height:1.45}
+.hf-space-lock-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:999px;background:#46113e;color:#fff!important;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:1rem;text-decoration:none;justify-self:start}
+.hf-space-lock-btn:hover{background:#2e0a29}
+.hf-space-lock-btn:focus-visible{outline:3px solid #7b388c;outline-offset:3px}
+.hf-space-lock-btn svg{width:20px;height:20px}
+.hf-space-lock.is-wait{opacity:.8}
+
+/* Explore: Women-only / LGBTQ+ filter chips (Explore is a vanilla page; styles use its own tokens where present) */
+.xp .frow-space{display:inline-flex;gap:10px;flex:none;align-items:center}
+.xp .fbtn.space-chip[aria-pressed=true]{background:var(--hf-space-bg);border-color:var(--hf-space-ink);box-shadow:3px 3px 0 var(--hf-space-ink)}
+.xp .hf-sb{margin-top:8px}

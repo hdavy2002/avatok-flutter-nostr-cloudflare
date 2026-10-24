@@ -19,7 +19,7 @@ let env: any;
 const call = (suffix: string, method = "GET", data?: unknown) => hfCreatorListingsAdminRoute(new Request(`https://api.test/api/admin/hf/listings${suffix}`, { method, ...(data ? { body: JSON.stringify(data), headers: { "content-type": "application/json" } } : {}) }), env);
 beforeEach(async () => {
   auth.uid = "admin";
-  const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql"], { alters: true });
+  const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql", "hf_creator_spaces.sql"], { alters: true });
   db._raw.exec("CREATE TABLE users(uid TEXT PRIMARY KEY); INSERT INTO users(uid) VALUES ('creator')");
   db._raw.exec("CREATE TABLE admin_audit(id TEXT PRIMARY KEY,admin_id TEXT,action TEXT,target TEXT,meta TEXT,created_at INTEGER)");
   db._raw.exec("CREATE TABLE contact_verification(uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT); CREATE TABLE phone_otp(uid TEXT, phone_hash TEXT, status TEXT)");

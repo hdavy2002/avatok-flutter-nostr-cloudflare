@@ -9,12 +9,16 @@ enum ChannelState {
   /// Confirmed, but under the follower minimum.
   needsFollowers,
 
+  /// [HF-CREATOR-SPACES-1] Confirmed and over the follower minimum, but under the total-views minimum (YouTube).
+  needsViews,
+
   /// The influencer removed it.
   disconnected;
 
   static ChannelState parse(Object? v) => switch ((v ?? '').toString()) {
         'approved' => ChannelState.approved,
         'needs_followers' => ChannelState.needsFollowers,
+        'needs_views' => ChannelState.needsViews,
         'disconnected' => ChannelState.disconnected,
         _ => ChannelState.checking,
       };
@@ -28,6 +32,7 @@ class Channel {
     required this.handle,
     this.url,
     this.followers = 0,
+    this.views = 0,
     this.state = ChannelState.checking,
     this.verified = false,
     this.needsCode = false,
@@ -42,6 +47,9 @@ class Channel {
   final String handle;
   final String? url;
   final int followers;
+
+  /// [HF-CREATOR-SPACES-1] Total YouTube views (0 for Instagram or when the server does not send it).
+  final int views;
   final ChannelState state;
 
   /// The ownership code was seen once.
@@ -66,6 +74,7 @@ class Channel {
         handle: (j['handle'] ?? '').toString(),
         url: _s(j['url']),
         followers: _i(j['followers']),
+        views: _i(j['views']),
         state: ChannelState.parse(j['state']),
         verified: j['verified'] == true,
         needsCode: j['needsCode'] == true,
@@ -76,7 +85,11 @@ class Channel {
 
 /// `GET /api/hf/channels`.
 class ChannelsList {
-  const ChannelsList({this.channels = const [], this.minFollowers = defaultMinFollowers, this.hostStatus, this.qualified = false});
+  const ChannelsList({this.channels = const [], this.minFollowers = defaultMinFollowers, this.minViews = defaultMinViews, this.hostStatus, this.qualified = false});
+
+  /// [HF-CREATOR-SPACES-1] Used only until the server says otherwise (`hfInfluencerMinViews`, YouTube total views).
+  static const int defaultMinViews = 1000;
+  final int minViews;
 
   /// Used only until the server says otherwise; the real number is `hfInfluencerMinFollowers`.
   static const int defaultMinFollowers = 10;
@@ -98,6 +111,7 @@ class ChannelsList {
     return ChannelsList(
       channels: raw is List ? [for (final e in raw) if (e is Map) Channel.fromJson(Map<String, dynamic>.from(e))] : const [],
       minFollowers: j['minFollowers'] is num ? (j['minFollowers'] as num).toInt() : defaultMinFollowers,
+      minViews: j['minViews'] is num ? (j['minViews'] as num).toInt() : defaultMinViews,
       hostStatus: _s(j['hostStatus']),
       qualified: j['qualified'] == true,
     );
@@ -128,6 +142,7 @@ class AddedChannel {
 enum CheckResult {
   approved,
   needsFollowers,
+  needsViews, // [HF-CREATOR-SPACES-1]
   codeMissing,
   notFound,
   private,
@@ -137,6 +152,7 @@ enum CheckResult {
   static CheckResult parse(Object? v) => switch ((v ?? '').toString()) {
         'approved' => CheckResult.approved,
         'needs_followers' => CheckResult.needsFollowers,
+        'needs_views' => CheckResult.needsViews,
         'code_missing' => CheckResult.codeMissing,
         'not_found' => CheckResult.notFound,
         'private' => CheckResult.private,
@@ -147,7 +163,7 @@ enum CheckResult {
 
 /// `POST /api/hf/channels/:id/check` and `/resync`.
 class ChannelCheck {
-  const ChannelCheck({required this.result, required this.message, required this.channel, this.minFollowers = ChannelsList.defaultMinFollowers, this.qualified = false});
+  const ChannelCheck({required this.result, required this.message, required this.channel, this.minFollowers = ChannelsList.defaultMinFollowers, this.minViews = ChannelsList.defaultMinViews, this.qualified = false});
 
   final CheckResult result;
 
@@ -155,6 +171,7 @@ class ChannelCheck {
   final String message;
   final Channel channel;
   final int minFollowers;
+  final int minViews; // [HF-CREATOR-SPACES-1]
   final bool qualified;
 
   factory ChannelCheck.fromJson(Map<String, dynamic> j) {
@@ -164,6 +181,7 @@ class ChannelCheck {
       message: (j['message'] ?? '').toString(),
       channel: Channel.fromJson(ch is Map ? Map<String, dynamic>.from(ch) : const <String, dynamic>{}),
       minFollowers: j['minFollowers'] is num ? (j['minFollowers'] as num).toInt() : ChannelsList.defaultMinFollowers,
+      minViews: j['minViews'] is num ? (j['minViews'] as num).toInt() : ChannelsList.defaultMinViews,
       qualified: j['qualified'] == true,
     );
   }

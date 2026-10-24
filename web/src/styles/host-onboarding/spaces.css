@@ -1,0 +1,36 @@
+/* [HF-CREATOR-SPACES-1] Path tiles, channel step and space-creator bits of host onboarding. Nunito/Comfortaa only, nothing under 14px, no green. */
+.hob-s-tiles{display:grid;gap:14px;margin-bottom:12px}
+@media(min-width:900px){.hob-s-tiles{grid-template-columns:repeat(3,1fr)}}
+.hob-s-tile{display:flex;align-items:flex-start;gap:14px;width:100%;min-height:80px;padding:18px;text-align:left;font:inherit;color:#46113e;background:#fffdf7;border:2px solid #e8dce7;border-radius:20px;cursor:pointer;box-shadow:0 3px 14px #46113e08}
+.hob-s-tile:hover{border-color:#d9c9dc}
+.hob-s-tile[aria-checked=true]{border-color:#46113e;background:#f2ecfc}
+.hob-s-tile:focus-visible{outline:3px solid #7b388c;outline-offset:3px}
+.hob-s-ico{flex:none;width:56px;height:56px;border-radius:50%;background:#fde8ef;color:#bd2740;display:inline-flex;align-items:center;justify-content:center}
+.hob-s-txt{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.hob-s-title{font-family:Nunito,sans-serif;font-weight:900;font-size:1.25rem;line-height:1.25}
+.hob-s-sub{font-size:1rem;color:#785979;line-height:1.5}
+.hob-s-note{font-size:.9375rem;font-weight:700;color:#bd2740;line-height:1.4}
+.hob-s-tick{flex:none;width:32px;height:32px;border-radius:50%;background:#46113e;color:#fff;display:inline-flex;align-items:center;justify-content:center;visibility:hidden}
+.hob-s-tile[aria-checked=true] .hob-s-tick{visibility:visible}
+
+.hob-s-bar{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.hob-s-bar p{margin:0}
+.hob-s-block{display:block;font-weight:400;margin-top:2px}
+.hob-s-list{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:14px}
+.hob-s-ch-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px}
+.hob-s-ch-head p{margin:0}
+.hob-s-pill{display:inline-flex;align-items:center;min-height:36px;padding:4px 14px;border-radius:999px;background:#f2ecfc;color:#46113e;font-size:.9375rem;font-weight:700}
+.hob-s-pill.is-ok{background:#46113e;color:#fff}
+.hob-s-code{margin-top:12px}
+.hob-s-codebox{margin:8px 0 0;padding:14px;border-radius:12px;background:#f2ecfc;font-family:Nunito,sans-serif;font-weight:900;font-size:1.5rem;letter-spacing:.12em;text-align:center;color:#46113e;user-select:all}
+.hob-s-acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.hob-s-acts .hob-btn{min-height:56px;flex:1 1 140px}
+.hob-s-okmsg{color:#46113e;font-weight:700}
+.hob-s-add{display:grid;gap:14px;margin-top:18px}
+.hob-s-add .hob-v-h2{margin:0}
+.hob-s-check{margin-bottom:12px}
+.hob-s-check a{text-decoration:underline}
+.hob-s-gate{display:grid;gap:12px;margin-top:16px}
+.hob-s-gate p{margin:0}
+.hob-s-queue{display:flex;align-items:center;gap:14px}
+.hob-s-queue p{margin:0}

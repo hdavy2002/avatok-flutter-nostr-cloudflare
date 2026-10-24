@@ -24,14 +24,14 @@ const put = (body: unknown) =>
 beforeEach(() => { store = new Map(); bustConfigMemo(); });
 
 describe("HF reels flags [HF-WIRE-1B]", () => {
-  it("defaults: everything dark except demo influencers; min followers 10; all public", async () => {
+  it("defaults: everything dark except demo influencers; min followers 20; all public", async () => {
     const pub = await (await getConfig(env)).json();
     for (const k of ["hfReelsEnabled", "hfChannelsEnabled", "hfFavouritesEnabled", "hfInvitesEnabled", "hfPayoutsEnabled"]) expect(pub[k]).toBe(false);
     expect(pub.hfDemoInfluencersVisible).toBe(true);
-    expect(pub.hfInfluencerMinFollowers).toBe(10);
+    expect(pub.hfInfluencerMinFollowers).toBe(20);
     const srv = await readConfig(env);
     expect(srv.hfReelsEnabled).toBe(false);
-    expect(srv.hfInfluencerMinFollowers).toBe(10);
+    expect(srv.hfInfluencerMinFollowers).toBe(20);
   });
   it("can be flipped after deploy; the follower count stays a number", async () => {
     const r = await put({ hfReelsEnabled: true, hfDemoInfluencersVisible: false, hfInfluencerMinFollowers: 1000 });

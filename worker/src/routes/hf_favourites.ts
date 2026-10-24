@@ -25,8 +25,8 @@ const err = (status: number, error: string, message?: string) => json({ ok: fals
 const NO_STORE = { "cache-control": "private, no-store" };
 
 interface LaneFlags { women_lane?: number | null; lgbtq_lane?: number | null; lgbtq_public?: number | null }
-const visible = (h: LaneFlags, a: { women: boolean; lgbtq: boolean }) =>
-  !(h.women_lane === 1 && !a.women) && !(h.lgbtq_lane === 1 && h.lgbtq_public !== 1 && !a.lgbtq);
+// [HF-CREATOR-SPACES-1] Space channels are visible to everyone (only calling is locked), so a saved space host never disappears.
+const visible = (h: LaneFlags, a: { women: boolean; lgbtq: boolean }) => { void h; void a; return true; };
 
 async function countFor(env: Env, uid: string): Promise<number> {
   return Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_favourites WHERE uid=?1").bind(uid).first<{ c: number }>())?.c ?? 0);
@@ -57,7 +57,7 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
         const c = card(env, r, undefined, std, lines?.get(r.uid));
         // [HF-DASH-V3-1] + languages, topics and the price block so the dashboard card can start a real call (HostCallActions).
         return { slug: c.slug, displayName: c.displayName, photoUrl: c.avatarUrl, headline: c.tagline || null, presence: c.status, savedAt: saved.get(r.uid) ?? 0,
-          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly, ...(lines?.get(r.uid) ?? {}) };
+          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly, videoKycVerified: c.videoKycVerified, space: c.space, ...(lines?.get(r.uid) ?? {}) };
       }).sort((a, b) => b.savedAt - a.savedAt);
       return json({ ok: true, items, count: items.length }, 200, NO_STORE);
     }

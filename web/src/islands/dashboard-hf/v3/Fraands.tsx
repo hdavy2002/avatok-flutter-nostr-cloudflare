@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import HostCallActions from '../../calls/HostCallActions';
 import SaveHostButton from '../../../components/hosts/SaveHostButton';
+import SpaceBadges from '../../../components/hosts/SpaceBadges';
+import { spaceOf } from '../../../lib/hfSpaces';
 import { useDash, type Fav } from './data';
 import { Avatar, Empty, Failed, Ic, PageHead, Pill, Skel, Sticker } from './ui';
 
@@ -37,12 +39,13 @@ export default function Fraands() {
 }
 
 function FraandCard({ f, onRemoved }: { f: Fav; onRemoved: () => void }) {
-  const callHost = { slug: f.slug, displayName: f.displayName, pricePerMin: f.pricePerMin ?? 0, pricePaisePerMin: f.pricePaisePerMin, priceTiers: f.priceTiers, plan: f.plan, status: f.presence, womenOnly: !!f.womenOnly };
+  const callHost = { slug: f.slug, displayName: f.displayName, pricePerMin: f.pricePerMin ?? 0, pricePaisePerMin: f.pricePaisePerMin, priceTiers: f.priceTiers, plan: f.plan, status: f.presence, womenOnly: !!f.womenOnly, space: spaceOf(f) };
   return <div className="h3-fr">
     <div className="h3-fr-heart"><SaveHostButton slug={f.slug} name={f.displayName} surface="dashboard" initialSaved onChange={saved => { if (!saved) onRemoved(); }} /></div>
     <a className="h" href={`/h/${f.slug}`}><Avatar name={f.displayName} seed={f.slug} photo={f.photoUrl} size="" />
       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: 40 }}><b style={{ fontFamily: 'var(--head)', fontWeight: 900, fontSize: 17 }}>{f.displayName}</b><small className="muted small">@{f.slug}</small></span></a>
     <div><Pill presence={f.presence} /></div>
+    <SpaceBadges videoKyc={f.videoKycVerified} space={spaceOf(f)} surface="favourites" />
     {f.headline && <div className="topics">{f.headline}</div>}
     {(f.topics?.length || f.languages?.length) ? <div className="meta">{[...(f.topics ?? []).slice(0, 3), ...(f.languages ?? []).slice(0, 2)].map(t => <span key={t} className="h3-chip dec">{t}</span>)}</div> : null}
     <div className="foot">{f.priceLabel && <span className="h3-price">{f.priceLabel}</span>}<a className="h3-link" href={`/h/${f.slug}`}>View profile →</a></div>

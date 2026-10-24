@@ -53,7 +53,7 @@ function makeEnv() {
     category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
-  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-reels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-20-hf-reel-details.sql"]) db.exec(mig(f));
+  for (const f of ["2026-10-19-hf-channels.sql", "2026-10-19-hf-reels.sql", "2026-10-19-hf-demo-hosts.sql", "2026-10-20-hf-reel-details.sql", "hf_creator_spaces.sql"]) db.exec(mig(f));
   const kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
@@ -69,7 +69,7 @@ function makeEnv() {
 
 beforeEach(() => {
   makeEnv();
-  cfg = { hfChannelsEnabled: true, hfReelsEnabled: true, hfInfluencerMinFollowers: 10, hfReelsImportCount: 50, hfDemoInfluencersVisible: true };
+  cfg = { hfChannelsEnabled: true, hfReelsEnabled: true, hfInfluencerMinFollowers: 10, hfInfluencerMinViews: 0, hfReelsImportCount: 50, hfDemoInfluencersVisible: true };
   authFail = null; calls = [];
   ytMine = { id: CH, snippet: { customUrl: "@maya", title: "Maya", description: "hello" }, statistics: { subscriberCount: "500", hiddenSubscriberCount: false } };
   videos = { aaaaaaaaaaa: vid("aaaaaaaaaaa"), bbbbbbbbbbb: vid("bbbbbbbbbbb") };

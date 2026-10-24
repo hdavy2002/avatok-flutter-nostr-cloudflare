@@ -10,6 +10,8 @@ import { STATUS_NOTE } from '../hostActivity';
 import { Card, Ic, PageHead, Skel, Sticker, fmtInt } from './ui';
 
 interface HostMe { host: { status: string; slug: string | null } | null; kyc: { aadhaar: { done: boolean }; selfie: { status: string }; payout: { done: boolean } } }
+/** [HF-CREATOR-SPACES-1] GET /api/hf/spaces/me (subset). kind tells which path this person chose in /hosts/onboarding. */
+interface SpacesMe { kind: 'channel' | 'women' | 'lgbtq' | null; aadhaarVerified: boolean; selfie: { status: 'none' | 'pending' | 'approved' | 'rejected' }; qualified: boolean; minFollowers?: number; minViews?: number }
 const PRICES = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
 /** Host earning per connected minute, in paise, for a price in rupees (rulebook HF-REEL-30: we keep ₹2 plus 40% of the rate above ₹2). */
 export const hostPaisePerMin = (rupees: number) => Math.max(0, Math.round((rupees * 100 - 200) * 0.6));
@@ -17,18 +19,30 @@ export const hostPaisePerMin = (rupees: number) => Math.max(0, Math.round((rupee
 export default function Become({ account }: { account: DashboardAccount }) {
   const [me, setMe] = useState<HostMe | null>(null);
   const [wa, setWa] = useState<boolean | null>(null);
+  const [sp, setSp] = useState<SpacesMe | null>(null);
   const [pi, setPi] = useState(3);
   const [mins, setMins] = useState(300);
   useEffect(() => {
     void hfCall<HostMe>('GET', '/api/hosts/me').then(r => setMe(r.ok ? r.data : { host: null, kyc: { aadhaar: { done: false }, selfie: { status: 'none' }, payout: { done: false } } }));
     void hfCall<{ whatsappVerified: boolean }>('GET', '/api/hf/me').then(r => setWa(r.ok ? r.data.whatsappVerified : false));
+    void hfCall<SpacesMe>('GET', '/api/hf/spaces/me').then(r => setSp(r.ok ? r.data : null)); // missing/failed -> show the channel steps
   }, []);
   const st = me?.host?.status ?? null;
+  const profileDone = !!st && !['draft', 'generating'].includes(st);
+  const space = sp?.kind === 'women' || sp?.kind === 'lgbtq' ? sp.kind : null;
+  const spaceName = space === 'women' ? 'Women-only' : 'LGBTQ+';
+  const selfie = sp?.selfie?.status ?? 'none';
   const steps: [string, string, boolean][] = [
     ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
-    // [HF-IDV-WHATSAPP-1 2026-10-24] No Aadhaar, no selfie video to go live. Withdrawal details (UPI + Aadhaar) come later, in the wallet.
-    ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', !!st && !['draft', 'generating'].includes(st)],
-    ['Review & go live', 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
+    ...(space ? [
+      ['Verify your Aadhaar', space === 'women' ? 'Aadhaar OTP or DigiLocker. For a Women-only channel it must show Female.' : 'Aadhaar OTP or DigiLocker, plus your LGBTQ+ channel details.', !!sp?.aadhaarVerified] as [string, string, boolean],
+      ['Video KYC', selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'A 10-second selfie video reading a code.', selfie === 'approved'] as [string, string, boolean],
+    ] : [
+      ['Connect your channel', sp ? `YouTube or Instagram with at least ${sp.minFollowers ?? 20} followers${sp.minViews ? ` and ${sp.minViews} views on YouTube` : ''}.` : 'YouTube or Instagram, checked automatically.', !!sp?.qualified || profileDone] as [string, string, boolean],
+    ]),
+    // [HF-IDV-WHATSAPP-1 2026-10-24] Channel creators need no Aadhaar or selfie video to go live. Withdrawal details (UPI + Aadhaar) come later, in the wallet.
+    ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', profileDone],
+    ['Review & go live', space ? `You approve your profile, our team approves it with your video KYC, and your ${spaceName} channel is live.` : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
   ];
   const doneN = steps.filter(s => s[2]).length;
   const cur = steps.findIndex(s => !s[2]);
@@ -47,7 +61,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
             {st === 'live' ? <a className="h3-btn rani" href="/dashboard/host">Open my influencer profile</a>
               : account.closing ? <span className="small muted">Your account is closing, so you can’t start this now.</span>
-              : <a className="h3-btn rani" href={st ? '/dashboard/host' : '/hosts/onboarding'} onClick={() => capture('hf_dash3_become_start', { step: cur })}>{doneN ? 'Continue' : 'Start now'} <Ic name="right" className="" /></a>}
+              : <a className="h3-btn rani" href={profileDone ? '/dashboard/host' : '/hosts/onboarding'} onClick={() => capture('hf_dash3_become_start', { step: cur })}>{doneN ? 'Continue' : 'Start now'} <Ic name="right" className="" /></a>}
             <a className="h3-btn ghost" href="/hosts/rules">Rules for influencers</a>
           </div></>}
       </Card>

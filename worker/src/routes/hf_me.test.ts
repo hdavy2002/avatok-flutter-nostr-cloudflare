@@ -40,6 +40,7 @@ function makeEnv() {
     CREATE TABLE hf_user_prefs (uid TEXT PRIMARY KEY, notify_whatsapp INTEGER NOT NULL DEFAULT 1, appt_reminders INTEGER NOT NULL DEFAULT 1, reel_alerts INTEGER NOT NULL DEFAULT 1, updated_at INTEGER);
     CREATE TABLE hf_user_email (uid TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at INTEGER NOT NULL);
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
   `);
@@ -100,6 +101,7 @@ describe("GET /api/hf/me", () => {
     db.prepare("INSERT INTO hf_user_registration VALUES ('u1','meena')").run();
     db.prepare("INSERT INTO hf_hosts (uid, slug, status) VALUES ('u1','meena','live')").run();
     db.prepare("INSERT INTO hf_kyc VALUES ('u1','F',99)").run();
+    db.prepare("INSERT INTO hf_selfie VALUES ('s1','u1',50,'approved',NULL)").run(); // [HF-CREATOR-SPACES-1]
     db.prepare("INSERT INTO hf_lane_access VALUES ('u1','women',99,NULL)").run();
     db.prepare("INSERT INTO hf_exit_requests VALUES ('u1','waiting_hold')").run();
     cfg = { hfTokensEnabled: true };

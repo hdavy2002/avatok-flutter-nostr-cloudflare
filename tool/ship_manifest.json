@@ -12063,5 +12063,35 @@
       }
     ],
     "_verified_at": "worker/src/routes/signup_email_otp.ts and worker/src/routes/whatsapp_auth.ts track() call sites, read directly from the code, 2026-10-24"
+  },
+  "HF-CREATOR-SPACES-1": {
+    "description": "[HF-CREATOR-SPACES-1] Two creator types: channel creators (20 followers + 1,000 YouTube views) and Women-only / LGBTQ+ space creators with full video KYC; customers of space channels need video KYC (women: Aadhaar F) enforced at call/booking/queue; green Video KYC badge; space filters in search.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCreatorSpacesEnabled",
+      "hfInfluencerMinViews",
+      "hfInfluencerMinFollowers"
+    ],
+    "success": [
+      {
+        "event": "hf_space_creator_chosen",
+        "property": "kind",
+        "in": [
+          "channel",
+          "women",
+          "lgbtq"
+        ],
+        "min_events": 1,
+        "note": "A creator picking a path (server-side, routes/hf_spaces.ts)."
+      },
+      {
+        "event": "hf_channel_threshold",
+        "property": "result",
+        "equals": "approved",
+        "min_events": 1,
+        "note": "A channel passing the 20 followers + 1,000 views bar."
+      }
+    ]
   }
 }

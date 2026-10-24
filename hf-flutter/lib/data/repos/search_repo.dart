@@ -24,18 +24,20 @@ class SearchRepo {
 
   /// Our network (online first), plus the exact @handle lookup for people who are not here yet. Public: no sign-in.
   /// [platform] is `youtube` or `instagram` (HF-REEL-41); null or `all` means everything.
-  Future<SearchResult> search(String q, {String? topic, String? platform}) => _guard(() async {
+  Future<SearchResult> search(String q, {String? topic, String? platform, String? space}) => _guard(() async {
         final query = <String, Object?>{'q': q.trim()};
         if (topic != null && topic.isNotEmpty) query['topic'] = topic;
         if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
+        if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
         return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false, store: true));
       });
 
   /// [HF-APP-CACHE-1] [search] cached-first (the landing list and repeat searches paint at once).
-  Stream<SearchResult> watchSearch(String q, {String? topic, String? platform}) {
+  Stream<SearchResult> watchSearch(String q, {String? topic, String? platform, String? space}) {
     final query = <String, Object?>{'q': q.trim()};
     if (topic != null && topic.isNotEmpty) query['topic'] = topic;
     if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
+    if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
     return _guard2(_api.watchJson('/api/hf/search', query: query, auth: false, policy: CachePolicy.list).map(SearchResult.fromJson));
   }
 

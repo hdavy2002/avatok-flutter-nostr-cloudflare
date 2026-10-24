@@ -63,13 +63,17 @@ class TopicOption {
 
 /// One saved influencer in `GET /api/hf/favourites`.
 class FavouriteHost {
-  const FavouriteHost({required this.slug, required this.name, this.photoUrl, this.headline, this.presence = 'offline'});
+  const FavouriteHost({required this.slug, required this.name, this.photoUrl, this.headline, this.presence = 'offline', this.videoKycVerified = false, this.space});
 
   final String slug;
   final String name;
   final String? photoUrl;
   final String? headline;
   final String presence;
+
+  /// [HF-CREATOR-SPACES-1] Green badge and `women` / `lgbtq` tag; false / null when the server does not send them.
+  final bool videoKycVerified;
+  final String? space;
 
   bool get online => presence == 'online' || presence == 'busy';
 
@@ -79,5 +83,7 @@ class FavouriteHost {
         photoUrl: _str(j['photoUrl']),
         headline: _str(j['headline']),
         presence: _str(j['presence']) ?? 'offline',
+        videoKycVerified: j['videoKycVerified'] == true,
+        space: (j['space'] == 'women' || j['space'] == 'lgbtq') ? j['space'] as String : null,
       );
 }

@@ -20,6 +20,7 @@ import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES
 import { encryptPii } from "../lib/pii_crypto";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { spaceQualified, type CreatorKind } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 import { putHostPhoto } from "./hf_host_photo"; // [HF-CHANNEL-CORE-1]
 
 const APP = BRAND.slug;
@@ -181,6 +182,13 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
   if (has("lgbtqLane")) {
     if (locked("lgbtqLane")) return err(409, "locked", { field: "lgbtqLane" });
     if (typeof b.lgbtqLane !== "boolean") return bad("lgbtqLane", "lgbtqLane must be true or false.");
+    if (b.lgbtqLane) { // [HF-CREATOR-SPACES-1] Aadhaar gender T, or a recorded private declaration
+      const [k, d] = await Promise.all([
+        env.DB_META.prepare("SELECT gender FROM hf_kyc WHERE uid=?1 AND verified_at IS NOT NULL").bind(uid).first<{ gender: string | null }>().catch(() => null),
+        env.DB_META.prepare("SELECT declared_at FROM hf_lane_access WHERE uid=?1 AND lane='lgbtq'").bind(uid).first<{ declared_at: number | null }>().catch(() => null),
+      ]);
+      if (k?.gender !== "T" && d?.declared_at == null) return err(403, "lgbtq_lane_not_allowed", { field: "lgbtqLane", message: "The LGBTQ+ lane needs your Aadhaar to show transgender, or your private declaration." });
+    }
     lgbtqLane = b.lgbtqLane;
     patch.lgbtq_lane = lgbtqLane ? 1 : 0; changed.push("lgbtqLane");
     if (!lgbtqLane) patch.lgbtq_public = 0;
@@ -371,6 +379,7 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
   if (!cur.display_name || !cur.avatar_id) missing.push("profile");
   if (!media.some((m) => m.kind === "profile") || !media.some((m) => m.kind === "gallery")) missing.push("media");
   if (!cur.voice_sample_r2 || (cur.intro_status !== "pending" && cur.intro_status !== "approved")) missing.push("voice");
+  if (!(await spaceQualified(env, uid, cur.creator_kind as CreatorKind | null | undefined))) missing.push("video_kyc"); // [HF-CREATOR-SPACES-1]
   if (missing.length) return err(422, "incomplete", { missing, message: "A few steps are still missing." });
   const now = Date.now();
   const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_review', submitted_at=?2, updated_at=?2, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?3 AND status IN ('pending_host','rejected','paused')").bind(uid, now, cur.listing_revision ?? 1).run();

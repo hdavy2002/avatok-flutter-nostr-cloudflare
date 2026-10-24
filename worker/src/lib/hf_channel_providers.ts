@@ -14,6 +14,8 @@ export interface ChannelLookup {
   platformUserId: string | null;
   handle: string;
   followers: number;
+  /** [HF-CREATOR-SPACES-1] Total channel views (YouTube statistics.viewCount). Undefined for Instagram: it has no total views, so only followers are checked there. */
+  views?: number;
   /** Bio (Instagram) or channel description (YouTube); "" when the account has none or it is not readable. */
   bio: string;
   isPrivate: boolean;
@@ -120,6 +122,7 @@ export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrU
     platformUserId: String(item.id),
     handle,
     followers: subs,
+    views: Math.max(0, Math.trunc(Number(item.statistics?.viewCount ?? 0)) || 0),
     bio: String(item.snippet?.description ?? ""),
     isPrivate: false,
     countHidden: hidden,
@@ -255,7 +258,7 @@ export async function youtubeOwnChannel(accessToken: string, f: FetchLike = fetc
   const hidden = it?.statistics?.hiddenSubscriberCount === true;
   return {
     exists: true, platformUserId: id, handle: custom ? (custom.startsWith("@") ? custom : "@" + custom) : String(it?.snippet?.title ?? id).slice(0, 80),
-    followers: Math.max(0, Math.trunc(Number(it?.statistics?.subscriberCount ?? 0)) || 0), bio: String(it?.snippet?.description ?? ""), isPrivate: false, countHidden: hidden,
+    followers: Math.max(0, Math.trunc(Number(it?.statistics?.subscriberCount ?? 0)) || 0), views: Math.max(0, Math.trunc(Number(it?.statistics?.viewCount ?? 0)) || 0), bio: String(it?.snippet?.description ?? ""), isPrivate: false, countHidden: hidden,
     url: `https://www.youtube.com/channel/${id}`,
   };
 }

@@ -56,6 +56,97 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
   /// confirms it. The dummy code ("type any 6 digits") and the fake sign-up exist in the demo build only.
   bool get _live => !DemoMode.on;
 
+  // [HF-CREATOR-SPACES-1] Which path: `channel` (YouTube / Instagram), `women` (Women-only channel) or `lgbtq` (LGBTQ+ channel).
+  String _kind = 'channel';
+  bool _publicTag = false;
+  bool _declare = false;
+  bool _terms = false;
+  int _minFollowers = ChannelsList.defaultMinFollowers;
+  int _minViews = ChannelsList.defaultMinViews;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_live) unawaited(_loadThresholds());
+  }
+
+  /// The follower and views minimums from `GET /api/hf/channels`, for the path text. A failed read keeps the defaults.
+  Future<void> _loadThresholds() async {
+    try {
+      final l = await Services.instance.channelsRepo.list();
+      if (!mounted) return;
+      setState(() {
+        _minFollowers = l.minFollowers;
+        _minViews = l.minViews;
+      });
+    } catch (_) {
+      // keep the defaults
+    }
+  }
+
+  /// A space path: records the creator type, then the native video KYC flow (WhatsApp, Aadhaar code, selfie video).
+  Future<void> _startSpacePath() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await Services.instance.spacesRepo.chooseCreatorKind(_kind, declare: _declare, acceptTerms: _terms, publicTagConsent: _publicTag);
+      Telemetry.event('hf_space_creator_chosen', {'kind': _kind});
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await context.push<bool>('/verify/space?lane=$_kind&creator=1');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e is ApiException ? e.userMessage : ApiException.genericText;
+      });
+    }
+  }
+
+  Widget _pathCard(String kind, IconData icon, String title, String sub) {
+    final on = _kind == kind;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Semantics(
+        button: true,
+        selected: on,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () => setState(() {
+            _kind = kind;
+            _error = null;
+          }),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: on ? C.lavtint : C.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: on ? C.maroon : C.line, width: on ? 2.5 : 1.5),
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(icon, color: on ? C.maroon : C.muted, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: t(18, color: C.maroon, w: FontWeight.w900, h: 1.2)),
+                  const SizedBox(height: 4),
+                  Text(sub, style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tick(bool value, String text, ValueChanged<bool> onChanged) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Checkbox(value: value, activeColor: C.maroon, onChanged: (v) => onChanged(v == true)),
+        Expanded(child: Padding(padding: const EdgeInsets.only(top: 12), child: Text(text, style: t(16, w: FontWeight.w700, h: 1.35)))),
+      ]);
+
   @override
   void dispose() {
     for (final c in [_name, _email, _wa, _otp]) {
@@ -72,6 +163,10 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         setState(() => _error = 'Please fill your name and a real email.');
         return;
       }
+      if (_live && _kind == 'lgbtq' && !(_publicTag && _declare && _terms)) {
+        setState(() => _error = 'Please tick all three boxes to start an LGBTQ+ channel.');
+        return;
+      }
       if (_live) {
         setState(() => _busy = true);
         try {
@@ -84,12 +179,18 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         }
         if (!mounted) return;
         setState(() => _busy = false);
+        if (_kind != 'channel') {
+          await _startSpacePath();
+          return;
+        }
+        // best effort: record the channel path (an older server answers 404, which changes nothing)
+        unawaited(Services.instance.spacesRepo.chooseCreatorKind('channel').then((_) => Telemetry.event('hf_space_creator_chosen', {'kind': 'channel'})).catchError((Object _) {}));
       }
       setState(() => _step = 1);
     } else if (_step == 1) {
       final c = _channels;
       if (c == null || !c.qualified) {
-        setState(() => _error = 'We need at least ${c?.minFollowers ?? ChannelsList.defaultMinFollowers} followers or subscribers on YouTube or Instagram. Add a channel and check it, or try another channel.');
+        setState(() => _error = 'We need at least ${c?.minFollowers ?? ChannelsList.defaultMinFollowers} followers or subscribers on YouTube or Instagram, and ${c?.minViews ?? ChannelsList.defaultMinViews} total views on YouTube. Add a channel and check it, or try another channel.');
         return;
       }
       setState(() => _step = 2);
@@ -158,7 +259,26 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
                       field: TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: t(18, w: FontWeight.w800), decoration: const InputDecoration(hintText: 'you@example.com')),
                     ),
                     const SizedBox(height: 12),
-                    const DesiTip('Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.'),
+                    if (_live) ...[
+                      const SizedBox(height: 16),
+                      Text('How do you want to start?', style: t(20, color: C.maroon, w: FontWeight.w900)),
+                      const SizedBox(height: 10),
+                      _pathCard('channel', Icons.smart_display_rounded, 'I have a YouTube or Instagram channel',
+                          'You need $_minFollowers+ followers or subscribers and $_minViews total views on YouTube. Instagram is checked on followers only.'),
+                      _pathCard('women', Icons.female_rounded, 'Start a Women-only channel',
+                          'No channel needed. WhatsApp, an Aadhaar code and a 10-second selfie video. Only verified women can call you.'),
+                      _pathCard('lgbtq', Icons.groups_rounded, 'Start an LGBTQ+ channel',
+                          'No channel needed. WhatsApp, an Aadhaar code, a private declaration and a 10-second selfie video.'),
+                      if (_kind == 'lgbtq') ...[
+                        _tick(_publicTag, 'I am happy for the "LGBTQ+ channel" tag to be public on my profile, in search and on Google.', (v) => setState(() => _publicTag = v)),
+                        _tick(_declare, 'This space is right for me. This stays private.', (v) => setState(() => _declare = v)),
+                        _tick(_terms, 'I accept the LGBTQ+ space terms.', (v) => setState(() => _terms = v)),
+                      ],
+                      const SizedBox(height: 6),
+                    ],
+                    DesiTip(_kind == 'channel'
+                        ? 'Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.'
+                        : 'Next you verify yourself with a 10-second video. Only you and our team see it.'),
                   ],
                   if (_step == 1) ...[
                     ChannelsStep(onLoaded: (l) {
@@ -229,7 +349,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
               ),
             ),
             BookBottomButton(
-              label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? 'NEXT' : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
+              label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? (_step == 0 && _live && _kind != 'channel' ? 'VERIFY NOW' : 'NEXT') : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
               plum: true,
               onTap: _next,
             ),

@@ -36,6 +36,7 @@ function makeEnv(withKeys = true) {
   db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, price_per_min INTEGER NOT NULL DEFAULT 20, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     CREATE UNIQUE INDEX idx_hf_hosts_slug ON hf_hosts(slug);`);
   db.exec(readFileSync(new URL("../../migrations/2026-10-19-hf-channels.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../../migrations/hf_creator_spaces.sql", import.meta.url), "utf8")); // [HF-CREATOR-SPACES-1]
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
@@ -52,7 +53,7 @@ function makeEnv(withKeys = true) {
 
 beforeEach(() => {
   makeEnv();
-  cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 10 };
+  cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 10, hfInfluencerMinViews: 0 };
   authFail = null;
   yt = { status: 200, items: [ytChannel("UC1234567890123456789012", 500)] };
   ig = { status: 200, body: igBody("1783", 500) };
@@ -214,7 +215,7 @@ describe("hf channels: checking ownership and followers", () => {
   });
 
   it("the follower minimum comes from config", async () => {
-    cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 1000 };
+    cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 1000, hfInfluencerMinViews: 0 };
     const { channel, verifyCode, minFollowers } = await (await add()).json();
     expect(minFollowers).toBe(1000);
     yt = { status: 200, items: [ytChannel("UC1234567890123456789012", 500, verifyCode)] };
@@ -370,7 +371,7 @@ describe("hf channels: resync and the daily re-check", () => {
     yt = { status: 200, items: [ytChannel("UC1234567890123456789012", 2)] };
     cfg = {};
     expect((await recheckAllChannels(env)).scanned).toBe(0);
-    cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 10 };
+    cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 10, hfInfluencerMinViews: 0 };
     const out = await recheckAllChannels(env);
     expect(out).toEqual({ scanned: 1, updated: 1, failed: 0, demoted: 1 });
     expect(hostStatus()).toBe("pending_check");
@@ -394,5 +395,62 @@ describe("provider helpers", () => {
     expect(bioHasCode("hello hf 7k3q9 !", "HF-7K3Q9")).toBe(true);
     expect(bioHasCode("hello", "HF-7K3Q9")).toBe(false);
     expect(bioHasCode("anything", "")).toBe(false);
+  });
+});
+
+// [HF-CREATOR-SPACES-1] total views for YouTube, followers only for Instagram, space creators untouched by channel sync
+describe("hf channels: views threshold [HF-CREATOR-SPACES-1]", () => {
+  const UC = "UC1234567890123456789012";
+  beforeEach(() => { cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 20, hfInfluencerMinViews: 1000 }; });
+
+  it("YouTube with enough subscribers but fewer than 1,000 views -> needs_views, host stays pending_check, minViews returned", async () => {
+    const { channel, verifyCode } = await (await add()).json();
+    yt = { status: 200, items: [ytChannel(UC, 500, verifyCode, { viewCount: "999" })] };
+    const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
+    expect(b).toMatchObject({ ok: true, result: "needs_views", minFollowers: 20, minViews: 1000, qualified: false, hostStatus: "pending_check" });
+    expect(b.message).toBe("We need at least 1,000 total views on your YouTube channel.");
+    expect(b.channel).toMatchObject({ views: 999, followers: 500, state: "needs_followers" });
+    expect(db.prepare("SELECT views FROM hf_channels").get().views).toBe(999);
+  });
+
+  it("YouTube with 1,000 views and 20 subscribers is approved; 19 subscribers is needs_followers", async () => {
+    const { channel, verifyCode } = await (await add()).json();
+    yt = { status: 200, items: [ytChannel(UC, 20, verifyCode, { viewCount: "1000" })] };
+    const ok = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
+    expect(ok).toMatchObject({ result: "approved", qualified: true, hostStatus: "approved" });
+    expect(ok.channel.views).toBe(1000);
+    yt = { status: 200, items: [ytChannel(UC, 19, "", { viewCount: "5000" })] };
+    const low = await (await call("POST", `/api/hf/channels/${channel.id}/resync`)).json();
+    expect(low.result).toBe("needs_followers");
+  });
+
+  it("Instagram is checked on followers only (no total views)", async () => {
+    const { channel, verifyCode } = await (await add("instagram", "maya.reels")).json();
+    ig = { status: 200, body: igBody("1783", 25, verifyCode) };
+    const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
+    expect(b).toMatchObject({ result: "approved", minViews: 1000 });
+    expect(b.channel.views).toBe(0);
+  });
+
+  it("GET /api/hf/channels lists views and minViews", async () => {
+    await add();
+    const b = await (await call("GET")).json();
+    expect(b.minViews).toBe(1000);
+    expect(b.channels[0]).toHaveProperty("views", 0);
+  });
+
+  it("a Women-only / LGBTQ+ space creator is never approved or demoted by channel sync", async () => {
+    const { channel, verifyCode } = await (await add()).json();
+    db.prepare("UPDATE hf_hosts SET creator_kind='women' WHERE uid='u1'").run();
+    yt = { status: 200, items: [ytChannel(UC, 500, verifyCode, { viewCount: "5000" })] };
+    const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
+    expect(b.result).toBe("approved");
+    expect(hostStatus()).toBe("pending_check"); // not approved by channel logic
+    db.prepare("UPDATE hf_hosts SET status='live' WHERE uid='u1'").run();
+    await call("DELETE", `/api/hf/channels/${channel.id}`);
+    expect(hostStatus()).toBe("live");
+    db.prepare("UPDATE hf_hosts SET status='approved' WHERE uid='u1'").run();
+    await call("DELETE", `/api/hf/channels/${channel.id}`);
+    expect(hostStatus()).toBe("approved"); // no channel, still not demoted
   });
 });

@@ -151,11 +151,9 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return UNAVAILABLE();
 
   if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
-  if (laneIn === "lgbtq") {
-    if (host.lgbtq_lane !== 1) return UNAVAILABLE();
-    if (!(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "Please verify to use this lane.", { lane: "lgbtq" });
-  }
-  const lane = laneIn ?? (host.women_lane === 1 ? "women" : null);
+  if (laneIn === "lgbtq" && host.lgbtq_lane !== 1) return UNAVAILABLE();
+  if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
+  const lane = laneIn ?? (host.women_lane === 1 ? "women" : host.lgbtq_lane === 1 ? "lgbtq" : null);
 
   const open = await env.DB_META.prepare(
     "SELECT 1 AS x FROM hf_calls WHERE caller_uid=?1 AND status IN ('ringing_host','ringing_caller','connected') AND created_at>?2 LIMIT 1",

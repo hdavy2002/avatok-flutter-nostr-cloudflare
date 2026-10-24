@@ -1,6 +1,6 @@
 // [HF-LANE-VERIFY-1 2026-10-09] HF protected lanes: caller verification. Rulebook HF-WOM-2, HF-LGBT-3, HF-KYC-5.
-//   GET    /api/hf/lanes/me             -> { whatsappVerified, aadhaarVerified, gender:'F'|'M'|'T'|null,
-//                                           lanes:{ women:{eligible,granted}, lgbtq:{declared,granted} } }
+//   GET    /api/hf/lanes/me             -> { whatsappVerified, aadhaarVerified, gender:'F'|'M'|'T'|null, selfie:{status,reason}, videoKycVerified,
+//                                           lanes:{ women:{eligible,granted}, lgbtq:{declared,granted} } }   [HF-CREATOR-SPACES-1] granted needs an APPROVED selfie
 //   POST   /api/hf/lanes/women/join     -> { ok, lane:'women' } | 409 aadhaar_required | 403 not_eligible
 //   POST   /api/hf/lanes/lgbtq/join     { declare:true, ack18:true } -> { ok, lane:'lgbtq' } | 400 declare_required | 409 aadhaar_required
 //   DELETE /api/hf/lanes/:lane          -> { ok }   (leave the lane)
@@ -13,7 +13,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
-import { parseLane, laneEligible, womenEligible, WOMEN_NOT_ELIGIBLE_MESSAGE, getLaneAccess, type Lane } from "../lib/hf_lanes";
+import { parseLane, laneEligible, womenEligible, WOMEN_NOT_ELIGIBLE_MESSAGE, getLaneAccess, latestLaneSelfie, type Lane } from "../lib/hf_lanes";
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
@@ -44,19 +44,22 @@ async function kycFacts(env: Env, uid: string): Promise<{ aadhaarVerified: boole
 async function me(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
-  const [kyc, cv, access, decl] = await Promise.all([
+  const [kyc, cv, access, decl, selfie] = await Promise.all([
     kycFacts(env, u.uid),
     env.DB_META.prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1").bind(u.uid).first<{ phone_verified: number }>().catch(() => null),
     getLaneAccess(env, u.uid),
     env.DB_META.prepare("SELECT declared_at FROM hf_lane_access WHERE uid=?1 AND lane='lgbtq'").bind(u.uid).first<{ declared_at: number | null }>().catch(() => null),
+    latestLaneSelfie(env, u.uid),
   ]);
   return json({
     whatsappVerified: !!cv && Number(cv.phone_verified) === 1,
     aadhaarVerified: kyc.aadhaarVerified,
     gender: kyc.gender,
+    selfie,
+    videoKycVerified: kyc.aadhaarVerified && selfie.status === "approved",
     lanes: {
       women: { eligible: laneEligible("women", kyc.aadhaarVerified, kyc.gender), granted: access.women },
-      lgbtq: { declared: decl?.declared_at != null, granted: access.lgbtq /* [HF-IDV-WHATSAPP-1] no selfie */, selfieStatus: "approved" as const, selfieReason: null },
+      lgbtq: { declared: decl?.declared_at != null, granted: access.lgbtq, selfieStatus: selfie.status, selfieReason: selfie.reason },
     },
   }, 200, { "cache-control": "private, no-store" });
 }
@@ -88,7 +91,8 @@ async function join(req: Request, env: Env, ctx: ExecutionContext | undefined, l
   ).bind(u.uid, lane, now, declaredAt).run();
   const access = await getLaneAccess(env, u.uid);
   emit("hf_lane_joined", { lane });
-  return json({ ok: true, lane, granted: access[lane] /* [HF-IDV-WHATSAPP-1] no selfie */, ...(lane === "lgbtq" ? { selfieStatus: "approved" as const, selfieReason: null } : {}) });
+  const selfie = await latestLaneSelfie(env, u.uid);
+  return json({ ok: true, lane, granted: access[lane], selfie, ...(lane === "lgbtq" ? { selfieStatus: selfie.status, selfieReason: selfie.reason } : {}) });
 }
 
 async function leave(req: Request, env: Env, ctx: ExecutionContext | undefined, lane: Lane): Promise<Response> {

@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import Icon from '../Icon';
 import type { StepProps } from '../types';
 
-export default function DoneStep({ setAction, api }: StepProps) {
+export default function DoneStep({ setAction, api, draft }: StepProps) {
+  const space = draft.path === 'women' || draft.path === 'lgbtq';
   useEffect(() => { setAction({ label: '', hidden: true }); }, [setAction]);
   const restart = () => {
     try { localStorage.removeItem('hf_host_onboarding_draft_v1'); } catch { /* ignore */ }
@@ -16,7 +17,9 @@ export default function DoneStep({ setAction, api }: StepProps) {
         <span className="hob-f-badge"><Icon name="heart" /></span>
       </div>
       <h1 className="hob-h1">Sent for review!</h1>
-      <p className="hob-lead">Our team checks every new profile, usually within 24 hours. We'll message you on WhatsApp when you're live.</p>
+      {space
+        ? <p className="hob-lead">Our team is checking your video KYC now. Your {draft.path === 'women' ? 'Women-only' : 'LGBTQ+'} channel goes live once it is approved. We'll message you on WhatsApp.</p>
+        : <p className="hob-lead">Our team checks every new profile, usually within 24 hours. We'll message you on WhatsApp when you're live.</p>}
       <section className="hob-card hob-f-next">
         <h2 className="hob-f-h2">What happens next</h2>
         <ul className="hob-f-list">

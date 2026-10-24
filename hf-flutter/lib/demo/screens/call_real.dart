@@ -14,6 +14,7 @@ import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../data.dart';
 import '../notify_me_button.dart';
+import '../space_kit.dart'; // [HF-CREATOR-SPACES-1]
 import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../theme.dart';
 import '../widgets.dart';
@@ -184,6 +185,12 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
         if (mounted) setState(() { _problem = null; _starting = false; });
         return;
       }
+      // [HF-CREATOR-SPACES-1] 403 lane_required: the locked prompt with "Verify to call".
+      if (await handleLaneRequired(context, e)) {
+        if (mounted) setState(() { _problem = null; _starting = false; });
+        return;
+      }
+      if (!mounted) return;
       setState(() {
         _problem = CallProblemInfo.of(e);
         _starting = false;

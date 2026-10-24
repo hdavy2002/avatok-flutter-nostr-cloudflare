@@ -5,11 +5,22 @@ import type { OnboardingApi } from '../host-onboarding/types';
 
 export type Lane = 'women' | 'lgbtq';
 export const parseLane = (v: string | null | undefined): Lane | null => (v === 'women' || v === 'lgbtq' ? v : null);
-export const laneReturnPath = (lane: Lane) => `/verify/lane?lane=${lane}&dl=return`;
+export const laneReturnPath = (lane: Lane) => {
+  let next = '';
+  try { const n = safeNext(new URLSearchParams(window.location.search).get('next')); if (n) next = `&next=${encodeURIComponent(n)}`; } catch { /* ignore */ }
+  return `/verify/lane?lane=${lane}${next}&dl=return`;
+};
 
+/** [HF-CREATOR-SPACES-1] selfie + videoKycVerified are new on the worker; an older worker leaves them out (treated as none / false). */
 export interface LaneMe {
   whatsappVerified: boolean; aadhaarVerified: boolean; gender: 'F' | 'M' | 'T' | null;
+  selfie?: { status?: 'none' | 'pending' | 'approved' | 'rejected'; reason?: string | null }; videoKycVerified?: boolean;
   lanes: { women: { eligible: boolean; granted: boolean }; lgbtq: { declared: boolean; granted: boolean } };
+}
+/** Where to go after verifying: a same-site path only (no open redirect). */
+export function safeNext(raw: string | null | undefined): string | null {
+  if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return null;
+  return raw.slice(0, 300);
 }
 
 export async function fetchLaneMe(): Promise<{ ok: true; me: LaneMe } | { ok: false; status: number; error: string; code?: string }> {

@@ -301,6 +301,7 @@ import { runMonthlyStatements } from "./lib/hf_receipts"; // [HF-WALLET-LIMITS-1
 import { hfPayoutsRoute } from "./routes/hf_payouts"; // [HF-PAYOUT-1] HF host withdrawals (flag hfPayoutsEnabled)
 import { hfHostKycRoute } from "./routes/hf_host_kyc"; // [HF-HOST-KYC-1] HF host verification (flag hostKycEnabled)
 import { hfHostsRoute } from "./routes/hf_hosts"; // [HF-HOST-PLATFORM-1] host profile/avatars/voice/submit (flag hostOnboardingEnabled)
+import { hfSpacesRoute } from "./routes/hf_spaces"; // [HF-CREATOR-SPACES-1]
 import { hfLanesRoute } from "./routes/hf_lanes"; // [HF-LANE-VERIFY-1] protected-lane caller verification (flag hostKycEnabled)
 import { hfHostsPublicRoute } from "./routes/hf_hosts_public"; // [HF-HOST-PLATFORM-1] live hosts (flag hostsPublicEnabled)
 import { hfHostsListRoute } from "./routes/hf_hosts_list"; // [HF-NATIVE-S2/S3] native host list + options
@@ -1171,6 +1172,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const bookingResponse = (await hfBookingsAppRoute(req, env, ctx)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
+      if (p.startsWith("/api/hf/spaces/")) { const r = await hfSpacesRoute(req, env, p, ctx); if (r) return r; } // [HF-CREATOR-SPACES-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/merch/")) { const r = await hfMerchRoute(req, env, p, ctx); if (r) return r; } // [HF-MERCH-CORE-1]
       if (p.startsWith("/api/admin/merch/")) { const r = await adminMerchRoute(req, env, p); if (r) return r; } // [HF-MERCH-CORE-1]

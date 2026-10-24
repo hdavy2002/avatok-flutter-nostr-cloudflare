@@ -3,6 +3,7 @@ import { looksSignedOut, signInUrl, recoverAgeConfirmation } from '../../lib/hfC
 import { ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { bookingError, confirmBooking, createQuote, getPublicSlotsInfo, money, offeredDurations, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
 import SessionBridge from '../calls/SessionBridge';
+import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
 import { capture } from '../../lib/analytics';
 import { callModeFlags, holdLine, lengthLabel, offeredLengths } from '../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import '../../styles/hf-bookings.css';
@@ -33,6 +34,7 @@ export default function CustomerBooking() {
   const [message, setMessage] = useState('');
   const [topUp, setTopUp] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [laneNeed, setLaneNeed] = useState<'women' | 'lgbtq' | null>(null); // [HF-CREATOR-SPACES-1]
   const key = useRef('');
   const authEpoch = useRef(0);
   const quoteAuthEpoch = useRef(0);
@@ -57,7 +59,7 @@ export default function CustomerBooking() {
         setDurations(offered); setDuration(offered[0]); syncUrl(nextDate, offered[0]);
         return loadSlots(nextDate, offered[0], keepMessage, true);
       }
-      const issue = bookingError(error); setMessage(issue.message); setPhase('error');
+      const issue = bookingError(error); setMessage(issue.message); setLaneNeed(issue.lane ?? null); setPhase('error');
     }
   };
   useEffect(() => {
@@ -116,7 +118,7 @@ export default function CustomerBooking() {
       const fresh = await createQuote(host, slot.startUtc, duration);
       if (authEpoch.current !== quoteEpoch) { setQuote(null); setSelected(null); setMessage('Your signed-in account changed. Choose the time again to get a fresh quote.'); return; }
       setQuote(fresh); quoteAuthEpoch.current = quoteEpoch; key.current = randomKey(); setMessage('');
-    } catch (error) { const issue = bookingError(error); setMessage(issue.code === 'age_confirmation_required' ? await recoverAgeConfirmation() : issue.message); setSelected(null); }
+    } catch (error) { const issue = bookingError(error); setLaneNeed(issue.lane ?? null); setMessage(issue.code === 'age_confirmation_required' ? await recoverAgeConfirmation() : issue.message); setSelected(null); }
     finally { setBusy(false); }
   };
 
@@ -133,6 +135,7 @@ export default function CustomerBooking() {
       window.location.assign('/bookings/' + encodeURIComponent(booking.id));
     } catch (error) {
       const issue = bookingError(error);
+      setLaneNeed(issue.lane ?? null);
       capture('hf_booking_confirm_failed', { feature: 'hf_booking', quote_id: quote.id, status: issue.status, code: issue.code });
       if (issue.code === 'age_confirmation_required') {
         setMessage(await recoverAgeConfirmation());
@@ -172,6 +175,7 @@ export default function CustomerBooking() {
       </section>
       <section className="hfb-card" aria-labelledby="hfb-times" aria-busy={phase === 'loading'}>
         <h2 id="hfb-times">Available times</h2>
+        {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
         {phase === 'loading' && <p role="status">Checking current availability…</p>}
         {phase === 'error' && <div><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={() => void loadSlots()}>Try again</button></div>}
         {phase === 'ready' && slots.length === 0 && <p>No times are available for this date. Try another day.</p>}
@@ -189,6 +193,7 @@ export default function CustomerBooking() {
         <p className="hfb-muted">Before the call connects, either person may cancel and the server releases the reservation. No cancellation penalty or no-show fee applies. After connection, the call charges only for verified connected time.</p>
         <label className="hfb-check"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><span>I understand the reservation and cancellation policy.</span></label>
         {message && <p role="status" className="hfb-message">{message}</p>}
+        {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
         <div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void confirm()} disabled={busy || !policyAccepted}>{busy ? 'Confirming…' : 'Confirm and reserve'}</button><button type="button" className="hfb-button" onClick={() => { setQuote(null); setSelected(null); setMessage(''); }}>Pick another time</button></div>
         {topUp && <div className="hfb-note" role="alert"><p>Add funds to your wallet to continue. Your chosen time may change while you top up, so we’ll check availability and show a fresh quote when you return.</p><button className="hfb-button" type="button" onClick={goTopUp}>Add money</button></div>}
       </section>}

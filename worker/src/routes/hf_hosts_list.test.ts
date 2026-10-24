@@ -104,7 +104,7 @@ describe("GET /api/hf/hosts", () => {
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
       // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
-      ["avatarUrl", "callEligible", "category", "displayName", "identityVerified", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
+      ["avatarUrl", "callEligible", "category", "displayName", "identityVerified", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "space", "status", "style", "tagline", "talkedTo", "topics", "videoKycVerified", "womenOnly"],
     );
     expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
     expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);
@@ -252,6 +252,10 @@ describe("GET /api/hf/hosts", () => {
       E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,NULL);`);
       expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
       E.db.exec("UPDATE hf_lane_access SET declared_at=1 WHERE uid='viewer'");
+      expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403); // [HF-CREATOR-SPACES-1] declaration alone is not enough: the selfie must be approved
+      E.db.exec("INSERT INTO hf_selfie (id, uid, created_at, review_status) VALUES ('s9','viewer',1,'pending')");
+      expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
+      E.db.exec("UPDATE hf_selfie SET review_status='approved' WHERE id='s9'");
       expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(200);
     });
     it("gates lane profiles but keeps ordinary public detail browseable", async () => {

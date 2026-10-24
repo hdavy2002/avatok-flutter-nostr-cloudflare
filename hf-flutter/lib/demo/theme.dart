@@ -44,6 +44,9 @@ abstract final class C {
   static const onlineLine = Color(0xFFA2DAB3); // pale green border
   static const onlineInk = Color(0xFF1F6B3F); // dark green text / icons on onlineBg (passes 4.5:1)
   static const onlineDot = Color(0xFF3FA868); // green dot, Online pill fill
+  // [HF-CREATOR-SPACES-1] The "Video KYC verified" badge: the ONLY other green, asked for by the owner (2026-10-24). White text passes 5:1.
+  static const kycGreen = Color(0xFF1F7A45);
+  static const kycGreenText = Color(0xFFFFFFFF);
   // Footer (both bottom bars) kolam background and motif stroke.
   static const footerBg = Color(0xFFFFFAF3);
   static const footerDot = Color(0xFFF1E3D6);

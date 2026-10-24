@@ -86,8 +86,7 @@ export const HIDDEN_ADMIN_NAV_KEYS: ReadonlySet<AdminKey> = new Set([
   // [HF-ADMIN-MENU-1] owner 2026-10-23: Prices, UPI settings, AI assistant and the Preview group are hidden from the menu (pages and APIs stay, reachable by URL).
   // The Shop group stays: its checkout reads the payee set on /admin/upi, so keep that page alive even though it has no menu entry.
   'prices', 'upi', 'ai', 'preview-help', 'preview-legal',
-  // [HF-IDV-WHATSAPP-3] owner 2026-10-24: no selfie video any more, so the Video KYC review queue leaves the menu (page kept by URL).
-  'host-kyc',
+  // [HF-CREATOR-SPACES-1] 'host-kyc' (Video KYC reviews) is back in the menu: Women-only / LGBTQ+ channel creators and their customers submit selfie videos again.
 ]);
 export const ADMIN_NAV: AdminNavItem[] = ALL_ADMIN_NAV.filter((item) => !HIDDEN_ADMIN_NAV_KEYS.has(item.key));
 

@@ -32,6 +32,8 @@ export interface KycItem {
   selfieId: string; uid: string; email?: string | null; selfieUrl: string; photoUrl: string | null; urlExpiresInS: number;
   code?: string; createdAt?: number; bytes?: number; mime?: string; status?: 'pending' | 'approved' | 'rejected'; reason?: string | null;
   aadhaar?: { name: string | null; gender: string; last4: string | null; role: string | null } | null;
+  /** [HF-CREATOR-SPACES-1] Optional extras the review queue uses when the worker sends them: which space this person is in. */
+  creatorKind?: 'channel' | 'women' | 'lgbtq' | null; space?: 'women' | 'lgbtq' | null;
 }
 export interface AdminAvatar { id: string; url: string; gender: string; age: string; look: string; status: 'active' | 'retired'; taken: boolean; createdAt: number }
 export interface AvatarJob { id: string; status: string; error: string | null; created_at: number }

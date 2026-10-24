@@ -9,9 +9,9 @@
 //                                      access token; channels.list?mine=true returns HER channel, which proves ownership (no bio code). Approves when subscribers
 //                                      >= minimum, imports the DETAILS of her public videos (embeds only, visible=1). The token is never stored.
 //                                      -> same shape as /check plus { imported:{fetched,inserted} }; errors: token_invalid 400 (not 401: the app would think her sign-in to this app ended), no_youtube_channel 404, channel_claimed 409
-// channel = { id, platform, handle, url, followers, state:'checking'|'approved'|'needs_followers'|'disconnected', verified, needsCode,
+// channel = { id, platform, handle, url, followers, views [HF-CREATOR-SPACES-1], state:'checking'|'approved'|'needs_followers'|'disconnected', verified, needsCode,
 //             verifyCode (only while the code is still needed), lastSyncAt, createdAt }
-// result = 'approved' | 'needs_followers' | 'code_missing' | 'not_found' | 'private' | 'hidden_count'
+// result = 'approved' | 'needs_followers' | 'needs_views' [HF-CREATOR-SPACES-1: YouTube total views >= hfInfluencerMinViews; every response also carries minViews] | 'code_missing' | 'not_found' | 'private' | 'hidden_count'
 // Acceptance (owner 2026-10-19): the host is accepted when ANY connected channel is ownership-verified AND has followers >= hfInfluencerMinFollowers.
 // Accepted means hf_hosts.status = 'approved' (created as 'pending_check' when the first channel is added; falls back to 'pending_check' when no
 // approved channel is left). Statuses of an existing web-onboarding host (draft, pending_review, live...) are never overwritten.
@@ -41,17 +41,22 @@ const err = (status: number, error: string, message?: string, extra: Record<stri
 
 interface ChRow {
   id: string; host_uid: string; platform: string; handle: string; url: string | null; platform_user_id: string | null;
-  followers: number; verify_code: string | null; verified_at: number | null; status: string; consent_version: string | null;
+  followers: number; views: number; verify_code: string | null; verified_at: number | null; status: string; consent_version: string | null;
   consent_at: number | null; provider_ref: string | null; last_sync_at: number | null; created_at: number;
 }
-const COLS = "id, host_uid, platform, handle, url, platform_user_id, followers, verify_code, verified_at, status, consent_version, consent_at, provider_ref, last_sync_at, created_at";
+const COLS = "id, host_uid, platform, handle, url, platform_user_id, followers, views, verify_code, verified_at, status, consent_version, consent_at, provider_ref, last_sync_at, created_at";
 
 const PLATFORM_NAME: Record<string, string> = { instagram: "Instagram", youtube: "YouTube" };
 const WHERE_TO_PUT: Record<string, string> = { instagram: "your Instagram bio", youtube: "your YouTube channel description (About)" };
 
 export function minFollowersOf(cfg: Record<string, unknown>): number {
   const v = Number(cfg.hfInfluencerMinFollowers);
-  return Number.isInteger(v) && v >= 0 ? v : 10;
+  return Number.isInteger(v) && v >= 0 ? v : 20;
+}
+
+export function minViewsOf(cfg: Record<string, unknown>): number {
+  const v = Number(cfg.hfInfluencerMinViews);
+  return Number.isInteger(v) && v >= 0 ? v : 1000; // [HF-CREATOR-SPACES-1]
 }
 
 export function channelJson(r: ChRow) {
@@ -59,7 +64,7 @@ export function channelJson(r: ChRow) {
   const state = r.status === "disconnected" ? "disconnected" : r.status === "approved" ? "approved" : r.status === "rejected" ? "needs_followers" : "checking";
   const needsCode = r.status === "pending" && !verified;
   return {
-    id: r.id, platform: r.platform, handle: r.handle, url: r.url, followers: Number(r.followers ?? 0), state, verified, needsCode,
+    id: r.id, platform: r.platform, handle: r.handle, url: r.url, followers: Number(r.followers ?? 0), views: Number(r.views ?? 0), state, verified, needsCode,
     ...(needsCode && r.verify_code ? { verifyCode: r.verify_code } : {}),
     lastSyncAt: r.last_sync_at ?? null, createdAt: r.created_at,
   };
@@ -117,8 +122,10 @@ async function defaultRateRupees(env: Env): Promise<number> {
 /** Keep hf_hosts.status in step with the channels. Returns the host status afterwards (null = no row) and whether she qualifies. */
 export async function syncHostState(env: Env, uid: string, now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
   const ok = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status='approved'").bind(uid).first<{ c: number }>())?.c ?? 0);
-  const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
+  const host = await env.DB_META.prepare("SELECT status, creator_kind FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string; creator_kind: string | null }>();
   const cur = host?.status ?? null;
+  // [HF-CREATOR-SPACES-1] Space creators (women / lgbtq) are qualified by video KYC, never by a channel: no approve, no demote here.
+  if (host && (host.creator_kind === "women" || host.creator_kind === "lgbtq")) return { hostStatus: cur, qualified: false };
   if (ok > 0) {
     if (cur === null) {
       await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'approved', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
@@ -140,15 +147,16 @@ export async function syncHostState(env: Env, uid: string, now = Date.now()): Pr
   return { hostStatus: cur, qualified: false };
 }
 
-async function ensureHostRow(env: Env, uid: string, now: number): Promise<void> {
+export async function ensureHostRow(env: Env, uid: string, now: number): Promise<void> {
   await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'pending_check', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
 }
 
-export type CheckResult = "approved" | "needs_followers" | "code_missing" | "not_found" | "private" | "hidden_count" | "claimed";
+export type CheckResult = "approved" | "needs_followers" | "needs_views" | "code_missing" | "not_found" | "private" | "hidden_count" | "claimed";
 
-const RESULT_TEXT = (min: number): Record<CheckResult, string> => ({
+const RESULT_TEXT = (min: number, minViews = 1000): Record<CheckResult, string> => ({
   approved: "You're in! Your channel is confirmed.",
   needs_followers: `We need at least ${min} followers or subscribers on YouTube or Instagram.`,
+  needs_views: `We need at least ${minViews.toLocaleString("en-US")} total views on your YouTube channel.`,
   code_missing: "We could not see the code yet. It can take a minute to show. Check it is saved, then try again.",
   not_found: "We could not find that channel any more. Check the name and try again.",
   private: "This Instagram account is private. Make it public for now so we can check it.",
@@ -156,14 +164,22 @@ const RESULT_TEXT = (min: number): Record<CheckResult, string> => ({
   claimed: "That channel is already connected to another person.",
 });
 
+/** [HF-CREATOR-SPACES-1] followers >= min, and for YouTube total views >= minViews (Instagram has no total views: followers only). */
+export function thresholdResult(platform: string, followers: number, views: number, hidden: boolean, min: number, minViews: number): { status: "approved" | "rejected"; result: CheckResult } {
+  if (hidden) return { status: "rejected", result: "hidden_count" };
+  if (followers < min) return { status: "rejected", result: "needs_followers" };
+  if (platform === "youtube" && views < minViews) return { status: "rejected", result: "needs_views" };
+  return { status: "approved", result: "approved" };
+}
+
 /** Re-read the channel, check the code (until verified once), refresh followers and set the status. Never called for a disconnected channel. */
-async function runCheck(env: Env, ch: ChRow, min: number, lookup?: ChannelLookup): Promise<{ result: CheckResult; row: ChRow }> {
+async function runCheck(env: Env, ch: ChRow, min: number, minViews: number, lookup?: ChannelLookup): Promise<{ result: CheckResult; row: ChRow }> {
   const now = Date.now();
   const lk = lookup ?? await lookupChannel(env, ch.platform as ChannelPlatform, ch.platform === "youtube" && ch.platform_user_id ? ch.platform_user_id : ch.handle);
   const save = async (patch: Partial<ChRow>): Promise<ChRow> => {
     const next = { ...ch, ...patch } as ChRow;
-    await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, platform_user_id=?5, handle=?6, url=?7, last_sync_at=?8 WHERE id=?1")
-      .bind(next.id, next.followers, next.verified_at, next.status, next.platform_user_id, next.handle, next.url, next.last_sync_at).run();
+    await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, platform_user_id=?5, handle=?6, url=?7, last_sync_at=?8, views=?9 WHERE id=?1")
+      .bind(next.id, next.followers, next.verified_at, next.status, next.platform_user_id, next.handle, next.url, next.last_sync_at, next.views).run();
     return next;
   };
   if (!lk.exists || (ch.platform_user_id && lk.platformUserId && lk.platformUserId !== ch.platform_user_id)) {
@@ -172,16 +188,17 @@ async function runCheck(env: Env, ch: ChRow, min: number, lookup?: ChannelLookup
   if (lk.isPrivate) return { result: "private", row: await save({ last_sync_at: now }) };
   const wasVerified = ch.verified_at != null;
   if (!wasVerified && !(ch.verify_code && bioHasCode(lk.bio, ch.verify_code))) {
-    return { result: "code_missing", row: await save({ followers: lk.followers, last_sync_at: now }) };
+    return { result: "code_missing", row: await save({ followers: lk.followers, views: lk.views ?? ch.views, last_sync_at: now }) };
   }
-  const hidden = lk.countHidden;
-  const status = !hidden && lk.followers >= min ? "approved" : "rejected";
+  const views = lk.views ?? ch.views ?? 0;
+  const th = thresholdResult(ch.platform, lk.followers, views, lk.countHidden, min, minViews);
+  const status = th.status;
   try {
     const row = await save({
-      followers: lk.followers, verified_at: ch.verified_at ?? now, status, platform_user_id: lk.platformUserId ?? ch.platform_user_id,
+      followers: lk.followers, views, verified_at: ch.verified_at ?? now, status, platform_user_id: lk.platformUserId ?? ch.platform_user_id,
       handle: lk.handle || ch.handle, url: lk.url || ch.url, last_sync_at: now,
     });
-    return { result: hidden ? "hidden_count" : status === "approved" ? "approved" : "needs_followers", row };
+    return { result: th.result, row };
   } catch (e) {
     if (/UNIQUE|constraint/i.test(String((e as Error)?.message ?? e))) return { result: "claimed", row: ch };
     throw e;
@@ -217,6 +234,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     if (isFail(u)) return err(u.status, u.error);
     uid = u.uid;
     const min = minFollowersOf(cfg as unknown as Record<string, unknown>);
+    const minViews = minViewsOf(cfg as unknown as Record<string, unknown>);
     const emit = makeEmit(env, ctx, uid);
 
     // ── POST /api/hf/channels/youtube/connect  [HF-WIRE-14] ─────────────────────────────────────────────────────
@@ -238,20 +256,21 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       const claimed = await env.DB_META.prepare("SELECT id FROM hf_channels WHERE platform='youtube' AND platform_user_id=?1 AND verified_at IS NOT NULL AND status!='disconnected' AND host_uid!=?2 LIMIT 1").bind(lk.platformUserId, uid).first();
       if (claimed) { emit("hf_channel_added", { platform: "youtube", ok: false, code: "channel_claimed", via: "signin" }); return err(409, "channel_claimed", RESULT_TEXT(min).claimed); }
       const now = Date.now();
-      const status = !lk.countHidden && lk.followers >= min ? "approved" : "rejected";
+      const th = thresholdResult("youtube", lk.followers, lk.views ?? 0, lk.countHidden, min, minViews);
+      const status = th.status;
       let row: ChRow;
       try {
         if (mine0) {
-          row = { ...mine0, followers: lk.followers, verified_at: mine0.verified_at ?? now, status, handle: lk.handle || mine0.handle, url: lk.url || mine0.url, last_sync_at: now, verify_code: null };
-          await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, handle=?5, url=?6, last_sync_at=?7, verify_code=NULL WHERE id=?1")
-            .bind(row.id, row.followers, row.verified_at, row.status, row.handle, row.url, row.last_sync_at).run();
+          row = { ...mine0, followers: lk.followers, views: lk.views ?? 0, verified_at: mine0.verified_at ?? now, status, handle: lk.handle || mine0.handle, url: lk.url || mine0.url, last_sync_at: now, verify_code: null };
+          await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, handle=?5, url=?6, last_sync_at=?7, verify_code=NULL, views=?8 WHERE id=?1")
+            .bind(row.id, row.followers, row.verified_at, row.status, row.handle, row.url, row.last_sync_at, row.views).run();
         } else {
           row = {
             id: "hfch_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20), host_uid: uid, platform: "youtube", handle: lk.handle, url: lk.url || null, platform_user_id: lk.platformUserId,
-            followers: lk.followers, verify_code: null, verified_at: now, status, consent_version: "google-signin-1", consent_at: now, provider_ref: "youtube-oauth", last_sync_at: now, created_at: now,
+            followers: lk.followers, views: lk.views ?? 0, verify_code: null, verified_at: now, status, consent_version: "google-signin-1", consent_at: now, provider_ref: "youtube-oauth", last_sync_at: now, created_at: now,
           };
-          await env.DB_META.prepare(`INSERT INTO hf_channels (${COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)`)
-            .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.verify_code, row.verified_at, row.status,
+          await env.DB_META.prepare(`INSERT INTO hf_channels (${COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)`)
+            .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.views, row.verify_code, row.verified_at, row.status,
               row.consent_version, row.consent_at, row.provider_ref, row.last_sync_at, row.created_at).run();
         }
       } catch (e) {
@@ -265,16 +284,17 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
         const r = await importForChannel(env, row, importCountOf(cfg as unknown as Record<string, unknown>), { bearer: token.trim() });
         imported = r ? { fetched: r.fetched, inserted: r.inserted } : null;
       }
-      const result: CheckResult = lk.countHidden ? "hidden_count" : status === "approved" ? "approved" : "needs_followers";
+      const result: CheckResult = th.result;
       emit("hf_channel_added", { platform: "youtube", ok: true, via: "signin", result, followers: row.followers, qualified: st.qualified });
-      return json({ ok: true, result, message: RESULT_TEXT(min)[result], channel: channelJson(row), minFollowers: min, hostStatus: st.hostStatus, qualified: st.qualified, imported }, 200, NO_STORE);
+      emit("hf_channel_threshold", { platform: "youtube", result, followers: row.followers, views: row.views });
+      return json({ ok: true, result, message: RESULT_TEXT(min, minViews)[result], channel: channelJson(row), minFollowers: min, minViews, hostStatus: st.hostStatus, qualified: st.qualified, imported }, 200, NO_STORE);
     }
 
     // ── GET /api/hf/channels ────────────────────────────────────────────────────────────────────────────────────
     if (!id && method === "GET") {
       const rows = (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE host_uid=?1 ORDER BY created_at DESC LIMIT 50`).bind(uid).all<ChRow>()).results ?? [];
       const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
-      return json({ ok: true, channels: rows.map(channelJson), minFollowers: min, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
+      return json({ ok: true, channels: rows.map(channelJson), minFollowers: min, minViews, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
     }
 
     // ── POST /api/hf/channels ───────────────────────────────────────────────────────────────────────────────────
@@ -317,18 +337,18 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       } else {
         const newId = "hfch_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
         row = {
-          id: newId, host_uid: uid, platform, handle: lk.handle, url: lk.url || null, platform_user_id: lk.platformUserId, followers: lk.followers,
+          id: newId, host_uid: uid, platform, handle: lk.handle, url: lk.url || null, platform_user_id: lk.platformUserId, followers: lk.followers, views: lk.views ?? 0,
           verify_code: makeVerifyCode(), verified_at: null, status: "pending", consent_version: version, consent_at: now,
           provider_ref: platform === "youtube" ? "youtube-data-api-v3" : "treg", last_sync_at: now, created_at: now,
         };
-        await env.DB_META.prepare(`INSERT INTO hf_channels (${COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)`)
-          .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.verify_code, row.verified_at, row.status,
+        await env.DB_META.prepare(`INSERT INTO hf_channels (${COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)`)
+          .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.views, row.verify_code, row.verified_at, row.status,
             row.consent_version, row.consent_at, row.provider_ref, row.last_sync_at, row.created_at).run();
       }
       await ensureHostRow(env, uid, now);
       const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
       emit("hf_channel_added", { platform, ok: true, followers: row.followers, consent_version: version });
-      return json({ ok: true, channel: { ...channelJson(row), verifyCode: row.verify_code }, verifyCode: row.verify_code, instructions: instructionsFor(platform, row.verify_code ?? ""), minFollowers: min, hostStatus: host?.status ?? null }, 200, NO_STORE);
+      return json({ ok: true, channel: { ...channelJson(row), verifyCode: row.verify_code }, verifyCode: row.verify_code, instructions: instructionsFor(platform, row.verify_code ?? ""), minFollowers: min, minViews, hostStatus: host?.status ?? null }, 200, NO_STORE);
     }
 
     // ── routes on one channel: always the caller's own ──────────────────────────────────────────────────────────
@@ -351,7 +371,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     const limCh = await rateLimit(env, `hfchk:${id}`, 6, 600);
     if (limCh) return limCh;
     let out: { result: CheckResult; row: ChRow };
-    try { out = await runCheck(env, ch, min); } catch (e) {
+    try { out = await runCheck(env, ch, min, minViews); } catch (e) {
       if (e instanceof ProviderError) { emit("hf_channel_check", { platform: ch.platform, action, ok: false, code: e.code }); return providerFailure(e, ch.platform); }
       throw e;
     }
@@ -362,7 +382,8 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       if (ctx) ctx.waitUntil(job); else await job;
     }
     emit("hf_channel_check", { platform: ch.platform, action, ok: true, result: out.result, followers: out.row.followers, qualified: st.qualified });
-    return json({ ok: true, result: out.result, message: RESULT_TEXT(min)[out.result], channel: channelJson(out.row), minFollowers: min, hostStatus: st.hostStatus, qualified: st.qualified }, 200, NO_STORE);
+    emit("hf_channel_threshold", { platform: ch.platform, result: out.result, followers: out.row.followers, views: out.row.views });
+    return json({ ok: true, result: out.result, message: RESULT_TEXT(min, minViews)[out.result], channel: channelJson(out.row), minFollowers: min, minViews, hostStatus: st.hostStatus, qualified: st.qualified }, 200, NO_STORE);
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_channels", uid_set: !!uid } });
     return err(500, "internal_error", "Something went wrong. Please try again.");
@@ -379,6 +400,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
   const cfg = await readConfig(env).catch(() => null);
   if (!cfg || cfg.hfChannelsEnabled !== true) return out;
   const min = minFollowersOf(cfg as unknown as Record<string, unknown>);
+  const minViews = minViewsOf(cfg as unknown as Record<string, unknown>);
   const cutoff = Date.now() - RESYNC_EVERY_MS;
   const rows = (await env.DB_META.prepare(
     `SELECT ${COLS} FROM hf_channels WHERE verified_at IS NOT NULL AND status IN ('approved','rejected') AND (last_sync_at IS NULL OR last_sync_at < ?1) ORDER BY last_sync_at ASC LIMIT ?2`,
@@ -387,7 +409,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
   for (const ch of rows) {
     out.scanned++;
     try {
-      const r = await runCheck(env, ch, min);
+      const r = await runCheck(env, ch, min, minViews);
       if (r.result !== "claimed") out.updated++;
       if (r.result === "approved" && cfg.hfReelsEnabled === true) await importForChannel(env, r.row, importCountOf(cfg as unknown as Record<string, unknown>)); // [HF-WIRE-4] daily refresh
       hosts.add(ch.host_uid);
