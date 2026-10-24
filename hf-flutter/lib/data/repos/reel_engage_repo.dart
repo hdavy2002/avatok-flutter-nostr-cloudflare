@@ -1,5 +1,6 @@
 import '../api_client.dart';
 import '../api_exception.dart';
+import '../models/reel.dart';
 import '../models/reel_engage.dart';
 
 /// [HF-REEL-ENGAGE-APP-1] What the reel screen needs for likes and comments. The real one talks to the server; the demo
