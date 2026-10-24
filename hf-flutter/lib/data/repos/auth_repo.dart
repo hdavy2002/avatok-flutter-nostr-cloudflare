@@ -16,10 +16,23 @@ class CodeSent {
 
 /// What a successful verify + Clerk sign-in tells the sheet.
 class VerifyResult {
-  const VerifyResult({required this.isNew, required this.needs18Plus});
+  const VerifyResult({required this.isNew, required this.needs18Plus, this.noAccount = false});
 
   final bool isNew;
   final bool needs18Plus;
+
+  /// [HF-APP-AUTH-WA-ONLY-1] The code was right but no account has this number (log-in only).
+  /// Nothing was created and nobody is signed in; the screen offers "Create an account".
+  final bool noAccount;
+}
+
+/// [HF-APP-AUTH-WA-ONLY-1] What a sign-up carries to the worker: the typed name and the proof
+/// the email code step handed back. The account is created only when this and the WhatsApp code are both right.
+class SignupDetails {
+  const SignupDetails({required this.name, required this.emailProof});
+
+  final String name;
+  final String emailProof;
 }
 
 /// A plain-English failure that is not an HTTP error (Clerk step failed, sign-up not open).
@@ -85,13 +98,49 @@ class AuthRepo {
     );
   }
 
-  /// Checks the code and signs this device in. Throws [ApiException] (wrong/expired code, offline) or [AuthFailure].
-  Future<VerifyResult> verifyCode(String phone, String code) async {
+  /// [HF-APP-AUTH-WA-ONLY-1] Emails a 6-digit code (sign-up only). Throws [ApiException]
+  /// (`email_taken` 409, `invalid_email`, `too_soon` / `rate_limited` 429, `send_failed` 502, offline).
+  Future<CodeSent> sendEmailCode(String email) async {
+    final j = await _api.postJson('/api/auth/signup/email/send', body: {'email': email.trim().toLowerCase()}, auth: false);
+    Telemetry.event('hf_signup_email_code_sent');
+    return CodeSent(
+      expiresInSeconds: (j['expires_in_s'] as num?)?.toInt() ?? 600,
+      resendAfterSeconds: (j['resend_after_s'] as num?)?.toInt() ?? 60,
+    );
+  }
+
+  /// Checks the email code and returns the single-use proof the WhatsApp verify step needs.
+  /// Throws [ApiException] (`wrong_code` with `attempts_left`, `code_expired` 410, `too_many_attempts` 429, offline).
+  Future<String> verifyEmailCode(String email, String code) async {
     final j = await _api.postJson(
-      '/api/auth/whatsapp/verify',
-      body: {'phone': phone, 'code': code.replaceAll(RegExp(r'\D'), ''), 'client': 'android'},
+      '/api/auth/signup/email/verify',
+      body: {'email': email.trim().toLowerCase(), 'code': code.replaceAll(RegExp(r'\D'), '')},
       auth: false,
     );
+    final proof = j['proof']?.toString() ?? '';
+    if (proof.isEmpty) throw const AuthFailure('We could not check your email code. Please try again.');
+    Telemetry.event('hf_signup_email_verified');
+    return proof;
+  }
+
+  /// Checks the WhatsApp code and signs this device in. Pass [signup] only on the Create account path;
+  /// log-in with a number that has no account answers [VerifyResult.noAccount] and creates nothing.
+  /// Throws [ApiException] (wrong/expired code, `email_taken`, `email_proof_invalid`, offline) or [AuthFailure].
+  Future<VerifyResult> verifyCode(String phone, String code, {SignupDetails? signup}) async {
+    final j = await _api.postJson(
+      '/api/auth/whatsapp/verify',
+      body: {
+        'phone': phone,
+        'code': code.replaceAll(RegExp(r'\D'), ''),
+        'client': 'android',
+        if (signup != null) 'signup': {'name': signup.name.trim(), 'email_proof': signup.emailProof},
+      },
+      auth: false,
+    );
+    if (j['status'] == 'no_account') {
+      Telemetry.event('hf_login_no_account');
+      return const VerifyResult(isNew: false, needs18Plus: false, noAccount: true);
+    }
     final ticket = j['ticket']?.toString() ?? '';
     if (j['status'] != 'signed_in' || ticket.isEmpty) {
       throw const AuthFailure('Sign-up with WhatsApp is not open yet. Please try again soon.');

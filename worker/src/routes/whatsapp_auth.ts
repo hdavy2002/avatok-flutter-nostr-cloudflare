@@ -231,29 +231,10 @@ export async function whatsappAuthVerify(req: Request, env: Env): Promise<Respon
 
   // [HF-AUTH-WA-ONLY-1] Website sign-up: both codes are proven, create the account with name + email.
   if (signup) return await phoneOnlySignup(env, { e164: row.e164, hash, client, ageConfirmed, attempts: row.attempts + 1, now, otpRowId: row.id, signup });
-  // [HF-AUTH-WA-ONLY-1] Website sign-in with a number that has no account: never create one here.
-  if (client === "web") {
-    void track(env, "anon_wa_login", "auth_whatsapp_verify", APP, { outcome: "no_account", attempts: row.attempts + 1, phone_masked: mask(row.e164), client });
-    return json({ ok: true, status: "no_account", phone_masked: mask(row.e164) });
-  }
-
-  if (phoneOnly) return await phoneOnlySignup(env, { e164: row.e164, hash, client, ageConfirmed, attempts: row.attempts + 1, now, otpRowId: row.id });
-
-  // No account has this number yet — a single-use PROOF the browser redeems at
-  // /api/account/phone/claim once it completes a real sign-up (email/Google).
-  const proof = randomToken();
-  const proofHash = await sha256Hex(proof);
-  const expiresAt = now + PROOF_TTL_MS;
-  await env.TOKENS.put(
-    `wa_proof:${proofHash}`,
-    JSON.stringify({ e164: row.e164, phone_hash: hash, expires_at: expiresAt }),
-    { expirationTtl: PROOF_KV_BACKSTOP_S },
-  );
-
-  void track(env, "anon_wa_login", "auth_whatsapp_verify", APP, {
-    outcome: "needs_email", attempts: row.attempts + 1, phone_masked: mask(row.e164), client,
-  });
-  return json({ ok: true, status: "needs_email", proof, phone_masked: mask(row.e164) });
+  // [HF-AUTH-WA-ONLY-1] Sign-in with a number that has no account: never create one here. [HF-APP-AUTH-WA-ONLY-1] This
+  // now holds for the app too (client "android"/"ios"), so an account only ever starts from the sign-up form, with a verified email.
+  void track(env, "anon_wa_login", "auth_whatsapp_verify", APP, { outcome: "no_account", attempts: row.attempts + 1, phone_masked: mask(row.e164), client });
+  return json({ ok: true, status: "no_account", phone_masked: mask(row.e164) });
 }
 
 // ---------------------------------------------------------------------------

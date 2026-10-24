@@ -1,5 +1,5 @@
 // @ts-nocheck -- uses node:sqlite, which the worker tsconfig has no types for
-// [HF-AUTH-WA-1] WhatsApp-only sign-up: new-user creation, double-submit race, flag off unchanged, rate limits, 18+.
+// [HF-AUTH-WA-1] [HF-APP-AUTH-WA-ONLY-1: every account now starts from a sign-up payload with a verified email; an unknown number on sign-in answers no_account for the app too] WhatsApp-only sign-up: new-user creation, double-submit race, flag off unchanged, rate limits, 18+.
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { createRequire } from "node:module";
 
@@ -31,9 +31,9 @@ function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`
     CREATE TABLE phone_otp (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, phone_hash TEXT, e164 TEXT, session_id TEXT, status TEXT, attempts INTEGER, created_at INTEGER, verified_at INTEGER);
-    CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT, phone_verified_at INTEGER, updated_at INTEGER);
+    CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT, phone_verified_at INTEGER, updated_at INTEGER, email_verified INTEGER, email_hash TEXT, email_verified_at INTEGER);
     CREATE TABLE deletion_requests (uid TEXT PRIMARY KEY, status TEXT);
-    CREATE TABLE users (uid TEXT PRIMARY KEY, created_at INTEGER, updated_at INTEGER, created_via TEXT, phone_hash TEXT, private_number TEXT, show_private_number INTEGER);
+    CREATE TABLE users (uid TEXT PRIMARY KEY, created_at INTEGER, updated_at INTEGER, created_via TEXT, phone_hash TEXT, private_number TEXT, show_private_number INTEGER, display_name TEXT, email_hash TEXT);
     CREATE TABLE hf_phone_signup (phone_hash TEXT PRIMARY KEY, ext_id TEXT NOT NULL, uid TEXT, state TEXT NOT NULL DEFAULT 'creating', lease_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER NOT NULL, source TEXT NOT NULL);
   `);
@@ -49,7 +49,7 @@ function makeEnv() {
       prepare: (q: string) => stmt(q),
       batch: async (stmts: any[]) => { db.exec("BEGIN"); try { for (const s of stmts) s._sync(); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } return []; },
     },
-    TOKENS: { put: async () => {}, get: async () => null, delete: async () => {} },
+    TOKENS: { put: async () => {}, get: async (k: string) => (String(k).startsWith("su_email_proof:") ? JSON.stringify({ email: "asha@example.com", expires_at: Date.now() + 600000 }) : null), delete: async () => {} },
     CLERK_SECRET_KEY: "sk_test",
   };
 }
@@ -62,8 +62,9 @@ async function seedCode(phone = PHONE, attempts = 0) {
 }
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
   new Request(`https://x${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+// Default = the app's sign-up call (name + email proof). Pass { signup: undefined } for a plain sign-in.
 const verify = (extra: Record<string, unknown> = {}, phone = PHONE) =>
-  whatsappAuthVerify(post("/api/auth/whatsapp/verify", { phone, code: "123456", client: "android", ...extra }), env);
+  whatsappAuthVerify(post("/api/auth/whatsapp/verify", { phone, code: "123456", client: "android", signup: { name: "Asha Rao", email_proof: "p".repeat(32) }, ...extra }), env);
 
 beforeEach(() => {
   makeEnv(); otpDelay = 0; cfg = { hfPhoneOnlySignupEnabled: true }; clerkPosts = []; clerkMode = "ok"; counter = 0;
@@ -93,9 +94,9 @@ describe("phone-only sign-up (flag on)", () => {
     const c = clerkPosts[0];
     expect(c.external_id).toMatch(/^hfwa_[0-9a-f]{24}$/);
     expect(c.username).toMatch(/^hf[0-9a-f]{24}$/);
-    // [HF-WIRE-17] Clerk keeps email required: one internal placeholder address on the no-mail subdomain, never a real one.
-    expect(c.email_address).toHaveLength(1);
-    expect(isPlaceholderEmail(c.email_address[0])).toBe(true);
+    // [HF-APP-AUTH-WA-ONLY-1] The app sends the verified email, so it is the real address (never the placeholder).
+    expect(c.email_address).toEqual(["asha@example.com"]);
+    expect(isPlaceholderEmail(c.email_address[0])).toBe(false);
     expect(c.phone_number).toBeUndefined();
     expect(c.skip_password_requirement).toBe(true);
     const uid = `user_${c.external_id}`;
@@ -169,20 +170,33 @@ describe("phone-only sign-up (flag on)", () => {
 });
 
 describe("flag off", () => {
-  it("an unknown number still gets needs_email, with no Clerk call and no rows", async () => {
-    cfg = {};
-    await seedCode();
-    const b = await (await verify()).json();
-    expect(b).toMatchObject({ ok: true, status: "needs_email" });
-    expect(b.proof).toBeTruthy();
+  it("[HF-APP-AUTH-WA-ONLY-1] an unknown number on app sign-in answers no_account (flag on or off): no Clerk call, no rows", async () => {
+    for (const c of [{}, { hfPhoneOnlySignupEnabled: true }]) {
+      cfg = c;
+      await seedCode();
+      const b = await (await verify({ signup: undefined })).json();
+      expect(b).toMatchObject({ ok: true, status: "no_account" });
+      expect(b.proof).toBeUndefined();
+    }
     expect(clerkPosts).toHaveLength(0);
     expect(db.prepare("SELECT COUNT(*) n FROM users").get().n).toBe(0);
     expect(db.prepare("SELECT COUNT(*) n FROM hf_phone_signup").get().n).toBe(0);
   });
 
+  it("[HF-APP-AUTH-WA-ONLY-1] the app sign-up call (name + email proof) creates the account even with the flag off, storing name and email", async () => {
+    cfg = {};
+    await seedCode();
+    const b = await (await verify()).json();
+    expect(b).toMatchObject({ ok: true, status: "signed_in", isNew: true });
+    expect(clerkPosts).toHaveLength(1);
+    const uid = `user_${clerkPosts[0].external_id}`;
+    expect(db.prepare("SELECT display_name FROM users WHERE uid=?").get(uid)).toMatchObject({ display_name: "Asha Rao" });
+    expect(db.prepare("SELECT email_verified FROM contact_verification WHERE uid=?").get(uid)).toMatchObject({ email_verified: 1 });
+  });
+
   it("a known number gets the unchanged signed_in shape (no isNew / needs18Plus)", async () => {
     cfg = {};
-    db.prepare("INSERT INTO contact_verification VALUES ('u9',1,?,1,1)").run(await sha(PHONE));
+    db.prepare("INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at) VALUES ('u9',1,?,1,1)").run(await sha(PHONE));
     await seedCode();
     const b = await (await verify()).json();
     expect(b).toEqual({ ok: true, status: "signed_in", ticket: "tkt_u9" });

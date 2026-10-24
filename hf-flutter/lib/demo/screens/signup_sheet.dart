@@ -9,10 +9,12 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'sheets.dart';
 
-enum _Stage { form, code, profileCheck, profile, save, age, finish }
+enum _Stage { form, emailCode, waSend, code, noAccount, profileCheck, profile, save, age, finish }
 
-/// WhatsApp number -> verification -> profile details only for a new account
-/// -> 18+ tick when the server asks. Pops `true` when the person is signed in, so
+/// [HF-APP-AUTH-WA-ONLY-1] Log in = WhatsApp number -> WhatsApp code (a number with no account is
+/// sent to Create an account; nothing is created). Create account = name + email + WhatsApp number
+/// -> email code -> WhatsApp code -> account made only when both are right. No Google, no email log-in.
+/// After sign-in: details only for an older account that lacks a name -> 18+ tick when the server asks. Pops `true` when the person is signed in, so
 /// `requireAccount` can resume what they started.
 class RealSignUpSheet extends StatefulWidget {
   const RealSignUpSheet({super.key, required this.repo, this.reason, this.login = false});
@@ -30,6 +32,11 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   final _email = TextEditingController();
   final _wa = TextEditingController();
   final _code = TextEditingController();
+  final _emailCode = TextEditingController();
+
+  /// The single-use proof from the email code step, and the address it belongs to.
+  String? _proof;
+  String? _verifiedEmail;
 
   late bool _login = widget.login;
   _Stage _stage = _Stage.form;
@@ -49,6 +56,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
     _email.dispose();
     _wa.dispose();
     _code.dispose();
+    _emailCode.dispose();
     super.dispose();
   }
 
@@ -80,6 +88,15 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
           return e.message ?? "This number isn't on WhatsApp. Use a mobile number that has WhatsApp.";
         case 'invalid_phone':
           return 'WhatsApp number should be 10 digits.';
+        case 'invalid_email':
+          return 'Please type a real email.';
+        case 'email_taken':
+          return e.message ?? 'This email already has an account. Log in with your WhatsApp number instead.';
+        case 'email_proof_invalid':
+          return 'Your email check has expired. Please verify your email again.';
+        case 'too_soon':
+        case 'rate_limited':
+          return e.message ?? 'Please wait a little before asking for another code.';
       }
       return e.userMessage;
     }
@@ -112,6 +129,44 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
     }
   }
 
+  /// Form button. Log in: straight to the WhatsApp code. Create account: check the details, then email a code
+  /// (skipped when this same email was already verified in this sheet).
+  Future<void> _submitForm() async {
+    if (_busy) return;
+    if (_login) return _sendCode();
+    final problem = AuthRepo.nameProblem(_name.text);
+    if (problem != null) return setState(() => _error = problem);
+    if (!AuthRepo.validEmail(_email.text)) return setState(() => _error = 'Please type a real email.');
+    if (AuthRepo.e164(_wa.text) == null) return setState(() => _error = 'WhatsApp number should be 10 digits.');
+    if (_proof != null && _verifiedEmail == _email.text.trim().toLowerCase()) return _sendCode();
+    await _sendEmailCode();
+  }
+
+  Future<void> _sendEmailCode() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final sent = await widget.repo.sendEmailCode(_email.text);
+      if (!mounted) return;
+      _emailCode.clear();
+      setState(() {
+        _stage = _Stage.emailCode;
+        _busy = false;
+      });
+      _startTimer(sent.resendAfterSeconds);
+    } catch (e) {
+      if (!mounted) return;
+      final wait = e is ApiException ? e.retryAfterSeconds : null;
+      setState(() {
+        _busy = false;
+        _error = _message(e);
+      });
+      if (wait != null && wait > 0 && _stage == _Stage.emailCode) _startTimer(wait);
+    }
+  }
+
   /// Runs the step the person is on. A failure leaves them on the same step with a plain message,
   /// and the same button tries again (a saved step is never repeated).
   Future<void> _continue() async {
@@ -121,6 +176,9 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
       if (problem != null) return setState(() => _error = problem);
       if (!AuthRepo.validEmail(_email.text)) return setState(() => _error = 'Please type a real email.');
       _stage = _Stage.save;
+    }
+    if (_stage == _Stage.emailCode && _emailCode.text.replaceAll(RegExp(r'\D'), '').length != 6) {
+      return setState(() => _error = 'Type the 6-digit code from your email.');
     }
     if (_stage == _Stage.code && _code.text.replaceAll(RegExp(r'\D'), '').length != 6) {
       return setState(() => _error = 'Type the 6-digit code from WhatsApp.');
@@ -133,15 +191,44 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
       _error = null;
     });
     try {
-      if (_stage == _Stage.code) {
-        final r = await widget.repo.verifyCode(_phone, _code.text);
-        _needsAge = r.needs18Plus;
+      if (_stage == _Stage.emailCode) {
+        final proof = await widget.repo.verifyEmailCode(_email.text, _emailCode.text);
         if (!mounted) return;
-        if (r.isNew) {
-          setState(() { _stage = _Stage.profile; _busy = false; });
+        _proof = proof;
+        _verifiedEmail = _email.text.trim().toLowerCase();
+        _timer?.cancel();
+        setState(() {
+          _stage = _Stage.waSend;
+          _busy = false;
+          _resendIn = 0;
+        });
+        await _sendCode(); // on a failure the person stays here and the button tries again
+        return;
+      }
+      if (_stage == _Stage.code) {
+        final signup = _login ? null : SignupDetails(name: _name.text, emailProof: _proof ?? '');
+        final r = await widget.repo.verifyCode(_phone, _code.text, signup: signup);
+        if (!mounted) return;
+        if (r.noAccount) {
+          _timer?.cancel();
+          setState(() {
+            _stage = _Stage.noAccount;
+            _busy = false;
+            _resendIn = 0;
+          });
           return;
         }
-        _stage = _Stage.profileCheck;
+        _needsAge = r.needs18Plus;
+        if (!_login && r.isNew) {
+          // Name and verified email were stored when the account was made: no details step.
+          if (_needsAge) {
+            setState(() { _stage = _Stage.age; _busy = false; });
+            return;
+          }
+          _stage = _Stage.finish;
+        } else {
+          _stage = _Stage.profileCheck;
+        }
       }
       if (_stage == _Stage.profileCheck) {
         final profile = await widget.repo.profileAfterVerification();
@@ -186,8 +273,26 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
         _busy = false;
         _error = _message(e);
         if (e is ApiException && (e.code == 'code_expired' || e.code == 'too_many_attempts')) _resendIn = 0;
+        // The email proof is gone or the email now belongs to an account: back to the details to start the email step again.
+        if (e is ApiException && (e.code == 'email_proof_invalid' || e.code == 'email_taken') && _stage == _Stage.code) {
+          _proof = null;
+          _verifiedEmail = null;
+          _stage = _Stage.form;
+        }
       });
     }
+  }
+
+  /// "Create an account" after a log-in with an unknown number: same sheet, create mode, number kept.
+  void _goToCreate() {
+    _timer?.cancel();
+    _code.clear();
+    setState(() {
+      _login = false;
+      _stage = _Stage.form;
+      _error = null;
+      _resendIn = 0;
+    });
   }
 
   Future<void> _resend() async {
@@ -220,9 +325,91 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
         const SizedBox(height: 12),
       ];
 
-  List<Widget> _formFields() => [
-        Text("We will send a code to verify your WhatsApp number.", style: t(15)),
+  List<Widget> _signupFields() => [
+        _label('Your name'),
+        TextField(
+          key: const Key('su-name'),
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          style: t(17, w: FontWeight.w700),
+          decoration: const InputDecoration(hintText: 'Tara Sharma'),
+        ),
+        const SizedBox(height: 12),
+        _label('Email'),
+        TextField(
+          key: const Key('su-email'),
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          style: t(17, w: FontWeight.w700),
+          decoration: const InputDecoration(hintText: 'you@example.com'),
+        ),
+        const SizedBox(height: 12),
+      ];
+
+  List<Widget> _emailCodeFields() => [
+        Text('We emailed a 6-digit code to ${_email.text.trim()}.', style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
         const SizedBox(height: 16),
+        _label('Code from your email'),
+        TextField(
+          key: const Key('su-email-code'),
+          controller: _emailCode,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+          style: t(28, ls: 0.3),
+          decoration: const InputDecoration(hintText: '123456'),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: TextButton(
+                key: const Key('su-email-resend'),
+                onPressed: (_resendIn > 0 || _busy) ? null : _sendEmailCode,
+                child: Text(_resendIn > 0 ? 'Send a new code in ${_resendIn}s' : 'Send a new code', style: t(15, color: _resendIn > 0 ? C.muted : C.ruby)),
+              ),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: TextButton(
+                key: const Key('su-email-change'),
+                onPressed: _busy
+                    ? null
+                    : () {
+                        _timer?.cancel();
+                        setState(() {
+                          _stage = _Stage.form;
+                          _error = null;
+                          _resendIn = 0;
+                        });
+                      },
+                child: Text('Change email', style: t(15, color: C.maroon)),
+              ),
+            ),
+          ],
+        ),
+      ];
+
+  List<Widget> _waSendFields() => [
+        Text('Your email is verified. Next we send a code to your WhatsApp number, +91 ${_wa.text.replaceAll(RegExp(r'\D'), '')}.', style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
+      ];
+
+  List<Widget> _noAccountFields() => [
+        Text("We couldn't find an account with this WhatsApp number. Create an account to continue.", key: const Key('su-no-account'), style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
+      ];
+
+  List<Widget> _formFields() => [
+        Text(
+          _login
+              ? 'We will send a code to your WhatsApp number to log you in.'
+              : 'We will send a code to your email and another on WhatsApp. You need both to create your account.',
+          style: t(15, h: 1.4),
+        ),
+        const SizedBox(height: 16),
+        if (!_login) ..._signupFields(),
         Text.rich(TextSpan(children: [
           TextSpan(text: 'WhatsApp number  ', style: t(15)),
           TextSpan(text: 'we send a code here', style: t(14, color: C.muted, w: FontWeight.w700)),
@@ -321,7 +508,10 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   @override
   Widget build(BuildContext context) {
     final (title, button) = switch (_stage) {
-      _Stage.form => (_login ? 'Log in' : 'Create account', 'SEND CODE'),
+      _Stage.form => (_login ? 'Log in' : 'Create account', _login ? 'SEND CODE' : 'SEND EMAIL CODE'),
+      _Stage.emailCode => ('Check your email', 'VERIFY EMAIL'),
+      _Stage.waSend => ('Now WhatsApp', 'SEND CODE'),
+      _Stage.noAccount => ('No account yet', 'CREATE AN ACCOUNT'),
       _Stage.profile => ('Create account', 'SAVE DETAILS'),
       _Stage.profileCheck => ('Checking your account', 'TRY AGAIN'),
       _Stage.finish => ('Almost there', 'TRY AGAIN'),
@@ -331,6 +521,9 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
     };
     final fields = switch (_stage) {
       _Stage.form => _formFields(),
+      _Stage.emailCode => _emailCodeFields(),
+      _Stage.waSend => _waSendFields(),
+      _Stage.noAccount => _noAccountFields(),
       _Stage.profile => _profileFields(),
       _Stage.profileCheck => [Text('Checking whether your account needs any details.', style: t(15))],
       _Stage.finish => _saveFields(),
@@ -373,7 +566,13 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
                   maroon: true,
                   enabled: !_busy,
                   stubIcon: Icons.arrow_forward_rounded,
-                  onTap: _stage == _Stage.form ? _sendCode : _continue,
+                  labelSize: button.length > 12 ? 17 : 20,
+                  onTap: switch (_stage) {
+                    _Stage.form => _submitForm,
+                    _Stage.waSend => _sendCode,
+                    _Stage.noAccount => _goToCreate,
+                    _ => _continue,
+                  },
                 ),
               ],
             ),

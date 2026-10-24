@@ -12137,5 +12137,21 @@
         "note": "A fan on the website asked for a booking longer than 2 hours (only possible now)."
       }
     ]
+  },
+  "HF-APP-AUTH-WA-ONLY-1": {
+    "description": "[HF-APP-AUTH-WA-ONLY-1] Owner: the phone app matches the website. Log in = WhatsApp number + code only (the app never had Google/email log-in); a number with no account answers no_account (worker now does this for the app too, nothing is created) and the app offers Create an account. Create account = name + email + WhatsApp number -> email code (POST /api/auth/signup/email/send|verify) -> WhatsApp code with signup:{name,email_proof}; the account is made only when both are proven. Older accounts without an email still log in with WhatsApp.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "auth_whatsapp_verify",
+        "property": "client",
+        "equals": "android",
+        "min_events": 1,
+        "note": "A WhatsApp code accepted from the app (signed_in), including the new create-account path (with_email=true on the same event)."
+      }
+    ],
+    "_verified_at": "worker/src/routes/whatsapp_auth.ts phoneOnlySignup trackUser call (client + with_email props), read directly from the code, 2026-10-24"
   }
 }
