@@ -263,14 +263,16 @@ export default function HostOnboarding() {
   const stepProps: StepProps = { draft, update, api, setAction, goNext, goTo, avatars, errors };
   const otherErrors = Object.entries(errors).filter(([k]) => !(step === 'about' && (k === 'displayName' || k === 'about')));
 
+  // [HF-IDV-WHATSAPP-4] ONE Clerk bridge, first child of BOTH layouts (same position, same type), so React keeps it mounted
+  // when the page switches from loading to the steps. Unmounting it cleared the token getter and every later call
+  // (avatars, autosave, voice, submit) failed with "Please sign in again".
+  const bridge = api.mode === 'real' && phase !== 'boot' ? <Suspense fallback={null}><LazyClerkBridge /></Suspense> : null;
+
   if (phase !== 'ready') {
-    return (
+    return (<>{bridge}
       <div className="hob">
         <div className="hob-body hob-wrap">
           <main className="hob-main" aria-label="Become an influencer">
-            {/* [HF-IDV-WHATSAPP-3] Keep the Clerk bridge mounted after 'auth': unmounting it cleared the token getter, so every
-                later call (avatars, autosave, voice, submit) failed with "Please sign in again". */}
-            {api.mode === 'real' && phase !== 'boot' && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
             {phase === 'gate' ? (
               <div className="hob-v-welcome">
                 <p className="hob-v-eyebrow">{BRAND.name} influencers</p>
@@ -291,10 +293,10 @@ export default function HostOnboarding() {
           </main>
         </div>
       </div>
-    );
+    </>);
   }
 
-  return (
+  return (<>{bridge}
     <div className={`hob${showPreview ? ' hob-has-preview' : ''}`}>
       <header className="hob-top">
         <div className="hob-wrap">
@@ -361,5 +363,5 @@ export default function HostOnboarding() {
         </div>
       )}
     </div>
-  );
+  </>);
 }

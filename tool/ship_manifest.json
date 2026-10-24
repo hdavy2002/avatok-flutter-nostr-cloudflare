@@ -12002,5 +12002,9 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "merch_product_created carries moderation; merch_scan_skipped records why a scan did not run. Verified by creating a studio product and reading studio_designs.art_checks_json / admin Merch > Products."
+  },
+  "HF-IDV-WHATSAPP-4": {
+    "description": "[HF-IDV-WHATSAPP-4] Creator onboarding: one Clerk bridge kept mounted across the loading and steps layouts, so avatars load and the draft autosaves (HF-IDV-WHATSAPP-3 fix was not enough).",
+    "no_telemetry": "Success is HF-IDV-WHATSAPP-3's hf_host_generate_started; this only keeps the session token alive."
   }
 }
