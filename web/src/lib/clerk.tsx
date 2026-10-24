@@ -593,7 +593,7 @@ function GuestGateHost() {
           sends the visitor there and brings them back to this page afterwards. */}
       <div style={{ display: 'grid', gap: 12, padding: 8 }}>
         <p>Log in with a code on WhatsApp to continue.</p>
-        <a href={`/sign-in?redirect_url=${encodeURIComponent(location.pathname + location.search)}`}>Log in</a>
+        <a href="/sign-in" onClick={(e) => { e.preventDefault(); location.href = `/sign-in?redirect_url=${encodeURIComponent(location.pathname + location.search)}`; }}>Log in</a>
       </div>
     </Modal>
   );
