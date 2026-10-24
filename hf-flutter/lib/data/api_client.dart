@@ -71,7 +71,20 @@ class ApiClient {
 
   /// One call. Returns the decoded JSON (`Map` or `List`; an empty 2xx body is `{}`).
   /// Throws [ApiException] for every failure.
+  ///
+  /// [HF-CHANNEL-CHECK-20S-1] Test fakes override this signature, so it stays as it was; a per-request timeout goes through [requestTimed].
   Future<Object?> request(
+    String method,
+    String path, {
+    Map<String, Object?>? query,
+    Object? body,
+    bool auth = true,
+    Map<String, String>? headers,
+  }) =>
+      requestTimed(method, path, query: query, body: body, auth: auth, headers: headers);
+
+  /// Same as [request] with an optional per-request [timeout] (default: the client's own `timeout`).
+  Future<Object?> requestTimed(
     String method,
     String path, {
     Map<String, Object?>? query,
@@ -512,7 +525,9 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> postJson(String path, {Object? body, bool auth = true, Duration? timeout}) async =>
-      asMap(await request('POST', path, body: body ?? const <String, Object?>{}, auth: auth, timeout: timeout));
+      asMap(timeout == null
+          ? await request('POST', path, body: body ?? const <String, Object?>{}, auth: auth)
+          : await requestTimed('POST', path, body: body ?? const <String, Object?>{}, auth: auth, timeout: timeout));
 
   Future<Map<String, dynamic>> patchJson(String path, {Object? body, bool auth = true}) async =>
       asMap(await request('PATCH', path, body: body ?? const <String, Object?>{}, auth: auth));
