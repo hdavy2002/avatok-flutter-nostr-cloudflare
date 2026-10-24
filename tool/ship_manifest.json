@@ -12295,5 +12295,21 @@
         "note": "One-time import per reel."
       }
     ]
+  },
+  "HF-REEL-COMMENTS-PREFETCH-1": {
+    "description": "Feed serving triggers the one-time comment import in the background so the comment sheet opens instantly.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_ext_comments_fetch",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1
+      }
+    ]
   }
 }

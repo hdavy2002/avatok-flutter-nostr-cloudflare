@@ -179,3 +179,39 @@ export async function recheckYoutubeComments(env: Env, f: FetchLike = fetch, bat
   }
   return dropped;
 }
+
+/** [HF-REEL-COMMENTS-PREFETCH-1] When the feed is served, run the one-time import (HF-REEL-COMMENTS-ONCE-1) in the background for the reels on
+ *  that page that have not had it yet, so their comment sheet opens instantly instead of waiting ~5-13 s on the first open. A short
+ *  "pending" marker stops two requests importing the same reel. At most [max] reels per feed page, 3 at a time. Never throws. */
+export async function prefetchFeedComments(env: Env, cfg: Record<string, unknown>, items: { id?: unknown; platform?: unknown; platformVideoId?: unknown; url?: unknown }[], max = 6): Promise<number> {
+  if (!engageOn(cfg)) return 0;
+  const todo: { id: string; platform: "youtube" | "instagram"; vid: string }[] = [];
+  for (const it of items) {
+    const id = String(it?.id ?? "");
+    const platform = it?.platform === "instagram" ? "instagram" : it?.platform === "youtube" ? "youtube" : null;
+    if (!id || !platform || !canPullComments(env, platform)) continue;
+    const vid = videoIdOf(platform, String(it?.url ?? ""));
+    if (!vid || (await extImportDone(env, id))) continue;
+    todo.push({ id, platform, vid });
+    if (todo.length >= max) break;
+  }
+  let done = 0;
+  for (let i = 0; i < todo.length; i += 3) {
+    await Promise.all(todo.slice(i, i + 3).map(async (t) => {
+      try { await env.TOKENS.put(doneKey(t.id), "pending", { expirationTtl: 120 }); } catch { /* best effort */ }
+      const r = await refreshExtComments(env, t.id, t.vid, fetch, t.platform);
+      if (r.ok) done++;
+    }));
+  }
+  return done;
+}
+
+/** The platform's video id from the public link we already store (YouTube watch?v= / Instagram /reel/<code>/). */
+export function videoIdOf(platform: "youtube" | "instagram", url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (platform === "youtube") { const v = u.searchParams.get("v") ?? (u.hostname.endsWith("youtu.be") ? u.pathname.slice(1) : u.pathname.split("/").filter(Boolean).pop() ?? ""); return /^[A-Za-z0-9_-]{6,20}$/.test(v) ? v : null; }
+    const m = u.pathname.match(/\/(?:reel|p|tv)\/([A-Za-z0-9_-]{5,20})/);
+    return m ? m[1] : null;
+  } catch { return null; }
+}

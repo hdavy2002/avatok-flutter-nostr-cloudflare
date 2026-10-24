@@ -21,7 +21,7 @@ vi.mock("../lib/whatsapp_notify", async (orig) => ({ ...(await orig()), verified
 
 import { hfReelEngageRoute } from "./hf_reel_engage";
 import { hfReelsRoute } from "./hf_reels";
-import { recheckYoutubeComments, refreshExtComments, refreshRecentReelComments, seedCount, SEED_MAX, SEED_MIN } from "../lib/hf_reel_engage";
+import { prefetchFeedComments, recheckYoutubeComments, refreshExtComments, videoIdOf, refreshRecentReelComments, seedCount, SEED_MAX, SEED_MIN } from "../lib/hf_reel_engage";
 import { purgeHfUser } from "../lib/hf_purge";
 
 const require_ = createRequire(import.meta.url);
@@ -281,6 +281,25 @@ describe("YouTube comments (read only)", () => {
     const r = await refreshExtComments(env, R1, "DOq6eV6iIgD", f as any, "instagram", 20);
     expect(calls).toBe(2);
     expect(r.count).toBe(20);
+  });
+  it("[PREFETCH] video ids come from the stored links", () => {
+    expect(videoIdOf("youtube", "https://www.youtube.com/watch?v=abcDEF12345")).toBe("abcDEF12345");
+    expect(videoIdOf("youtube", "https://youtu.be/abcDEF12345")).toBe("abcDEF12345");
+    expect(videoIdOf("instagram", "https://www.instagram.com/reel/DeOSl-6tI3Y/")).toBe("DeOSl-6tI3Y");
+    expect(videoIdOf("instagram", "not a url")).toBeNull();
+  });
+  it("[PREFETCH] serving the feed imports comments in the background for reels not done yet, once", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    const orig = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => { calls++; return new Response(JSON.stringify({ items: [thread("Ugx77777777", "pre")] }), { status: 200 }); }) as any;
+    try {
+      const items = [{ id: R1, platform: "youtube", url: "https://www.youtube.com/watch?v=vidabcdef12" }];
+      expect(await prefetchFeedComments(env, cfg, items)).toBe(1);
+      expect(await prefetchFeedComments(env, cfg, items)).toBe(0);
+      expect(calls).toBe(1);
+      expect(db.prepare("SELECT body FROM hf_reel_ext_comments WHERE reel_id=?").all(R1).map((x: any) => x.body)).toEqual(["pre"]);
+    } finally { globalThis.fetch = orig; }
   });
   it("a provider failure keeps the old set and reports ok=false", async () => {
     env.YOUTUBE_API_KEY = "k";

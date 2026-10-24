@@ -28,7 +28,7 @@ import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
-import { enrichItems } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
+import { enrichItems, prefetchFeedComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -207,7 +207,6 @@ export async function isHiddenDemoHost(env: Env, hostUid: string, cfg: Record<st
 }
 
 export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
-  void ctx;
   const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?(?:\/(view|unplayable))?$/);
   const mine = p === "/api/hf/hosts/me/reels";
   if (!m && !mine) return null;
@@ -322,6 +321,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     }
     const engage = cfg.hfReelEngageEnabled === true;
     if (engage) await enrichItems(env, cfg, items as any[], await optionalUid(req, env)); // [HF-REEL-ENGAGE-API-1]
+    if (engage && ctx) ctx.waitUntil(prefetchFeedComments(env, cfg, items as any[]).catch(() => 0)); // [HF-REEL-COMMENTS-PREFETCH-1]
     return json({ ok: true, items, nextCursor }, 200, engage ? { "cache-control": "private, no-store" } : FEED_CACHE); // per-user likedByMe: never shared-cached
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_reels" } });

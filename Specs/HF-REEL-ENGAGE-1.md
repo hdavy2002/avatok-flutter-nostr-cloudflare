@@ -145,3 +145,4 @@ comment on our side; push / WhatsApp to the creator about new comments.
 ## 9. Change 2026-10-24 — HF-REEL-COMMENTS-ONCE-1 (owner)
 - One-time import per reel: random 18–30 (`seedCount`), first sheet open (awaited) or the daily cron for new reels; KV marker `hfx:done:<reelId>` (permanent; 10-min retry block on failure); a reel that already holds imported rows counts as done. INSERT OR IGNORE, nothing replaced or purged.
 - `recheckYoutubeComments`: daily, stored YouTube comments older than 25 days are looked up by id (`comments.list`, 1 unit / 50) — update text/likes, delete ones gone from YouTube unless replied to by our users. Instagram is never re-checked.
+- [HF-REEL-COMMENTS-PREFETCH-1] The first open was slow (~13 s for Instagram: 2 treg calls). Serving the feed now runs the one-time import in the background (`prefetchFeedComments`, ≤6 reels per page, 3 at a time, 120 s pending marker), so sheets open instantly. Same one-time cost per reel.
