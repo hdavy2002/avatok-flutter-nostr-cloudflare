@@ -7,7 +7,7 @@ export default function HostProfile({ account }: { account: DashboardAccount }) 
   const status = account.host?.status ?? null;
   const live = status === 'live';
   return <div className="hfd-section">
-    <header className="hfd-section-head"><h1>Influencer profile</h1><p>Your public influencer profile, identity check and call rates.</p></header>
+    <header className="hfd-section-head"><h1>Influencer profile</h1><p>Your public influencer profile, withdrawals and call rates.</p></header>
     {account.closing && <aside className="hfd-notice" role="status"><strong>Your account is being closed.</strong> Hosting is paused. <a href="/dashboard/close">Manage account closure</a></aside>}
     <div className="hfd-card-grid">
       <section className="hfc-card"><h2>Profile status</h2>

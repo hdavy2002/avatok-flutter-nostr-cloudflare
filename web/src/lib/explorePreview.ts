@@ -141,7 +141,7 @@ function lcard(c,i){
   <img class="rosette" src="${IMG.rosette}" alt="" aria-hidden="true">
   <div class="vid">${livePoster(c)}<div class="shade"></div>
    <a class="card-link" href="${url}" data-card-link="${esc(c.id)}" tabindex="-1" aria-hidden="true"></a>
-   <div class="meta"><span class="status ${c.st}"><i></i><span>${stTxtOf(c.st)}</span></span></div>
+   <div class="meta"><span class="status ${c.st}"><i></i><span>${c.appt?'By appointment':stTxtOf(c.st)}</span></span></div>
    ${heartBtn(c)}
   </div>
   <div class="info">
@@ -159,7 +159,7 @@ function lrow(c){
   <div style="min-width:0"><div class="nm"><h3><a href="${url}" data-card-link="${esc(c.id)}">${esc(c.name)}</a></h3>${c.ver?`<img class="vbadge" src="${IMG.verified}" alt="Verified">`:''}</div>
    <div class="handle" style="margin-top:2px">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div></div>
   <div class="chips row-chips">${c.cat.map(x=>`<span>${esc(x)}</span>`).join('')}${c.lang.map(x=>`<span class="lang">${esc(x)}</span>`).join('')}</div>
-  <span class="status ${c.st} row-status"><i></i>${stTxtOf(c.st)}</span>
+  <span class="status ${c.st} row-status"><i></i>${c.appt?'By appointment':stTxtOf(c.st)}</span>
   <div style="display:flex;align-items:center;gap:14px">${heartBtn(c)}<div class="rate">${money0(c.rate)}<small>/min</small></div><a class="book" href="${url}" data-card-link="${esc(c.id)}">${I.phone}<span>Book</span></a></div>
  </article>`;
 }
@@ -510,7 +510,7 @@ async function loadLive(){
  F[4].opts=F[4].opts.filter(o=>o[0]==='any'||o[0]==='online');
  if(hosts===null){const e=$('#liveEmpty');if(e){e.querySelector('h2').textContent='We could not load influencers right now.';e.querySelector('p').textContent='Please refresh in a moment.'}}
  C=(hosts||[]).map(h=>({id:h.slug,name:h.displayName,h:h.slug,tag:h.tagline||'',cat:(h.topics||[]).map(t=>topicLabel[t]||t),lang:(h.languages||[]).map(langLabel),
-  rate:Number(h.pricePerMin)||0,st:h.status||'offline',ver:!!h.identityVerified,g:'',img:h.avatarUrl||null,rating:h.rating,rc:h.reviewCount||0,pop:(h.reviewCount||0)*10+(h.talkedTo||0),tags:[],today:true,kw:h.tagline||''}));
+  rate:Number(h.pricePerMin)||0,st:h.status||'offline',appt:h.callState==='appointments'&&h.status!=='online'&&h.status!=='busy',/* [HF-IDV-WHATSAPP-3] same label as the profile page */ver:!!h.identityVerified,g:'',img:h.avatarUrl||null,rating:h.rating,rc:h.reviewCount||0,pop:(h.reviewCount||0)*10+(h.talkedTo||0),tags:[],today:true,kw:h.tagline||''}));
  // creators fans can ask to join: invite creators seen in the reels feed (real names, followers and vote counts)
  const seen=new Set();D=[];
  ((reels&&reels.items)||[]).forEach(it=>{

@@ -1,8 +1,8 @@
 /* HostReview — [HF-HOST-PLATFORM-1] Host review queue + detail drawer.
- * Worker: GET /api/admin/hf/hosts?status=, GET /api/admin/hf/hosts/:uid, POST .../decision; selfie review + signed media via /api/admin/hf/kyc.
+ * Worker: GET /api/admin/hf/hosts?status=, GET /api/admin/hf/hosts/:uid, POST .../decision; [HF-IDV-WHATSAPP-3] no selfie review: going live needs a WhatsApp-verified number.
  * Look = desi admin kit (audition cards, marquee-lit selection). No green; nothing under 14px. */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { hfAdminApi, apiUrl, type AdminHost, type AdminHostDetail, type HostStatus, type KycItem } from '../../../lib/hfAdminApi';
+import { hfAdminApi, apiUrl, type AdminHost, type AdminHostDetail, type HostStatus } from '../../../lib/hfAdminApi';
 import { dateIST, fail, track } from '../consultants/kit';
 import { DesiCard, DesiChip, DesiEmpty, Marigold } from '../desi';
 import { HBanner, Tick } from './hostsKit';
@@ -82,7 +82,6 @@ export default function HostReview() {
 
 function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: boolean; onClose: () => void; onChanged: () => void }) {
   const [d, setD] = useState<AdminHostDetail | null>(null);
-  const [kyc, setKyc] = useState<KycItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,8 +93,6 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
     try {
       const x = await hfAdminApi.host(uid);
       setD(x);
-      const st = x.kyc.selfie?.status;
-      setKyc(st ? await hfAdminApi.kycMedia(uid, st).catch(() => null) : null);
     } catch (e) { setError(fail('host_detail', e)); }
   }, [uid]);
   useEffect(() => { void load(); }, [load]);
@@ -117,13 +114,12 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
   const gallery = d?.media.filter((m) => m.kind === 'gallery') ?? [];
   const intro = d?.intro ?? null;
   const [introReason, setIntroReason] = useState('');
-  const selfie = d?.kyc.selfie;
-  const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.upiOnFile && d.media.length > 0;
+  // [HF-IDV-WHATSAPP-3] Going live needs a WhatsApp-verified number and photos. No selfie, no UPI (UPI + Aadhaar come before the first withdrawal).
+  const ready = !!d && d.kyc.whatsappVerified === true && d.media.length > 0;
 
   const checks = [
+    { ok: d?.kyc.whatsappVerified === true, label: 'WhatsApp number verified' },
     { ok: !!(profile?.url || h?.avatarUrl), label: 'Profile photo' },
-    { ok: selfie?.status === 'approved', label: 'Selfie approved' },
-    { ok: !!d?.kyc.payout?.upiOnFile, label: 'UPI ID for withdrawals added' },
     { ok: intro?.status === 'approved', label: 'Voice intro approved' },
   ];
 
@@ -232,7 +228,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
                 {h.reviewNote && <p style={{ margin: '8px 0 0' }}><strong>Last note:</strong> {h.reviewNote}</p>}
               </DesiCard>
 
-              <DesiCard tone="tea" corner="marigold" title="Verification">
+              <DesiCard tone="tea" corner="marigold" title="Withdrawal ID check (only needed before the first withdrawal)">
                 <dl className="hfh-kv">
                   <div><dt>Name on Aadhaar</dt><dd>{d.kyc.name || '—'}</dd></div>
                   <div><dt>Gender</dt><dd>{d.kyc.gender || '—'}</dd></div>
@@ -242,22 +238,8 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
                 <div className="hfh-acts" style={{ margin: '12px 0' }}>
                   <span>Withdrawal UPI ID:</span>
                   <DesiChip tone={d.kyc.payout?.upiOnFile ? 'tea' : 'red'}>{d.kyc.payout?.upiOnFile ? (d.kyc.payout.upiVerified ? 'Added, verified' : 'Added, not verified yet') : 'Not added'}</DesiChip>
-                  <span>Selfie:</span>
-                  <DesiChip tone={selfie?.status === 'approved' ? 'tea' : selfie?.status === 'rejected' ? 'red' : 'gold'}>{selfie ? selfie.status : 'none'}</DesiChip>
                 </div>
-                {kyc ? (
-                  <div className="hfa-row">
-                    <div><p className="hfh-id-cap">Selfie video</p><video className="hfh-media" controls playsInline src={apiUrl(kyc.selfieUrl)} /></div>
-                    <div><p className="hfh-id-cap">Aadhaar photo</p>{kyc.photoUrl ? <img className="hfh-media" src={apiUrl(kyc.photoUrl)} alt="Aadhaar photo" /> : <p className="hfa-note">No photo</p>}</div>
-                  </div>
-                ) : <p className="hfa-note">No selfie to show.</p>}
-                <p className="hfa-note">Links last 5 minutes. Every view is logged.</p>
-                {selfie?.status === 'pending' && (
-                  <div className="hfh-acts" style={{ marginTop: 8 }}>
-                    <button type="button" className="hfa-btn tea" disabled={busy} onClick={() => void run('selfie_approve', () => hfAdminApi.selfieDecision(uid, 'approve', '', selfie.id), false, 'Selfie approved.')}>Approve selfie</button>
-                    <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => void run('selfie_reject', () => hfAdminApi.selfieDecision(uid, 'reject', reason, selfie.id), true, 'Selfie rejected.')}>Reject selfie</button>
-                  </div>
-                )}
+                {/* [HF-IDV-WHATSAPP-3] No selfie video any more (HF-KYC-3 dropped). */}
               </DesiCard>
             </>
           )}
@@ -268,7 +250,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
               <label htmlFor="hf-reason" className="hfh-field">Reason (needed to reject or pause; shown to the host)
                 <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} />
               </label>
-              {!ready && h.status !== 'live' && <p className="hfa-note" style={{ margin: 0 }}>Approve needs: selfie approved, a withdrawal UPI ID and photos present.</p>}
+              {!ready && h.status !== 'live' && <p className="hfa-note" style={{ margin: 0 }}>Approve needs: a WhatsApp-verified number and photos present.</p>}
               <div className="hfh-acts">
                 {h.status !== 'live' && <button type="button" className="hfa-btn tea" disabled={busy || !ready} onClick={() => void run('host_approve', () => hfAdminApi.decide(uid, 'approve'), false, 'Host is live. They were told on WhatsApp.')}>Approve</button>}
                 {h.status !== 'rejected' && <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => void run('host_reject', () => hfAdminApi.decide(uid, 'reject', reason), true, 'Host sent back.')}>Send back</button>}

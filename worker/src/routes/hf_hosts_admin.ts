@@ -224,7 +224,7 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
   const h = await env.DB_META.prepare(`${HOST_SQL} WHERE h.uid = ?1`).bind(uid).first<HostRow>();
   if (!h) return err(404, "not_found");
-  const [media, kyc, selfie, payout] = await Promise.all([
+  const [media, kyc, selfie, payout, whatsappVerified] = await Promise.all([
     env.DB_META.prepare("SELECT id, kind, r2_key, caption, transcript_json, sort FROM hf_host_media WHERE uid=?1 AND status='active' ORDER BY kind, sort").bind(uid)
       .all<{ id: string; kind: string; r2_key: string; caption: string | null; transcript_json: string | null; sort: number }>(),
     env.DB_META.prepare("SELECT name_enc, gender, aadhaar_last4, age_ok, photo_r2_key, verified_at FROM hf_kyc WHERE uid=?1").bind(uid)
@@ -233,6 +233,7 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
       .first<{ id: string; review_status: string; review_reason: string | null; created_at: number }>(),
     env.DB_META.prepare("SELECT upi_enc, upi_verified FROM hf_payout WHERE uid=?1").bind(uid)
       .first<{ upi_enc: string | null; upi_verified: number }>(),
+    isPhoneVerified(env, uid), // [HF-IDV-WHATSAPP-3] the only identity check to go live
   ]);
   await audit(env, a.uid, "view", uid, {});
   const base = mediaBase(env);
@@ -254,7 +255,7 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
       transcript: m.transcript_json ? arr(m.transcript_json) : undefined,
     })),
     kyc: {
-      aadhaarDone: !!kyc?.verified_at, name: await tryDecryptPii(env, kyc?.name_enc), gender: kyc?.gender ?? null, last4: kyc?.aadhaar_last4 ?? null,
+      whatsappVerified, aadhaarDone: !!kyc?.verified_at, name: await tryDecryptPii(env, kyc?.name_enc), gender: kyc?.gender ?? null, last4: kyc?.aadhaar_last4 ?? null,
       ageOk: !!kyc?.age_ok, hasPhoto: !!kyc?.photo_r2_key,
       selfie: selfie ? { id: selfie.id, status: selfie.review_status, reason: selfie.review_reason, at: selfie.created_at } : null,
       payout: payout ? { upiOnFile: !!payout.upi_enc, nameMatch: !!payout.upi_enc, upiVerified: !!payout.upi_verified, accountLast4: null } : null,

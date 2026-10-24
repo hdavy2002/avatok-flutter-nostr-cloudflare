@@ -23,7 +23,7 @@ export interface AdminHostDetail {
   /** The previously approved introduction that is still live while a new one waits for review. */
   liveIntroUrl?: string | null;
   kyc: {
-    aadhaarDone: boolean; name: string | null; gender: string | null; last4: string | null; ageOk: boolean; hasPhoto: boolean;
+    whatsappVerified?: boolean; aadhaarDone: boolean; name: string | null; gender: string | null; last4: string | null; ageOk: boolean; hasPhoto: boolean;
     selfie: { id: string; status: 'pending' | 'approved' | 'rejected'; reason: string | null; at: number } | null;
     payout: { upiOnFile: boolean; nameMatch: boolean; upiVerified: boolean; accountLast4: string | null } | null;
   };

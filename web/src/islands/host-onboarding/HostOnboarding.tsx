@@ -268,7 +268,9 @@ export default function HostOnboarding() {
       <div className="hob">
         <div className="hob-body hob-wrap">
           <main className="hob-main" aria-label="Become an influencer">
-            {phase === 'auth' && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
+            {/* [HF-IDV-WHATSAPP-3] Keep the Clerk bridge mounted after 'auth': unmounting it cleared the token getter, so every
+                later call (avatars, autosave, voice, submit) failed with "Please sign in again". */}
+            {api.mode === 'real' && phase !== 'boot' && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
             {phase === 'gate' ? (
               <div className="hob-v-welcome">
                 <p className="hob-v-eyebrow">{BRAND.name} influencers</p>

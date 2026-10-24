@@ -11978,5 +11978,20 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "Verified by re-syncing the catalogue and reading pod_catalog in prod D1."
+  },
+  "HF-IDV-WHATSAPP-3": {
+    "description": "[HF-IDV-WHATSAPP-3] Fixes found in the web test: creator onboarding kept losing its sign-in after loading (avatars empty, autosave failing); admin host review now checks WhatsApp verified instead of selfie + UPI (Approve was blocked); Video KYC menu hidden; copy; Explore card shows 'By appointment'.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_host_generate_started",
+        "property": "identity_method",
+        "equals": "whatsapp_otp",
+        "min_events": 1,
+        "note": "A new creator got through the web onboarding (avatars loaded, draft saved) to profile generation."
+      }
+    ]
   }
 }
