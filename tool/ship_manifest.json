@@ -12194,5 +12194,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Layout only: the shared header already emits nav_click; no new behaviour to measure."
+  },
+  "HF-APP-DASH-BLANK-1": {
+    "description": "[HF-APP-DASH-BLANK-1] App influencer Home: the Hearts/Waiting tiles row broke the dashboard list layout, so every card below it was blank.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Layout fix only; verified by screenshot on the owner's phone."
   }
 }

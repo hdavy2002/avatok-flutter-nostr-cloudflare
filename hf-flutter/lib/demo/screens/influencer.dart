@@ -1122,10 +1122,14 @@ class _FraandsCountTilesState extends State<FraandsCountTiles> {
   @override
   Widget build(BuildContext context) {
     final c = _counts;
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(child: DesiKpi(label: 'Hearts', value: _n(c?.hearts), sub: 'People who saved you', tone: DesiTone.rani, icon: Icons.favorite_rounded)),
-      const SizedBox(width: 12),
-      Expanded(child: DesiKpi(label: 'Waiting for you online', value: _n(c?.waiting), sub: 'Asked Notify me', tone: DesiTone.gold, icon: Icons.notifications_active_rounded)),
-    ]);
+    // [HF-APP-DASH-BLANK-1] IntrinsicHeight: a stretch Row inside the dashboard ListView has no height limit, so its layout
+    // failed and every card below it (share page, photo, verifications, today's bookings, reels) was never painted.
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: DesiKpi(label: 'Hearts', value: _n(c?.hearts), sub: 'People who saved you', tone: DesiTone.rani, icon: Icons.favorite_rounded)),
+        const SizedBox(width: 12),
+        Expanded(child: DesiKpi(label: 'Waiting for you online', value: _n(c?.waiting), sub: 'Asked Notify me', tone: DesiTone.gold, icon: Icons.notifications_active_rounded)),
+      ]),
+    );
   }
 }
