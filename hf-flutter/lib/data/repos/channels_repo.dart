@@ -6,6 +6,12 @@ import '../models/channel.dart';
 /// the server stores it with the time (worker/src/routes/hf_channels.ts, `consent_version`).
 const String kChannelConsentVersion = 'ch-1';
 
+/// [HF-CHANNEL-CHECK-20S-1] How long the person waits for a channel check, in seconds. The screen counts down from this number.
+const int kChannelCheckSeconds = 20;
+
+/// The request timeout for a channel check: the seconds shown to the person plus 2 s of network slack.
+const Duration kChannelCheckTimeout = Duration(seconds: kChannelCheckSeconds + 2);
+
 /// Influencer Channels: connect an Instagram or YouTube channel, prove it is hers with a one-time code,
 /// and let the server decide (followers at or over `hfInfluencerMinFollowers`).
 class ChannelsRepo {
@@ -38,20 +44,20 @@ class ChannelsRepo {
           'handleOrUrl': handleOrUrl.trim(),
           'consent': {'version': kChannelConsentVersion, 'embeds': true, 'counts': true, 'ownChannel': true, 'feed': true},
         };
-        return AddedChannel.fromJson(await _api.postJson('/api/hf/channels', body: body));
+        return AddedChannel.fromJson(await _api.postJson('/api/hf/channels', body: body, timeout: kChannelCheckTimeout));
       });
 
   /// [HF-WIRE-14] "Sign in with YouTube" (HF-REEL-33). [accessToken] comes from Google sign-in with the read-only YouTube scope. The server asks
   /// YouTube whose channel it is (that proves ownership: no code), approves when she is over the minimum, and brings in the details of her public
   /// videos (embeds only). The token is used once and never stored. Errors: `token_invalid`, `no_youtube_channel`, `channel_claimed`, `limit_reached`.
   Future<ChannelCheck> connectYoutube(String accessToken) => _guard(
-      () async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/youtube/connect', body: {'accessToken': accessToken})));
+      () async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/youtube/connect', body: {'accessToken': accessToken}, timeout: kChannelCheckTimeout)));
 
   /// Re-reads the bio or description (never cached) and decides.
-  Future<ChannelCheck> check(String id) => _guard(() async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/$id/check')));
+  Future<ChannelCheck> check(String id) => _guard(() async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/$id/check', timeout: kChannelCheckTimeout)));
 
   /// Refreshes the follower count of a confirmed channel.
-  Future<ChannelCheck> resync(String id) => _guard(() async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/$id/resync')));
+  Future<ChannelCheck> resync(String id) => _guard(() async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/$id/resync', timeout: kChannelCheckTimeout)));
 
   /// Disconnects the channel (the server keeps the row).
   Future<void> remove(String id) => _guard(() async {

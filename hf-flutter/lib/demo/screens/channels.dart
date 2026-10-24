@@ -878,16 +878,29 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
           children: [
             const ChannelHeader('Checking your channel'),
             Expanded(
-              child: AsyncView<ChannelCheck>(
-                state: _state,
-                onRetry: () => unawaited(_go()),
-                loadingLabel: 'Checking your channel… This takes a minute.',
-                builder: _result,
-              ),
+              child: _body(),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// [HF-CHANNEL-CHECK-20S-1] Loading shows the 20-second countdown; a timeout shows "Still checking" instead of "Slow connection".
+  Widget _body() {
+    final s = _state;
+    if (s is AsyncLoading<ChannelCheck>) return const _CheckWaiting();
+    if (s is AsyncFailure<ChannelCheck>) {
+      final e = s.error;
+      if (e is ApiException && e.isOffline && e.code == 'timeout') {
+        return _StillChecking(onAgain: () => unawaited(_go()));
+      }
+    }
+    return AsyncView<ChannelCheck>(
+      state: _state,
+      onRetry: () => unawaited(_go()),
+      loadingLabel: 'Checking your channel…',
+      builder: _result,
     );
   }
 
@@ -1145,6 +1158,98 @@ class _ChannelsStepState extends State<ChannelsStep> {
             ),
           add,
         ],
+      ),
+    );
+  }
+}
+
+
+/// [HF-CHANNEL-CHECK-20S-1] Shown while the server asks Instagram or YouTube. Counts down from [kChannelCheckSeconds] once a second and,
+/// after [kChannelSlowAfterSeconds], says Instagram is slow today. The timer is cancelled in [dispose].
+const int kChannelSlowAfterSeconds = 8;
+const String kChannelCheckingText = 'Checking your channel… This can take up to $kChannelCheckSeconds seconds.';
+const String kChannelSlowText = 'Instagram is answering slowly today. Please keep this screen open.';
+const String kChannelStillCheckingTitle = 'Still checking';
+const String kChannelStillCheckingText = 'Instagram took longer than $kChannelCheckSeconds seconds. Your check may still finish — tap Check again in a moment.';
+
+class _CheckWaiting extends StatefulWidget {
+  const _CheckWaiting();
+
+  @override
+  State<_CheckWaiting> createState() => _CheckWaitingState();
+}
+
+class _CheckWaitingState extends State<_CheckWaiting> {
+  Timer? _timer;
+  int _elapsed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _elapsed++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = (kChannelCheckSeconds - _elapsed).clamp(0, kChannelCheckSeconds);
+    final slow = _elapsed >= kChannelSlowAfterSeconds;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Semantics(
+          label: kChannelCheckingText,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 44, height: 44, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 5)),
+              const SizedBox(height: 18),
+              Text(kChannelCheckingText, textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w700, h: 1.4)),
+              const SizedBox(height: 14),
+              ExcludeSemantics(child: Text('$left', key: const ValueKey('channel-countdown'), style: t(64, color: C.maroon, w: FontWeight.w900, h: 1.0))),
+              if (slow) ...[
+                const SizedBox(height: 14),
+                Text(kChannelSlowText, key: const ValueKey('channel-slow-line'), textAlign: TextAlign.center, style: t(16, color: C.tan, w: FontWeight.w700, h: 1.4)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StillChecking extends StatelessWidget {
+  const _StillChecking({required this.onAgain});
+
+  final VoidCallback onAgain;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.hourglass_top_rounded, size: 56, color: C.violet),
+            const SizedBox(height: 14),
+            Text(kChannelStillCheckingTitle, textAlign: TextAlign.center, style: t(22, color: C.maroon)),
+            const SizedBox(height: 8),
+            Text(kChannelStillCheckingText, textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w700, h: 1.35)),
+            const SizedBox(height: 20),
+            ChannelBigButton(label: 'CHECK AGAIN', onTap: onAgain),
+          ],
+        ),
       ),
     );
   }

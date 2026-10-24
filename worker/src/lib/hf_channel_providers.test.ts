@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { instagramLookup, TREG_IG_PROFILE, TREG_IG_PROFILE_FALLBACK } from "./hf_channel_providers";
+import { IG_LOOKUP_BUDGET_MS, instagramLookup, TREG_IG_PROFILE, TREG_IG_PROFILE_FALLBACK } from "./hf_channel_providers";
 
 const env = { TREG_API_KEY: "test-secret" };
 const user = { id: "73340537603", username: "maya.reels", full_name: "Maya", biography: "Hello",
@@ -68,12 +68,42 @@ describe("Instagram provider fallback", () => {
         : Promise.resolve({ ok: true, status: 200, json: () => new Promise(() => {}) }))
         .mockResolvedValueOnce(json({ data: { user } }));
       const result = instagramLookup(env, "maya.reels", f);
-      await vi.advanceTimersByTimeAsync(8000);
+      await vi.advanceTimersByTimeAsync(10000); // [HF-CHANNEL-CHECK-20S-1] primary may take up to 10 s
       expect(await result).toMatchObject({ exists: true, platformUserId: user.id });
       expect(f).toHaveBeenCalledTimes(2);
       expect(f.mock.calls[0][1].signal.aborted).toBe(true);
       expect(f.mock.calls[1][1].signal.aborted).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("[HF-CHANNEL-CHECK-20S-1] the whole lookup stays within the 19 s budget when both providers stall", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const f = vi.fn().mockImplementation(() => new Promise<Response>(() => {}));
+      const t0 = Date.now();
+      const result = instagramLookup(env, "maya.reels", f);
+      const settled = result.catch((e) => e);
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(f).toHaveBeenCalledTimes(1); // still waiting on the primary
+      await vi.advanceTimersByTimeAsync(1);
+      expect(f).toHaveBeenCalledTimes(2); // fallback starts at 10 s
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(await settled).toMatchObject({ code: "provider_unavailable" });
+      expect(Date.now() - t0).toBeLessThanOrEqual(IG_LOOKUP_BUDGET_MS);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { warn.mockRestore(); vi.useRealTimers(); }
+  });
+
+  it("[HF-CHANNEL-CHECK-20S-1] a fast primary failure leaves the fallback the rest of the budget (up to 18 s)", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = vi.fn().mockResolvedValueOnce(json({}, 500))
+        .mockImplementationOnce(() => new Promise<Response>((resolve) => setTimeout(() => resolve(json({ data: { user } })), 12000)));
+      const result = instagramLookup(env, "maya.reels", f);
+      await vi.advanceTimersByTimeAsync(12000);
+      expect(await result).toMatchObject({ exists: true, platformUserId: user.id });
     } finally { vi.useRealTimers(); }
   });
 

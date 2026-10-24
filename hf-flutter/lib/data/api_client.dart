@@ -78,6 +78,7 @@ class ApiClient {
     Object? body,
     bool auth = true,
     Map<String, String>? headers,
+    Duration? timeout,
   }) async {
     final account = accountId?.call();
     final epoch = cache.accountGeneration;
@@ -92,14 +93,14 @@ class ApiClient {
       final provider = auth ? tokens : null;
       var token = provider == null ? null : await provider();
       checkAccount();
-      var resp = await _send(method, path, query, body, headers, token);
+      var resp = await _send(method, path, query, body, headers, token, timeout);
       checkAccount();
       if (resp.statusCode == 401 && provider != null) {
         final fresh = await provider(forceRefresh: true);
         checkAccount();
         if (fresh != null && fresh != token) {
           token = fresh;
-          resp = await _send(method, path, query, body, headers, token);
+          resp = await _send(method, path, query, body, headers, token, timeout);
         }
         checkAccount();
         if (resp.statusCode == 401) {
@@ -163,8 +164,10 @@ class ApiClient {
     Map<String, Object?>? query,
     Object? body,
     Map<String, String>? extraHeaders,
-    String? token,
-  ) async {
+    String? token, [
+    Duration? timeoutOverride,
+  ]) async {
+    final limit = timeoutOverride ?? timeout;
     final req = http.Request(method, _uri(path, query));
     req.headers.addAll({
       'Accept': 'application/json',
@@ -176,8 +179,8 @@ class ApiClient {
       req.headers['Content-Type'] = 'application/json; charset=utf-8';
       req.body = jsonEncode(body);
     }
-    final streamed = await _http.send(req).timeout(timeout);
-    return http.Response.fromStream(streamed).timeout(timeout);
+    final streamed = await _http.send(req).timeout(limit);
+    return http.Response.fromStream(streamed).timeout(limit);
   }
 
   /// [store] true keeps the answer in the read cache for [peekJson] / [watchJson] (write-through). Default off, so existing
@@ -508,8 +511,8 @@ class ApiClient {
     throw ApiException.parse(200);
   }
 
-  Future<Map<String, dynamic>> postJson(String path, {Object? body, bool auth = true}) async =>
-      asMap(await request('POST', path, body: body ?? const <String, Object?>{}, auth: auth));
+  Future<Map<String, dynamic>> postJson(String path, {Object? body, bool auth = true, Duration? timeout}) async =>
+      asMap(await request('POST', path, body: body ?? const <String, Object?>{}, auth: auth, timeout: timeout));
 
   Future<Map<String, dynamic>> patchJson(String path, {Object? body, bool auth = true}) async =>
       asMap(await request('PATCH', path, body: body ?? const <String, Object?>{}, auth: auth));

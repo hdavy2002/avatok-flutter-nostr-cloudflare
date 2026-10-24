@@ -12346,5 +12346,12 @@
         "note": "A Creator / Business account finished the Instagram login."
       }
     ]
+  },
+  "HF-CHANNEL-CHECK-20S-1": {
+    "description": "Channel check waits up to 20 s in the app (22 s request timeout) with a visible 20-second countdown, a slow-today note after 8 s and a friendly Still checking timeout; worker Instagram lookup has a 19 s total budget (primary up to 10 s, fallback with the time left).",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "No new event. The existing hf_channel_check_tap and hf_channel_threshold events still fire; the countdown and timeout screen are covered by widget tests and the worker budget by vitest fake-timer tests."
   }
 }

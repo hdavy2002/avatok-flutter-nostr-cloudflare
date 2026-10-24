@@ -139,21 +139,31 @@ export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrU
 export const TREG_IG_PROFILE = "scrapecreators.instagram.user.profile";
 export const TREG_IG_PROFILE_FALLBACK = "tikhub.instagram.user.profile";
 
+// [HF-CHANNEL-CHECK-20S-1] The app now waits up to 20 s (22 s request timeout). The whole Instagram lookup gets a 19 s budget: the primary
+// attempt up to 10 s, the fallback only with the time left minus 1 s, so a check never runs past ~19 s server-side.
+export const IG_LOOKUP_BUDGET_MS = 19000;
+export const IG_PRIMARY_MAX_MS = 10000;
+export const IG_FALLBACK_MARGIN_MS = 1000;
+const IG_FALLBACK_MIN_MS = 1000;
+
 export async function instagramLookup(env: Pick<Env, "TREG_API_KEY">, handleOrUrl: string, f: FetchLike = fetch): Promise<ChannelLookup> {
   const handle = parseInstagramHandle(handleOrUrl);
   const token = (env.TREG_API_KEY ?? "").trim();
   if (!token) throw new ProviderError("provider_not_configured");
+  const started = Date.now();
   try {
-    return await instagramProviderLookup(handle, token, TREG_IG_PROFILE, f);
+    return await instagramProviderLookup(handle, token, TREG_IG_PROFILE, f, Math.min(IG_PRIMARY_MAX_MS, IG_LOOKUP_BUDGET_MS));
   } catch (error) {
     if (!(error instanceof ProviderError) || error.code !== "provider_unavailable") throw error;
-    return instagramProviderLookup(handle, token, TREG_IG_PROFILE_FALLBACK, f);
+    const left = IG_LOOKUP_BUDGET_MS - (Date.now() - started) - IG_FALLBACK_MARGIN_MS;
+    if (left < IG_FALLBACK_MIN_MS) throw error;
+    return instagramProviderLookup(handle, token, TREG_IG_PROFILE_FALLBACK, f, left);
   }
 }
 
-async function instagramProviderLookup(handle: string, token: string, endpoint: string, f: FetchLike): Promise<ChannelLookup> {
+async function instagramProviderLookup(handle: string, token: string, endpoint: string, f: FetchLike, timeoutMs: number = PROVIDER_TIMEOUT_MS): Promise<ChannelLookup> {
   // Keep the full response, including JSON consumption, inside the provider budget.
-  // Two attempts fit under the admin client's 20s deadline. Do not log URLs, tokens,
+  // Both attempts together fit the 19 s lookup budget (see instagramLookup). Do not log URLs, tokens,
   // handles or response bodies; these fixed fields diagnose production failures safely.
   const q = new URLSearchParams({ username: handle });
   if (endpoint === "scrapecreators.instagram.user.profile") q.set("handle", handle);
@@ -179,7 +189,7 @@ async function instagramProviderLookup(handle: string, token: string, endpoint: 
           stage += "_timeout";
           reject(new ProviderError("provider_unavailable"));
           ctl.abort();
-        }, PROVIDER_TIMEOUT_MS);
+        }, timeoutMs);
       }),
     ]);
     stage = "profile";

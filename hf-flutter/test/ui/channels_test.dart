@@ -390,7 +390,8 @@ void main() {
       final gate = Completer<void>();
       final f = _Fake(gate: gate, (_) => _json({'ok': true, 'result': 'approved', 'message': 'You\'re in! Your channel is confirmed.', 'channel': _ch('hfch_a', 'approved', followers: 12), 'minFollowers': 10, 'qualified': true}));
       await _pump(tester, ChannelCheckingScreen(id: 'hfch_a', onApprovedDone: () => done++, repo: f.repo));
-      expect(find.text('Checking your channel… This takes a minute.'), findsOneWidget);
+      expect(find.text('Checking your channel… This can take up to 20 seconds.'), findsOneWidget);
+      expect(find.text('20'), findsOneWidget);
       gate.complete();
       await tester.pumpAndSettle();
       expect(find.text("You're in!"), findsOneWidget);
@@ -422,6 +423,50 @@ void main() {
       await tester.tap(find.text('CHECK AGAIN'));
       await tester.pumpAndSettle();
       expect(f.to('POST', '/api/hf/channels/hfch_a/check').length, 2);
+    });
+
+    final approvedBody = {'ok': true, 'result': 'approved', 'message': 'ok', 'channel': _ch('hfch_a', 'approved', followers: 12), 'minFollowers': 10, 'qualified': true};
+
+    testWidgets('[HF-CHANNEL-CHECK-20S-1] counts down from 20 and says Instagram is slow after 8 seconds', (tester) async {
+      final gate = Completer<void>();
+      final f = _Fake(gate: gate, (_) => _json(approvedBody));
+      await _pump(tester, ChannelCheckingScreen(id: 'hfch_a', onApprovedDone: () {}, repo: f.repo));
+      expect(find.text('Checking your channel… This can take up to 20 seconds.'), findsOneWidget);
+      expect(find.text('20'), findsOneWidget);
+      expect(find.text('Instagram is answering slowly today. Please keep this screen open.'), findsNothing);
+      await tester.pump(const Duration(seconds: 7));
+      expect(find.text('13'), findsOneWidget);
+      expect(find.text('Instagram is answering slowly today. Please keep this screen open.'), findsNothing);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('12'), findsOneWidget);
+      expect(find.text('Instagram is answering slowly today. Please keep this screen open.'), findsOneWidget);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text("You're in!"), findsOneWidget);
+    });
+
+    testWidgets('[HF-CHANNEL-CHECK-20S-1] a timeout shows "Still checking" and Check again asks the server again', (tester) async {
+      final never = Completer<http.Response>();
+      var calls = 0;
+      final repo = ChannelsRepo(ApiClient(
+        client: MockClient((_) {
+          calls++;
+          return calls == 1 ? never.future : Future.value(_json(approvedBody));
+        }),
+        origin: 'https://api.test',
+        tokens: ({bool forceRefresh = false}) async => 'jwt',
+        reporter: (m, e, err, ms) {},
+      ));
+      await _pump(tester, ChannelCheckingScreen(id: 'hfch_a', onApprovedDone: () {}, repo: repo));
+      await tester.pump(const Duration(seconds: 23));
+      await tester.pump();
+      expect(find.text('Still checking'), findsOneWidget);
+      expect(find.text('Instagram took longer than 20 seconds. Your check may still finish — tap Check again in a moment.'), findsOneWidget);
+      expect(find.text('Slow connection'), findsNothing);
+      await tester.tap(find.text('CHECK AGAIN'));
+      await tester.pumpAndSettle();
+      expect(calls, 2);
+      expect(find.text("You're in!"), findsOneWidget);
     });
 
     testWidgets('a network failure shows the offline text with Try again', (tester) async {
