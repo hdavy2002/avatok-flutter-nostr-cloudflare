@@ -24,6 +24,8 @@ class EngageCount {
   final int ours;
   final int total;
 
+  Map<String, int> toJson() => {'platform': platform, 'ours': ours, 'total': total};
+
   EngageCount plusOurs(int d) {
     final o = (ours + d) < 0 ? 0 : ours + d;
     return EngageCount(platform: platform, ours: o);

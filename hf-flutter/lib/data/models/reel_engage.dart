@@ -49,6 +49,18 @@ class ReelComment {
       ? 'Instagram'
       : null;
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'source': source,
+    'author': {'name': authorName, 'avatar': authorAvatar, 'url': authorUrl},
+    'body': body,
+    if (likeCount != null) 'likeCount': likeCount,
+    'createdAt': createdAt,
+    'mine': mine,
+    if (parentId != null) 'parentId': parentId,
+    if (replies.isNotEmpty) 'replies': [for (final r in replies) r.toJson()],
+  };
+
   ReelComment withReplies(List<ReelComment> r) => ReelComment(
     id: id,
     source: source,
@@ -95,6 +107,14 @@ class CommentsPage {
   final EngageCount? likes;
   final EngageCount? comments;
   final bool likedByMe;
+
+  /// The same shape the server sends, so [CommentsPage.fromJson] reads it back.
+  Map<String, dynamic> toJson() => {
+    'items': [for (final c in items) c.toJson()],
+    if (nextCursor != null) 'nextCursor': nextCursor,
+    'counts': {if (likes != null) 'likes': likes!.toJson(), if (comments != null) 'comments': comments!.toJson()},
+    'likedByMe': likedByMe,
+  };
 
   factory CommentsPage.fromJson(Map<String, dynamic> j) {
     final c = j['counts'] is Map ? Map<String, dynamic>.from(j['counts'] as Map) : const <String, dynamic>{};

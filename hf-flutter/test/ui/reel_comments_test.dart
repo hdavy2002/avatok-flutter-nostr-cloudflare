@@ -7,6 +7,7 @@ import 'package:hf_app/data/api_client.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/reel.dart';
 import 'package:hf_app/data/models/reel_engage.dart';
+import 'package:hf_app/data/reel_comments_cache.dart';
 import 'package:hf_app/data/reel_engage_store.dart';
 import 'package:hf_app/data/repos/reel_engage_repo.dart';
 import 'package:hf_app/data/reel_bookmarks.dart';
@@ -101,6 +102,7 @@ void main() {
     ReelPlayer.testPlayer = (r, active) => const SizedBox();
     store = ReelEngageStore();
     ReelEngageStore.override = store;
+    ReelCommentsCache.override = ReelCommentsCache(() => 'u1');
     ReelBookmarks.override = WidgetBookmarks(ApiClient(origin: 'https://api.test'), () => Services.instance.user?.id);
     Services.instance.user = const ClerkUser(id: 'test_fan');
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
@@ -109,6 +111,7 @@ void main() {
     PresenceBridge.forceReal = false;
     ReelPlayer.testPlayer = null;
     ReelEngageStore.override = null;
+    ReelCommentsCache.override = null;
     ReelBookmarks.override = null;
     Services.instance.user = null;
     demo.signOut();
@@ -271,4 +274,63 @@ void main() {
     s.clear();
     expect(s.of('a'), isNull);
   });
+
+  testWidgets('a saved page shows at once even when the server never answers', (tester) async {
+    await ReelCommentsCache.instance.write(
+      'hfrl_abc12345',
+      const CommentsPage(items: [ReelComment(id: 'c1', source: 'youtube', authorName: 'Ravi', body: 'Cached hello')]),
+    );
+    await _pump(tester, _reel(), _NeverRepo());
+    await tester.tap(find.byKey(const ValueKey('reel-comment')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Cached hello'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('the fresh page replaces the saved one quietly and is saved', (tester) async {
+    await ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Old text')]));
+    final repo = _Repo()..existing.add(const ReelComment(id: 'c2', authorName: 'Asha', body: 'Fresh text'));
+    await _pump(tester, _reel(), repo);
+    await tester.tap(find.byKey(const ValueKey('reel-comment')));
+    await _settle(tester);
+    expect(find.text('Fresh text'), findsOneWidget);
+    expect(find.text('Old text'), findsNothing);
+    final saved = await ReelCommentsCache.instance.read('hfrl_abc12345');
+    expect(saved!.items.single.body, 'Fresh text');
+  });
+
+  testWidgets('a failed refresh keeps the saved list and shows nothing scary', (tester) async {
+    await ReelCommentsCache.instance.write('hfrl_abc12345', const CommentsPage(items: [ReelComment(id: 'c1', authorName: 'Ravi', body: 'Cached hello')]));
+    final repo = _FailingRepo();
+    await _pump(tester, _reel(), repo);
+    await tester.tap(find.byKey(const ValueKey('reel-comment')));
+    await _settle(tester);
+    expect(find.text('Cached hello'), findsOneWidget);
+    expect(find.byKey(const ValueKey('comments-retry')), findsNothing);
+    expect(find.byKey(const ValueKey('comments-notice')), findsNothing);
+  });
+
+  testWidgets('a sent comment is saved so reopening shows it at once', (tester) async {
+    final repo = _Repo();
+    await _pump(tester, _reel(), repo);
+    await tester.tap(find.byKey(const ValueKey('reel-comment')));
+    await _settle(tester);
+    await tester.enterText(find.byKey(const ValueKey('comment-field')), 'Saved for later');
+    await tester.tap(find.byKey(const ValueKey('comment-send')));
+    await _settle(tester);
+    final saved = await ReelCommentsCache.instance.read('hfrl_abc12345');
+    expect(saved!.items.map((c) => c.body), contains('Saved for later'));
+  });
+}
+
+class _NeverRepo extends _Repo {
+  @override
+  Future<CommentsPage> comments(String reelId, {String? cursor}) => Completer<CommentsPage>().future;
+}
+
+class _FailingRepo extends _Repo {
+  @override
+  Future<CommentsPage> comments(String reelId, {String? cursor}) async =>
+      throw const ApiException(kind: ApiFailure.offline, code: 'network');
 }

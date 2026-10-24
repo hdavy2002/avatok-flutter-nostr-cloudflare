@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/brand.dart';
 import '../../data/models/reel.dart';
 import '../../data/models/reel_engage.dart';
+import '../../data/reel_comments_cache.dart';
 import '../../data/reel_engage_store.dart';
 import '../../data/repos/reel_engage_repo.dart';
 import '../../data/telemetry.dart';
@@ -73,8 +74,11 @@ class ReelCommentsSheet extends StatefulWidget {
     required this.repo,
     required this.store,
     this.canOpenOriginal = false,
+    this.cache,
   });
 
+  /// [HF-REEL-COMMENTS-CACHE-1] The saved first page; the app uses [ReelCommentsCache.instance].
+  final ReelCommentsCache? cache;
   final String reelId;
   final String platform;
   final ReelEngageApi repo;
@@ -98,10 +102,48 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
   ScrollController? _attached;
   int _tmp = 0;
 
+  bool _fromCache = false;
+  ReelCommentsCache get _cache => widget.cache ?? ReelCommentsCache.instance;
+  static const _cacheEndpoint = '/api/hf/reels/:id/comments';
+
   @override
   void initState() {
     super.initState();
+    final hit = _cache.peek(widget.reelId);
+    if (hit != null) {
+      // [HF-REEL-COMMENTS-CACHE-1] the saved list shows at once, no spinner
+      _apply(hit);
+      _fromCache = true;
+      _loading = false;
+      Telemetry.cacheOutcome(_cacheEndpoint, 'hit_fresh');
+    }
     unawaited(_first());
+  }
+
+  void _apply(CommentsPage p) {
+    final tmp = [for (final c in _items) if (c.id.startsWith('tmp_')) c]; // a comment still being sent stays
+    _items
+      ..clear()
+      ..addAll(tmp)
+      ..addAll(p.items);
+    _next = p.nextCursor;
+  }
+
+  /// Keeps the saved copy in step with what the sheet shows (after a fetch, send, delete or report).
+  void _remember() {
+    final s = widget.store.of(widget.reelId);
+    unawaited(
+      _cache.write(
+        widget.reelId,
+        CommentsPage(
+          items: [for (final c in _items) if (!c.id.startsWith('tmp_')) c],
+          nextCursor: _next,
+          likes: s?.likes,
+          comments: s?.comments,
+          likedByMe: s?.liked ?? false,
+        ),
+      ),
+    );
   }
 
   @override
@@ -126,23 +168,48 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
   }
 
   Future<void> _first() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
-    try {
-      final p = await widget.repo.comments(widget.reelId);
-      if (!mounted) return;
-      _syncCounts(p);
+    if (!_fromCache && !_loading) {
       setState(() {
-        _items
-          ..clear()
-          ..addAll(p.items);
-        _next = p.nextCursor;
-        _loading = false;
+        _loading = true;
+        _loadError = null;
       });
-    } catch (e) {
+    }
+    final fetch = widget.repo.comments(widget.reelId); // starts now, the disk read below runs beside it
+    var done = false;
+    if (!_fromCache) {
+      unawaited(
+        _cache.read(widget.reelId).then((saved) {
+          if (done || !mounted || saved == null || _fromCache) return;
+          setState(() {
+            _apply(saved);
+            _fromCache = true;
+            _loading = false;
+            _loadError = null;
+          });
+          Telemetry.cacheOutcome(_cacheEndpoint, 'hit_fresh');
+        }).catchError((Object _) {}),
+      );
+    }
+    try {
+      final p = await fetch;
+      done = true;
       if (!mounted) return;
+      if (!_fromCache) Telemetry.cacheOutcome(_cacheEndpoint, 'miss');
+      _syncCounts(p);
+      // swapped in quietly: same ids keep their place, so the list does not jump
+      setState(() {
+        _apply(p);
+        _loading = false;
+        _loadError = null;
+      });
+      _remember();
+    } catch (e) {
+      done = true;
+      if (!mounted) return;
+      if (_fromCache) {
+        Telemetry.cacheOutcome(_cacheEndpoint, 'stale_on_error'); // keep what is shown, say nothing scary
+        return;
+      }
       setState(() {
         _loading = false;
         _loadError = engageErrorText(e, fallback: 'Could not load comments. Please try again.');
@@ -222,6 +289,7 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
       if (cc != null) widget.store.update(widget.reelId, (s) => s.copyWith(comments: cc, likes: sent.likes ?? s.likes));
       if (!mounted) return;
       setState(() => _swap(tmpId, sent.item));
+      _remember();
     } catch (e) {
       _bumpComments(-1);
       if (!mounted) return;
@@ -278,6 +346,7 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
     _bumpComments(-1);
     try {
       await widget.repo.delete(c.id);
+      _remember();
     } catch (e) {
       _bumpComments(1);
       if (!mounted) return;
@@ -315,7 +384,10 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
     try {
       final res = await widget.repo.report(c.id, reason);
       Telemetry.event('hf_reel_action', {'action': 'comment_report'});
-      if (res.hidden && mounted) setState(() => _remove(c.id));
+      if (res.hidden && mounted) {
+        setState(() => _remove(c.id));
+        _remember();
+      }
       _say('Thank you. We will look at it.', error: false);
     } catch (e) {
       _say(engageErrorText(e, fallback: 'Could not send your report. Please try again.'));
