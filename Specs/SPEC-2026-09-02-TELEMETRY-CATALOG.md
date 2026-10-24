@@ -1497,3 +1497,10 @@ Each of the four flags must be on before its events appear. Events arrive only a
 | `channel_voice_intro_played` | `slug`, `surface` (`app`), `seconds` | A fan pressed play on the influencer's own voice introduction. **Ship-manifest success event.** |
 | `channel_voice_intro_failed` | `slug`, `surface`, `error` | The intro could not play; the fan saw "Could not play the introduction". |
 | `channel_viewed` | (existing) | Unchanged; the page now also shows reviews, facts, privacy line and the calls-unavailable state. |
+
+### [HF-CHANNEL-MOBILE-1] Channel page on phones + "Find me on" social cards (2026-10-24)
+
+| Event | Props | Note |
+|---|---|---|
+| web `channel_social_tap` | `host_slug`, `platform` (`instagram`/`youtube`/`facebook`/`tiktok`) | A fan tapped one of the influencer's social channel cards. **Ship-manifest success event.** |
+| web `channel_viewed` | (existing) + `socials_count` | How many social cards the page showed. |

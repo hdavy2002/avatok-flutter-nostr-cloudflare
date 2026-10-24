@@ -12353,5 +12353,27 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "No new event. The existing hf_channel_check_tap and hf_channel_threshold events still fire; the countdown and timeout screen are covered by widget tests and the worker budget by vitest fake-timer tests."
+  },
+  "HF-CHANNEL-MOBILE-1": {
+    "description": "Channel page /h/<slug> on phones: header icons no longer squeezed (bigger logo, 48px tap targets), 'Find me on' cards per approved social channel (platform, handle, followers, views; refreshed daily by the channel re-check), and price + Call/Book only in the sticky bottom bar (in-page rate card hidden under 900px). Worker: GET /api/hosts/public/:slug adds channels[].",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hostsPublicEnabled"
+    ],
+    "success": [
+      {
+        "event": "channel_viewed",
+        "property": "socials_count",
+        "min_events": 1,
+        "note": "Channel page views now carry how many social cards showed."
+      },
+      {
+        "event": "channel_social_tap",
+        "property": "platform",
+        "min_events": 1,
+        "note": "A fan opened a social card."
+      }
+    ]
   }
 }
