@@ -567,3 +567,36 @@
   .gp .bk-dl dd{font-size:16px}
 }
 .gp.bkp .wrap{max-width:1240px}
+
+/* [HF-CHANNEL-MOBILE-1 2026-10-24] "Find me on": one card per connected channel (platform, handle, followers, views).
+   Owner: on phones the price + Call/Book live ONLY in the sticky bottom bar, so the in-page rate card is hidden there. */
+.gp .socials{margin:4px 0 26px}
+.gp .socials .eyebrow{margin-bottom:12px}
+.gp .socials ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.gp .soc{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px 16px 12px 12px;border-radius:22px;background:#fff;box-shadow:0 6px 18px #1f163012;text-decoration:none;color:var(--ink);text-align:left}
+.gp .soc:hover{box-shadow:0 8px 22px #1f163022}
+.gp .soc .pi{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;color:#fff}
+.gp .soc .pi svg{width:28px;height:28px}
+.gp .pi-instagram{background:var(--rani)}
+.gp .pi-youtube{background:var(--red)}
+.gp .pi-facebook{background:var(--blue)}
+.gp .pi-tiktok{background:var(--ink)}
+.gp .soc .who{min-width:0;display:flex;flex-direction:column}
+.gp .soc .who b{font-family:Nunito;font-weight:900;font-size:18px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gp .soc .who span{font-size:14px;color:var(--muted)}
+.gp .soc .nums{display:flex;gap:16px;text-align:right}
+.gp .soc .nums>span{display:flex;flex-direction:column}
+.gp .soc .nums b{font-family:Nunito;font-weight:900;font-size:21px;line-height:1.05;font-variant-numeric:tabular-nums}
+.gp .soc .nums small{font-size:13px;color:var(--muted)}
+.gp .socials .upd{margin-top:10px;font-size:14px;color:var(--muted)}
+@media(max-width:900px){
+  .gp .socials .eyebrow,.gp .socials .upd{text-align:center}
+  .gp .ratecard{display:none}
+  .gp .pbar .cv-call-button{white-space:nowrap}
+}
+@media(max-width:380px){
+  .gp .soc{grid-template-columns:44px minmax(0,1fr) auto;gap:10px;padding:10px 12px 10px 10px}
+  .gp .soc .pi{width:44px;height:44px;border-radius:14px}
+  .gp .soc .nums{gap:10px}
+  .gp .soc .nums b{font-size:18px}
+}

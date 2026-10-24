@@ -42,6 +42,8 @@ interface Card {
   /** [HF-DAILY-FLOWS-1] The influencer's visible reels (embeds only: we link out, never host the video). Absent while the reels flag is off. */
   reels?: { id: string; platform: string; url: string; embedUrl?: string | null; thumbUrl: string | null; title: string | null; views?: number | null }[];
   followers?: number; handle?: string | null;
+  /** [HF-CHANNEL-MOBILE-1] Approved social channels for the "Find me on" cards (refreshed daily by the channel re-check). */
+  channels?: { platform: string; handle: string; url: string | null; followers: number; views: number; viewsKind: 'channel' | 'videos'; updatedAt: number | null }[];
   gallery: { url: string; caption: string | null }[];
   /** [HF-CALLS-1] presence + public rating aggregates (reviews agent) */
   status?: 'online' | 'busy' | 'offline'; womenOnly?: boolean;
@@ -93,7 +95,13 @@ const callEligible = identityVerified && host?.callEligible === true;
 const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly, space: spaceOf(host), callerLevel: host.callerLevel === 'video_kyc' || spaceOf(host) ? 'video_kyc' as const : 'everyone' as const } : null;
 const hostSpace = spaceOf(host);
 const videoKyc = host?.videoKycVerified === true;
-const channelBadge = host?.channelVerified === true ? { verified: true, platform: host.channelPlatform ?? reels[0]?.platform ?? null, followers: host.followers ?? null } : null;
+// [HF-CHANNEL-MOBILE-1] Social channel cards ("Find me on"): one per approved channel, biggest first. When they show, the
+// verified-channel pill drops its follower count and the followers stat goes, because each card carries its own numbers.
+const SOCIAL_NAME: Record<string, string> = { instagram: 'Instagram', youtube: 'YouTube', facebook: 'Facebook', tiktok: 'TikTok' };
+const socials = (host?.channels ?? []).filter(c => c && SOCIAL_NAME[c.platform] && c.handle).slice(0, 4);
+const socialUpdated = socials.reduce<number>((m, c) => Math.max(m, c.updatedAt ?? 0), 0);
+const socialUpdatedLabel = socialUpdated ? new Date(socialUpdated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : '';
+const channelBadge = host?.channelVerified === true ? { verified: true, platform: socials.length ? null : host.channelPlatform ?? reels[0]?.platform ?? null, followers: socials.length ? null : host.followers ?? null } : null;
 const callerKycOnly = gateOf(host) === 'kyc';
 const audioUrl = host?.introAudioUrl ?? null;
 // [HF-MERCH-QA-1] End the headline with a full stop when it has no ending punctuation, so the meta reads "Founder, happy to chat. From Rs 10/min."
@@ -120,7 +128,7 @@ const badgeClass = !callEligible || statusNow === 'offline' ? 'cv-status-offline
 const stats: { b: string; s: string }[] = [];
 if (reviewCount > 0 && rating != null) stats.push({ b: `${rating.toFixed(1)}★`, s: `${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'}` });
 if (talkedTo > 0) stats.push({ b: String(talkedTo), s: talkedTo === 1 ? 'person talked to' : 'people talked to' });
-if (host?.followers && host.followers > 0) stats.push({ b: compact(host.followers), s: 'followers' });
+if (!socials.length && host?.followers && host.followers > 0) stats.push({ b: compact(host.followers), s: 'followers' });
 const tags = (host?.languages ?? []).map(langTag).filter(Boolean);
 if (tags.length) stats.push({ b: [...new Set(tags)].slice(0, 3).join(' · '), s: 'languages' });
 const eyebrow = `Creator${topics[0] ? ` · ${topics[0]}` : ''}`;
@@ -157,7 +165,7 @@ const navItems = [
       </div></main>
     </div>
   ) : (
-    <div class="gp has-pbar" id="gp-root" data-host-slug={host.slug} data-merch={merchProducts.length} data-reels={channelReels.length} data-call={callHost ? '1' : '0'} data-status={statusNow}>
+    <div class="gp has-pbar" id="gp-root" data-host-slug={host.slug} data-merch={merchProducts.length} data-reels={channelReels.length} data-call={callHost ? '1' : '0'} data-status={statusNow} data-socials={socials.length}>
       <main id="profile-main">
         <section class="hero" aria-labelledby="nm">
           <div class="wrap hero-grid">
@@ -175,6 +183,29 @@ const navItems = [
               {host.tagline && <p class="tag">{host.tagline}</p>}
               {(videoKyc || hostSpace || channelBadge || callerKycOnly) && <div style="margin:14px 0 4px"><SpaceBadges client:idle videoKyc={videoKyc} space={hostSpace} channel={channelBadge} callerLevel={callerKycOnly ? 'video_kyc' : 'everyone'} surface="channel_page" large /></div>}
               {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
+              {socials.length > 0 && (
+                <section class="socials" aria-labelledby="soch">
+                  <p class="eyebrow" id="soch">Find me on</p>
+                  <ul>
+                    {socials.map(c => (
+                      <li><a class="soc" href={c.url ?? undefined} target="_blank" rel="noopener noreferrer nofollow" data-platform={c.platform} aria-label={`${SOCIAL_NAME[c.platform]} @${c.handle}, ${compact(c.followers)} ${c.platform === 'youtube' ? 'subscribers' : 'followers'}${c.views > 0 ? `, ${compact(c.views)} views` : ''}`}>
+                        <span class={`pi pi-${c.platform}`} aria-hidden="true">
+                          {c.platform === 'instagram' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/></svg>}
+                          {c.platform === 'youtube' && <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7.5v9l8-4.5z"/></svg>}
+                          {c.platform === 'facebook' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.4"/><path d="M15.5 15.2A4.5 4.5 0 0 1 21 19"/></svg>}
+                          {c.platform === 'tiktok' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 9v7.5a3 3 0 1 1-3-3"/><path d="M10 4h3a4 4 0 0 0 4 4v3a7 7 0 0 1-4-1.3"/></svg>}
+                        </span>
+                        <span class="who"><b>@{c.handle}</b><span>{SOCIAL_NAME[c.platform]}</span></span>
+                        <span class="nums">
+                          <span><b>{compact(c.followers)}</b><small>{c.platform === 'youtube' ? 'subscribers' : 'followers'}</small></span>
+                          {c.views > 0 && <span><b>{compact(c.views)}</b><small>views</small></span>}
+                        </span>
+                      </a></li>
+                    ))}
+                  </ul>
+                  {socialUpdatedLabel && <p class="upd">Updated {socialUpdatedLabel}. Numbers refresh every day.</p>}
+                </section>
+              )}
               <div class="ratecard">
                 <div class="rate">{rateBig}{rateSmall && <small>{rateSmall}</small>}</div>
                 <div class="acts">
@@ -323,7 +354,9 @@ const navItems = [
     const hdrEl = document.querySelector('.cv-header');
     if (hdrEl && 'ResizeObserver' in window) new ResizeObserver(hdr).observe(hdrEl);
     void document.fonts?.ready.then(hdr);
-    capture('channel_viewed', { host_slug: gp.dataset.hostSlug, merch_count: Number(gp.dataset.merch) || 0, reels_count: Number(gp.dataset.reels) || 0, call_eligible: gp.dataset.call === '1', status: gp.dataset.status, utm_medium: new URLSearchParams(location.search).get('utm_medium') ?? undefined });
+    capture('channel_viewed', { host_slug: gp.dataset.hostSlug, merch_count: Number(gp.dataset.merch) || 0, reels_count: Number(gp.dataset.reels) || 0, call_eligible: gp.dataset.call === '1', status: gp.dataset.status, socials_count: Number(gp.dataset.socials) || 0, utm_medium: new URLSearchParams(location.search).get('utm_medium') ?? undefined });
+    // [HF-CHANNEL-MOBILE-1] which social card a fan opened
+    gp.querySelectorAll<HTMLAnchorElement>('.soc[data-platform]').forEach(a => a.addEventListener('click', () => capture('channel_social_tap', { host_slug: gp.dataset.hostSlug, platform: a.dataset.platform })));
     // Highlight the section being read.
     const links = [...gp.querySelectorAll<HTMLAnchorElement>('.snav a[href^="#"]')];
     const map = new Map<Element, HTMLAnchorElement>();

@@ -468,7 +468,7 @@ function HostCallActionsInner({ host, variant, refresh, callLabel, bookHref }: A
   }
   if (gate === 'app') {
     return <>
-      <a className={btnClass(variant, 'hfc-call hf-call-app')} href={HF_PLAY_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackWebBlocked('call')}><Icon name="phone" size={22} />Open the app to call</a>
+      <a className={btnClass(variant, 'hfc-call hf-call-app')} href={HF_PLAY_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackWebBlocked('call')}><Icon name="phone" size={22} />{variant === 'bar' ? 'Call in app' : 'Open the app to call'}</a>
       {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
     </>;
   }
