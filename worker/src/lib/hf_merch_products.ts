@@ -18,6 +18,7 @@ import type { ProductMerch } from "./hf_merch_types";
 import { merchFail, merchPush, merchTrack } from "./hf_merch_notify";
 import { sendAdminAlert } from "./saathum_upi3";
 import { BRAND } from "./brand";
+import { SCAN_MAX_BYTES, scanDesignImage } from "./hf_merch_scan";
 
 export type PFail = { ok: false; status: number; error: string; message: string; extra?: Record<string, unknown> };
 const fail = (status: number, error: string, message: string, extra?: Record<string, unknown>): PFail => ({ ok: false, status, error, message, extra });
@@ -27,8 +28,6 @@ export const MERCH_ART_MAX_BYTES = 15 * 1024 * 1024;
 export const MERCH_PRINT_MAX_BYTES = LIMITS.printBytes; // 15 MB; the spec's 5000 px cap is enforced by checkPrintFile
 export const MERCH_MOCKUP_MAX_BYTES = 3 * 1024 * 1024;
 export const MERCH_MAX_PRODUCTS = 100;
-/** Moderation reads the image inline; bigger files are admin-reviewed instead of scanned. */
-const SCAN_MAX_BYTES = 4 * 1024 * 1024;
 const FULL_WIDTH_IN = 15.6;
 
 async function putPublic(env: Env, uid: string, sub: string, bytes: Uint8Array, mime: string): Promise<string> {
@@ -199,7 +198,24 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
 
   const mockups = (Array.isArray(b.mockupUrls) ? (b.mockupUrls as unknown[]) : []).map((u) => ownMockup(env, uid, u)).filter((u): u is string => !!u).slice(0, 6);
   const artChecks = (() => { try { return JSON.parse(design.art_checks_json ?? "{}") as { moderation?: string }; } catch { return {}; } })();
-  const moderation = artChecks.moderation === "ok" ? "ok" : "unscanned";
+  let moderation: "ok" | "unscanned" = artChecks.moderation === "ok" ? "ok" : "unscanned";
+  if (moderation === "unscanned") {
+    // [HF-MERCH-QA-1] Art over 4 MB (studio exports, AI pictures) was never scanned at upload. Scan a small copy now; a failure stays 'unscanned'.
+    const scan = await scanDesignImage(env, uid, [design.print_preview_url, design.art_preview_url]);
+    if (scan.blocked) {
+      await merchTrack(env, uid, "merch_art_blocked", { label: scan.label, stage: "product_create", design_id: artId });
+      return fail(422, "art_blocked", "We cannot print this image. Please use different art.");
+    }
+    if (scan.moderation === "ok") {
+      moderation = "ok";
+      try {
+        await db.prepare("UPDATE studio_designs SET art_checks_json=json_patch(COALESCE(art_checks_json,'{}'),?2) WHERE id=?1")
+          .bind(artId, JSON.stringify({ moderation: "ok", moderation_at: Date.now(), moderation_stage: "product_create" })).run();
+      } catch (e) { await merchFail(env, e, "scan_store", uid); }
+    } else {
+      await merchTrack(env, uid, "merch_scan_skipped", { design_id: artId, reason: scan.reason });
+    }
+  }
   // Review ON (default) or an unscanned image: wait for an admin. Review OFF and scanned: live at once.
   const goLive = !flags.productReview && moderation === "ok";
 

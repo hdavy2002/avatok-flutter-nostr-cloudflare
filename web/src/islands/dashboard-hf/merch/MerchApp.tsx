@@ -57,7 +57,7 @@ export default function MerchApp() {
     </section>
 
     <TaxBox />
-    {wizard ? <Wizard info={wizard} minMarkup={minMarkup} onClose={() => setWizard(null)} onPublished={() => { setWizard(null); setTab('products'); setKey(k => k + 1); loadSummary(); }} /> :
+    {wizard ? <Wizard info={wizard} minMarkup={minMarkup} onClose={() => { setWizard(null); loadSummary(); }} onSaved={loadSummary} onPublished={() => { setWizard(null); setTab('products'); setKey(k => k + 1); loadSummary(); }} /> :
       <section className="h3-card">
         <div className="top">
           <div className="h3-tabs" style={{ marginBottom: 0 }} role="tablist">{([['products', 'Products'], ['orders', 'Orders']] as [Tab, string][]).map(([k, l]) =>

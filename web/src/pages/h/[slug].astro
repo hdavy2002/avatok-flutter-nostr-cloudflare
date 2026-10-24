@@ -85,7 +85,10 @@ const identityVerified = host?.identityVerified === true;
 const callEligible = identityVerified && host?.callEligible === true;
 const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
-const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
+// [HF-MERCH-QA-1] End the headline with a full stop when it has no ending punctuation, so the meta reads "Founder, happy to chat. From Rs 10/min."
+const headline = (host?.tagline ?? '').trim() || 'A real person to talk to, in your language.';
+const headlineSentence = /[.!?।…]["'”’)]*$/.test(headline) ? headline : `${headline}.`;
+const description = host ? `${name} on ${identity.name}. ${headlineSentence} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
 // [HF-MERCH-FAN-WEB-1] Public-page discovery: an indexable record (canonical, share image) plus ProfilePage + Person JSON-LD.
 const seoContent: PublicContent | undefined = host ? {
   kind: 'page', key: `h/${host.slug}`, canonicalPath: `/h/${host.slug}`, title: `${name} — talk to a real person`, summary: description, visibility: 'public',

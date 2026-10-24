@@ -8,7 +8,7 @@ import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Spinner } from './ShopUI';
 import { DesiCard, DesiChip, DesiJourney, Marigold } from '../desi';
-import { dmyTime, errMessage, getPartner, putPartnerSettings, removePartnerLogin, savePartnerLogin, syncPartner, testPartner, type PartnerState } from './shopApi';
+import { dmyYearTime, errMessage, getPartner, putPartnerSettings, removePartnerLogin, savePartnerLogin, syncPartner, testPartner, type PartnerState } from './shopApi';
 import './shopAdmin.css';
 import './ordersPod.css';
 import './partnerPanel.css';
@@ -182,7 +182,7 @@ export default function PartnerPanel() {
             {usingPrintrove && <DesiChip tone="plum">Current partner</DesiChip>}
             <p>{!printrove?.configured ? 'Add your Printrove login in the "Printrove account" box below.'
               : conn && !conn.ok ? conn.message
-                : expires ? `Login token valid till ${dmyTime(expires)}.` : 'Press Test connection to check the login.'}</p>
+                : expires ? `Login token valid till ${dmyYearTime(expires)}.` : 'Press Test connection to check the login.'}</p>
             <div className="pw-row">
               <button type="button" className="hfa-btn ghost" disabled={busy === 'test' || !printrove?.configured} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
               {!usingPrintrove && <button type="button" className="hfa-btn rani" disabled={!!busy || !printrove?.configured} onClick={() => void save({ provider: 'printrove' }, 'provider')}>Use this</button>}

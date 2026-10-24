@@ -6,6 +6,7 @@ import { fetchWallet, hfCall, hostPaise, relDate, type WalletInfo } from '../../
 import { formatPaise } from '../../../lib/money';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { parseCalls, type Today } from '../hostActivity';
+import { getSummary, merchEnabled, type Summary } from '../merch/api'; // [HF-MERCH-QA-1] merch royalty card
 
 export default function Earnings({ account }: { account: DashboardAccount }) {
   const [today, setToday] = useState<Today | null>(null);
@@ -44,7 +45,35 @@ export default function Earnings({ account }: { account: DashboardAccount }) {
         {wallet.host.payouts && wallet.host.payouts.length > 0 && <ul className="hfc-calls">{wallet.host.payouts.map(p => <li key={p.id}><strong>Withdrawal · {p.status}</strong><span>{formatPaise(p.amountPaise)}</span><small>{relDate(p.paidAt ?? p.createdAt)}</small></li>)}</ul>}
         <p className="hfc-sub" style={{ margin: 0 }}><a href="/dashboard/wallet">See wallet and history</a></p>
       </section>}
+      <MerchRoyalty uid={account.uid} />
       <section className="hfc-card" id="withdraw" aria-labelledby="hfc-wd"><h2 id="hfc-wd">Withdraw</h2><Withdraw key={account.uid} where="earnings" skin="hfc" next="/dashboard/host/earnings" onChanged={() => void load()} /></section>
     </div>
   </div>;
+}
+
+/** [HF-MERCH-QA-1] Design royalty from merch sales, from the same summary the Merch screen uses. Hidden when merch is off or the numbers cannot be loaded. */
+function MerchRoyalty({ uid }: { uid: string }) {
+  const [earn, setEarn] = useState<Summary['earnings'] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setEarn(null);
+    void (async () => {
+      try {
+        if (!(await merchEnabled())) return;
+        const r = await getSummary();
+        if (live && r.ok && r.data?.earnings) setEarn(r.data.earnings);
+      } catch { /* hidden on failure */ }
+    })();
+    return () => { live = false; };
+  }, [uid]);
+  if (!earn) return null;
+  return <section className="hfc-card" aria-labelledby="hfc-merch">
+    <h2 id="hfc-merch">Merch design royalty</h2>
+    <p className="hfc-sub" style={{ margin: 0 }}>What you earn when fans buy your merch. It is on hold until the order is delivered and the hold time ends.</p>
+    <div className="hfc-stats">
+      <div className="hfc-stat"><strong>{formatPaise(earn.pendingPaise)}</strong><span>on hold</span></div>
+      <div className="hfc-stat"><strong>{formatPaise(earn.availablePaise)}</strong><span>ready to withdraw</span></div>
+    </div>
+    <p className="hfc-sub" style={{ margin: 0 }}><a href="/dashboard/merch">Go to my merch</a></p>
+  </section>;
 }

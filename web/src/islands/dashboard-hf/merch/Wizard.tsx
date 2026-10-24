@@ -14,7 +14,7 @@ import type { DesignResult, Layer, Side, StudioArt } from './studio/types';
 const STEPS = ['Your art', 'Product', 'Design', 'Price & publish'];
 const STEP_KEY = ['your_art', 'product', 'design', 'price_publish'];
 
-export default function Wizard({ info, minMarkup, onClose, onPublished }: { info: CatalogInfo; minMarkup: number; onClose: () => void; onPublished: (p: Product) => void }) {
+export default function Wizard({ info, minMarkup, onClose, onPublished, onSaved }: { info: CatalogInfo; minMarkup: number; onClose: () => void; onPublished: (p: Product) => void; /** [HF-MERCH-QA-1] Called the moment a product is saved, so the page can refresh its numbers. */ onSaved?: (p: Product) => void }) {
   const [step, setStep] = useState(0);
   const [arts, setArts] = useState<StudioArt[]>([]);
   const [sel, setSel] = useState<string[]>([]);
@@ -133,7 +133,7 @@ export default function Wizard({ info, minMarkup, onClose, onPublished }: { info
         onArtAdded={a => addArt(a, true)} onWantMoreArt={() => setAddOpen(true)} initialLayers={layers} onLayersChange={setLayers}
         onBack={() => setStep(1)} onDone={r => { setPlaced(r); setLayers(r.layers); setStep(3); }} />}
       {step === 3 && item && placed && <PriceStep info={info} item={item} colours={colours} sizes={sizes} side={side} placed={placed} minMarkup={minMarkup}
-        onBack={() => setStep(2)} onDone={setDone} />}
+        onBack={() => setStep(2)} onDone={p => { setDone(p); onSaved?.(p); }} />}
     </div>
 
     <AddArtDialog open={addOpen} onClose={() => setAddOpen(false)} addArt={a => addArt(a, true)} ai={ai} openAi={() => setAiOpen(true)} />

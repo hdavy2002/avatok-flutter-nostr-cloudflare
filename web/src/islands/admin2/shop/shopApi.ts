@@ -198,6 +198,12 @@ export function dmyTime(ms: number | null | undefined): string {
   return new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 }
 
+/** [HF-MERCH-QA-1] Like dmyTime but with the year, for dates that can be months away (e.g. a login token valid for a year). */
+export function dmyYearTime(ms: number | null | undefined): string {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+}
+
 /** Mockup status keys → chip colour class (`st-*`) and label. */
 export type UiStatus = 'pending' | 'paid' | 'packed' | 'shipped' | 'delivered' | 'cancelled';
 export const ST_LABEL: Record<UiStatus, string> = {

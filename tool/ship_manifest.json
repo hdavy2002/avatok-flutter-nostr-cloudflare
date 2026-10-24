@@ -11993,5 +11993,14 @@
         "note": "A new creator got through the web onboarding (avatars loaded, draft saved) to profile generation."
       }
     ]
+  },
+  "HF-MERCH-QA-1": {
+    "description": "[HF-MERCH-QA-1 2026-10-24] Merch QA fixes: art over 4 MB (studio exports, AI pictures) is now image-checked at product creation from a small Cloudflare Images copy, so admin sees 'Automatic image check: ok' (a failure stays unscanned; go-live rule unchanged); Earnings page shows a Merch design royalty card; the print partner token date shows the year; /h/<slug> meta description ends the headline with a full stop; merch header numbers refresh right after Publish.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "merch_product_created carries moderation; merch_scan_skipped records why a scan did not run. Verified by creating a studio product and reading studio_designs.art_checks_json / admin Merch > Products."
   }
 }
