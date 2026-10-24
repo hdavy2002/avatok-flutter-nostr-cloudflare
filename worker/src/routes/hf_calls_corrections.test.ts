@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const st = vi.hoisted(() => ({ uid: "admin1" }));
 vi.mock("../authz", () => ({ requireUser: async () => (st.uid ? { uid: st.uid } : { error: "unauthorized", status: 401 }), isFail: (x: any) => x.error !== undefined }));
 vi.mock("../lib/preview", () => ({ isAdminUid: (_e: any, uid: string) => uid === "admin1" }));
-vi.mock("./config", () => ({ readConfig: async () => ({ hfCallsEnabled: true, hfTokensEnabled: true }) }));
+vi.mock("./config", () => ({ readConfig: async () => ({ hfCallsEnabled: true, hfTokensEnabled: true, hfStdPlanEnabled: true, hfAppMinBuild: 2078 }) }));
 vi.mock("../hooks", () => ({ track: async () => undefined, trackException: async () => undefined }));
 vi.mock("../money", () => ({ rateLimit: async () => null }));
 vi.mock("./wallet", () => ({ walletOp: async () => ({ status: 200, body: {} }) }));
@@ -16,7 +16,7 @@ import { readHfTokenConfig, readHfStdPlan } from "../lib/hf_token_config";
 import { paiseToMicro, STD_TECH_MAX_SECONDS } from "../lib/hf_token_math";
 import { hfCallsRoute } from "./hf_calls";
 
-const MIGS = ["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-credits.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql"];
+const MIGS = ["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-credits.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-19-hf-money-rules-alters.sql"];
 const STD = readHfStdPlan({ hfStdPlanEnabled: true, hfTokensEnabled: true, hfAppMinBuild: 2078 }); const TK = readHfTokenConfig({ hfTokensEnabled: true });
 let env: any; let audits: any[];
 beforeEach(async () => {
