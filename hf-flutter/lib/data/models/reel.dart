@@ -15,6 +15,35 @@ String? _spaceOf(Object? v) {
   return (s == 'women' || s == 'lgbtq') ? s : null;
 }
 
+/// [HF-REEL-ENGAGE-APP-1] A like or comment number split by where it came from: [platform] is what YouTube / Instagram
+/// say, [ours] is what people added here, [total] is the sum shown on the button.
+class EngageCount {
+  const EngageCount({this.platform = 0, this.ours = 0, int? total}) : total = total ?? platform + ours;
+
+  final int platform;
+  final int ours;
+  final int total;
+
+  EngageCount plusOurs(int d) {
+    final o = (ours + d) < 0 ? 0 : ours + d;
+    return EngageCount(platform: platform, ours: o);
+  }
+
+  /// Null when [v] is not a map (the server has the feature off).
+  static EngageCount? tryParse(Object? v) {
+    if (v is! Map) return null;
+    final p = _int(v['platform']);
+    final o = _int(v['ours']);
+    return EngageCount(platform: p, ours: o, total: v['total'] is num ? _int(v['total']) : p + o);
+  }
+
+  @override
+  bool operator ==(Object other) => other is EngageCount && other.platform == platform && other.ours == ours && other.total == total;
+
+  @override
+  int get hashCode => Object.hash(platform, ours, total);
+}
+
 /// The influencer shown on a reel or at the top of a profile.
 class ReelHost {
   const ReelHost({
@@ -136,10 +165,21 @@ class FeedReel {
     this.comments = 0,
     this.views = 0,
     this.invite,
+    this.likeCounts,
+    this.commentCounts,
+    this.likedByMe = false,
   });
 
   final String id;
   final ReelHost host;
+
+  /// [HF-REEL-ENGAGE-APP-1] Null when the server has likes and comments off: the Like and Comment buttons are then hidden.
+  final EngageCount? likeCounts;
+  final EngageCount? commentCounts;
+  final bool likedByMe;
+
+  /// The server sent the engagement numbers, so Like and Comment are shown.
+  bool get engagementOn => likeCounts != null;
   final String platform;
   final String? url;
   final String? embedUrl;
@@ -159,7 +199,8 @@ class FeedReel {
   bool get playable => embedUrl != null;
 
   FeedReel withHost(ReelHost h) => FeedReel(
-      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views, invite: invite);
+      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views, invite: invite,
+      likeCounts: likeCounts, commentCounts: commentCounts, likedByMe: likedByMe);
 
   factory FeedReel.fromJson(Map<String, dynamic> j, {ReelHost? host}) {
     final inv = j['kind'] == 'invite' && j['creator'] is Map ? InviteCreator.fromJson(Map<String, dynamic>.from(j['creator'] as Map)) : null;
@@ -178,6 +219,9 @@ class FeedReel {
         likes: _int(j['likes']),
         comments: _int(j['comments']),
         views: _int(j['views']),
+        likeCounts: EngageCount.tryParse(j['likeCounts']),
+        commentCounts: EngageCount.tryParse(j['commentCounts']) ?? (EngageCount.tryParse(j['likeCounts']) == null ? null : EngageCount(platform: _int(j['comments']))),
+        likedByMe: j['likedByMe'] == true,
       );
 }
 

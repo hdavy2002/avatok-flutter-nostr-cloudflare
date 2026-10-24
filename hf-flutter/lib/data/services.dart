@@ -21,6 +21,7 @@ import 'repos/me_repo.dart';
 import 'repos/merch_repo.dart'; // [HF-MERCH-APP-1]
 import 'repos/payouts_repo.dart';
 import 'repos/queue_repo.dart'; // [HF-CALL-MODES-E2]
+import 'repos/reel_engage_repo.dart';
 import 'repos/reels_repo.dart';
 import 'repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
 import 'repos/search_repo.dart';
@@ -57,6 +58,7 @@ class Services {
   late final ChannelsRepo channelsRepo = ChannelsRepo(api); // [HF-WIRE-3]
   late final BookingsRepo bookingsRepo = BookingsRepo(api); // [HF-WIRE-8]
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
+  late final ReelEngageRepo reelEngageRepo = ReelEngageRepo(api, signedIn: () => isSignedIn); // [HF-REEL-ENGAGE-APP-1]
   late final YoutubeSignIn youtubeSignIn = GoogleYoutubeSignIn(); // [HF-WIRE-14] created on first use
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]

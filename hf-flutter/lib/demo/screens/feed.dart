@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/brand.dart';
 import '../../data/unplayable_reels.dart';
 import '../../data/reel_bookmarks.dart';
+import '../../data/reel_engage_store.dart'; // [HF-REEL-ENGAGE-APP-1]
+import '../../data/repos/reel_engage_repo.dart';
 import '../../data/api_exception.dart';
 import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/models/reel.dart';
@@ -26,6 +28,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'creator_page.dart';
 import 'original_post_page.dart';
+import 'reel_comments_sheet.dart';
 import 'sheets.dart';
 
 /// Reels feed: full-screen cards, swipe up/down. Presence controls instant calls; offline creators can still be booked.
@@ -367,7 +370,11 @@ class ReelPage extends StatefulWidget {
     this.onUnplayable,
     this.searchRepo,
     this.creatorReels,
+    this.engageRepo,
   });
+
+  /// [HF-REEL-ENGAGE-APP-1] Likes and comments; the app uses [Services], a demo reel keeps them in memory.
+  final ReelEngageApi? engageRepo;
 
   /// [HF-REELS-FAV-1] Lets the channel page of an invite creator show their reels.
   final List<FeedReel> Function(FeedReel)? creatorReels;
@@ -400,6 +407,8 @@ class _ReelPageState extends State<ReelPage>
   bool get wantKeepAlive => widget.keepAlive;
 
   bool _covered = false;
+  bool _likeBusy = false;
+  static final DemoReelEngage _demoEngage = DemoReelEngage();
 
   /// [HF-REEL-DOT-1] The one-second message in the middle of the screen (status dot tap).
   String? _flashText;
@@ -488,12 +497,23 @@ class _ReelPageState extends State<ReelPage>
         widget.real?.host.presence ?? (who.online ? 'online' : 'offline');
     // [HF-CALL-MODES-E2] null unless call modes are on and the server sent a callState
     final stateDot = callStateDot(widget.real?.host.callState);
+    // [HF-REEL-ENGAGE-APP-1] a real reel shows Like and Comment only when the server sent the numbers; a demo reel always does
+    final engage = ReelEngageStore.instance;
+    final engageId = widget.real?.id ?? r.id;
+    final engageOn = widget.real == null || widget.real!.engagementOn;
+    if (engageOn) {
+      if (widget.real == null) {
+        engage.seed(engageId, likes: EngageCount(platform: r.hearts), comments: const EngageCount());
+      } else {
+        engage.seedReel(widget.real!);
+      }
+    }
+    final engageRepo = widget.engageRepo ?? (widget.real == null ? _demoEngage : Services.instance.reelEngageRepo);
     return ListenableBuilder(
-      listenable: bookmarks == null
-          ? demo
-          : Listenable.merge([demo, bookmarks]),
+      listenable: Listenable.merge([demo, if (bookmarks != null) bookmarks, engage]),
       builder: (context, _) {
         final faved = bookmarks?.isSaved(widget.real!.id) ?? demo.isFav(r.id);
+        final eState = engageOn ? engage.of(engageId) : null;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -629,7 +649,12 @@ class _ReelPageState extends State<ReelPage>
             Positioned(
               right: 8,
               bottom: 12,
-              child: Column(
+              top: MediaQuery.paddingOf(context).top + 8,
+              // a short phone shrinks the column a little instead of cutting buttons off the top
+              child: FittedBox(
+               fit: BoxFit.scaleDown,
+               alignment: Alignment.bottomRight,
+               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _action(
@@ -684,11 +709,28 @@ class _ReelPageState extends State<ReelPage>
                       );
                     }),
                   ],
+                  if (eState != null) ...[
+                    _countAction(
+                      eState.liked ? 'Unlike' : 'Like',
+                      eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      eState.likes.total,
+                      _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
+                      color: eState.liked ? C.rani : C.ivory,
+                      key: const ValueKey('reel-like'),
+                    ),
+                    _countAction(
+                      'Comments',
+                      Icons.chat_bubble_outline_rounded,
+                      eState.comments.total,
+                      () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
+                      key: const ValueKey('reel-comment'),
+                    ),
+                  ],
                   _action(
                     faved ? 'Remove saved video' : 'Save video',
                     faved
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
                     bookmarks?.busy(widget.real!.id) == true
                         ? null
                         : () => requireAccount(context, () async {
@@ -708,7 +750,7 @@ class _ReelPageState extends State<ReelPage>
                                 );
                             }
                           }, reason: 'to save videos'),
-                    color: faved ? C.rani : C.ivory,
+                    color: faved ? C.marigold : C.ivory,
                   ),
                   _action(
                     'Share this reel',
@@ -718,6 +760,7 @@ class _ReelPageState extends State<ReelPage>
                         : _share(context, widget.real!),
                   ),
                 ],
+              ),
               ),
             ),
           ],
@@ -783,6 +826,58 @@ class _ReelPageState extends State<ReelPage>
       icon: Icon(icon, color: color),
     ),
   );
+
+  /// [HF-REEL-ENGAGE-APP-1] A round button with its count under it (14 sp, white, soft shadow so it reads on any video).
+  Widget _countAction(String label, IconData icon, int count, VoidCallback? tap, {Color color = C.ivory, Key? key}) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _action(label, icon, tap, color: color, key: key),
+      Text(
+        compactCount(count),
+        key: key == null ? null : ValueKey('${(key as ValueKey).value}-count'),
+        style: t(14, color: C.white).copyWith(
+          shadows: [Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 4), Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 8)],
+        ),
+      ),
+    ],
+  );
+
+  void _toggleLike(BuildContext context, String id, ReelEngageApi repo) {
+    unawaited(requireAccount(context, () async {
+      final store = ReelEngageStore.instance;
+      final before = store.of(id);
+      if (before == null || _likeBusy) return;
+      final on = !before.liked;
+      _likeBusy = true;
+      store.put(id, before.withLiked(on)); // instant
+      Telemetry.event('hf_reel_action', {'action': on ? 'like' : 'unlike', 'platform': widget.real?.platform ?? 'demo'});
+      try {
+        final res = await repo.setLike(id, on);
+        // the server's numbers win for a real reel (the demo one only echoes)
+        if (widget.real != null) store.update(id, (s) => s.copyWith(likes: res.likes, liked: res.liked));
+      } catch (e) {
+        store.update(id, (s) => s.withLiked(!on)); // put it back
+        if (context.mounted) toast(context, engageErrorText(e, fallback: 'Could not save your like. Please try again.'));
+      } finally {
+        _likeBusy = false;
+        if (mounted) setState(() {});
+      }
+    }, reason: 'to like videos'));
+  }
+
+  Future<void> _openComments(BuildContext context, String id, ReelEngageApi repo) async {
+    final openOriginal = await showReelComments(
+      context,
+      reelId: id,
+      platform: widget.real?.platform ?? 'youtube',
+      repo: repo,
+      store: ReelEngageStore.instance,
+      canOpenOriginal: _originalUrl != null,
+    );
+    if (openOriginal == true && _originalUrl != null && context.mounted) {
+      await OriginalPostPage.open(context, _originalUrl!);
+    }
+  }
 
   /// The reel's original post on Instagram / YouTube, when it is a real reel with a link.
   Uri? get _originalUrl {

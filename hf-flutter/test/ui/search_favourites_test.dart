@@ -229,7 +229,7 @@ void main() {
       ShareSheet.testSink = (text) async => shared = text;
       final r = reel();
       await _pump(tester, Scaffold(body: ReelPage(reel: demoReelFrom(r), active: true, real: r)));
-      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+      await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
       await tester.pump();
       for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       expect(store.isSaved(r.id), isTrue);
