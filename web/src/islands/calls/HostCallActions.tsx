@@ -52,11 +52,12 @@ export function NotifyButton({ host, variant, prefix, initial, big }: { host: Ca
     if (r.code === 'not_verified') setMsg('Please verify your WhatsApp number first so we can message you.');
     else setMsg(r.message || 'We could not do that. Please try again.');
   };
-  const label = on ? 'We’ll WhatsApp you · tap to undo' : `${prefix ? `${prefix} — ` : ''}Notify me`;
+  // [HF-CHANNEL-QA-1] The phone bar is narrow: the status is already on the photo, so the bar says just "Notify me" (owner: the 3-line pill was ugly).
+  const label = variant === 'bar' ? (on ? 'Notifying ✓' : 'Notify me') : on ? 'We’ll WhatsApp you · tap to undo' : `${prefix ? `${prefix} — ` : ''}Notify me`;
   return (
     <>
       <SessionBridge on={bridge} />
-      <button type="button" className={`${btnClass(variant, 'hfc-notify')}${on ? ' is-on' : ''}${big ? ' hfc-big' : ''}`} onClick={click} disabled={busy} aria-pressed={!!on}>
+      <button type="button" className={`${btnClass(variant, 'hfc-notify')}${on ? ' is-on' : ''}${big ? ' hfc-big' : ''}`} onClick={click} disabled={busy} aria-pressed={!!on} aria-label={variant === 'bar' ? label : undefined}>
         <Icon name={on ? 'check' : 'bell'} size={22} />{busy ? 'Please wait…' : label}
       </button>
       {msg && <p className="hfc-note hfc-tiny" role="status">{msg}</p>}

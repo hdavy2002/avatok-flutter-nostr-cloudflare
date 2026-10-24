@@ -487,3 +487,20 @@
   .gp .showing,.gp .show .foot{text-align:center}
 }
 @media (max-width:699px){.gp{--hdr:92px}}
+
+/* [HF-CHANNEL-QA-1] Call buttons: when there is no "Call now", "Book a time" is the main red button; Notify me is the quiet outline one. Phone bar: one line each, chunky. */
+.gp .acts:not(:has(.hfc-call)) .cv-call-button.hfc-book-time,.gp .pbar .acts3:not(:has(.hfc-call)) .cv-call-button.hfc-book-time{background:var(--red);border-color:var(--red);color:#fff;box-shadow:0 6px 0 var(--redd)}
+.gp .acts:not(:has(.hfc-call)) .cv-call-button.hfc-book-time:hover{background:var(--redd);color:#fff}
+@media (max-width:900px){
+  .gp .pbar .cv-call-button{white-space:nowrap;border-radius:999px;min-height:54px;font-size:16px!important;gap:8px}
+  .gp .pbar .cv-call-button.hfc-notify{flex:0 0 auto;padding:0 16px;border-width:2px}
+  .gp .pbar .cv-call-button.hfc-notify svg{width:20px;height:20px}
+  .gp .pbar .acts3:not(:has(.hfc-call)) .cv-call-button.hfc-book-time{flex:1 1 auto;box-shadow:0 4px 0 var(--redd)}
+}
+@media (max-width:380px){
+  .gp .pbar .cv-call-button.hfc-notify{width:54px;padding:0;font-size:0!important;gap:0}
+  .gp .pbar .cv-call-button.hfc-notify svg{width:22px;height:22px}
+  .gp .pbar .rate{font-size:21px}
+  .gp .pbar .cv-call-button{padding:0 12px}
+}
+.gp .acts:not(:has(.hfc-call)) .cv-call-button.hfc-book-time{order:-1}
