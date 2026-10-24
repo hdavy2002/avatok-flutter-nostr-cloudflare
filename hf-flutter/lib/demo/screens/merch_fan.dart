@@ -947,7 +947,7 @@ class _MerchMyOrdersScreenState extends State<MerchMyOrdersScreen> {
                   unawaited(_load());
                 },
                 emptyTitle: 'No orders yet',
-                emptyMessage: 'T-shirts you buy from your favourite influencers will show up here.',
+                emptyMessage: 'Merch you buy from your favourite influencers will show up here.',
                 builder: (context, orders) => RefreshIndicator(
                   color: C.maroon,
                   onRefresh: _load,

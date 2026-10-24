@@ -88,7 +88,7 @@ class _MerchMeSectionState extends State<MerchMeSection> {
             const Icon(Icons.shopping_bag_rounded, color: C.maroon, size: 28),
             const SizedBox(width: 12),
             Expanded(child: Text('My orders', style: t(17))),
-            Text('T-shirts you bought', style: t(14, color: C.muted, w: FontWeight.w700)),
+            Text('Merch you bought', style: t(14, color: C.muted, w: FontWeight.w700)),
             const SizedBox(width: 6),
             const Icon(Icons.chevron_right_rounded, color: C.muted),
           ]),
