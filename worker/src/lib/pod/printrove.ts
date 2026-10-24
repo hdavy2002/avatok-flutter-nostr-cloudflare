@@ -400,13 +400,15 @@ export class PrintroveProvider implements PodProvider {
       if (!o) continue;
       if (str(o.stock_status) !== 'in_stock') continue; // cannot be ordered right now
       const id = str(o.id);
-      const colour = str(o.color);
-      const size = str(o.size);
-      if (!id || !colour || !size) continue;
+      // [HF-MERCH-CATALOG-FIX-1] Accessories have no colour and/or size: the variant is told apart by model (phone cases),
+      // style (totes), shape (coasters, mouse pads) or type (bottles, pop grips). Use that as the "size" and a neutral colour.
+      const colour = str(o.color) ?? 'Standard';
+      const size = str(o.size) ?? str(o.model) ?? str(o.style) ?? str(o.shape) ?? str(o.type) ?? 'One size';
+      if (!id) continue;
       const base = num(o.base_price);
       const hex = str(o.color_code);
       const v: CatalogVariant = {
-        provider_variant_id: id, colour, colour_hex: hex && /^#?[0-9a-f]{3,8}$/i.test(hex) ? (hex.startsWith('#') ? hex : `#${hex}`) : null, size,
+        provider_variant_id: id, colour, colour_hex: hex && /^#?[0-9a-f]{3,8}$/i.test(hex) ? (hex.startsWith('#') ? hex : `#${hex}`) : (colour === 'Standard' ? '#ffffff' : null), size,
         base_cost_paise: base === null ? null : Math.round(base * 100), // base_price is rupees (the garment)
       };
       const w = num(o.weight);

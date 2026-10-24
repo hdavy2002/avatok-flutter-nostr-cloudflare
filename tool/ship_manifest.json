@@ -11969,5 +11969,14 @@
         "note": "Someone tapped QR code on Share my page in the app (own=true, network=qr). Proves the tap, not that the PNG was saved."
       }
     ]
+  },
+  "HF-MERCH-CATALOG-FIX-1": {
+    "description": "[HF-MERCH-CATALOG-FIX-1 2026-10-24] Printrove accessories (mugs, totes, phone cases, posters, bottles, coasters, notebooks, mouse pads, pop grips) were skipped by the catalogue sync because their variants have no colour/size; now model/style/shape/type is the size and Standard the colour.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "Verified by re-syncing the catalogue and reading pod_catalog in prod D1."
   }
 }

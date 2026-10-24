@@ -204,3 +204,20 @@ describe('PrintroveProvider.mapProduct for non-garments [HF-MERCH-STUDIO-2]', ()
     expect(imageUrlOf({ image: 'not a url' })).toBeNull();
   });
 });
+
+describe('[HF-MERCH-CATALOG-FIX-1] accessories without colour or size', () => {
+  const prov = new PrintroveProvider({} as Env);
+  const v = (o: Record<string, unknown>) => ({ id: 1, stock_status: 'in_stock', base_price: 160, gst: 18, front_print_width: 992, front_print_height: 1892, back_print_width: 0, back_print_height: 0, front_rate_per_square_inch: 0, front_minimum_printing_price: 0, ...o });
+  it('uses the phone model as the size and a neutral colour', () => {
+    const p = prov.mapProduct({ product: { variants: [v({ id: 1223, model: 'Apple iPhone 11' }), v({ id: 1224, model: 'Samsung S21' })] } }, 'phone_case', '1222', 'Glass Phone Cases', 'Accessories');
+    expect(p).not.toBeNull();
+    expect(p!.variants.map((x) => x.size)).toEqual(['Apple iPhone 11', 'Samsung S21']);
+    expect(p!.variants[0].colour).toBe('Standard');
+    expect(p!.variants[0].colour_hex).toBe('#ffffff');
+  });
+  it('falls back to style, shape, type, then One size', () => {
+    expect(prov.mapProduct({ product: { variants: [v({ color: 'Half White', color_code: '#ebe7bf', style: 'With Zipper' })] } }, 'tote_bag', '1364', 'Tote', null)!.variants[0].size).toBe('With Zipper');
+    expect(prov.mapProduct({ product: { variants: [v({ type: '600 ml' })] } }, 'sipper_bottle', '1207', 'Bottle', null)!.variants[0].size).toBe('600 ml');
+    expect(prov.mapProduct({ product: { variants: [v({ color: 'White' })] } }, 'mug', '856', 'Mug', null)!.variants[0].size).toBe('One size');
+  });
+});
