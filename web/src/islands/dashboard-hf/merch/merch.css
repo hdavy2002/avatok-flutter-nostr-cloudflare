@@ -212,9 +212,10 @@
 .mc-egs{display:flex;flex-wrap:wrap;gap:8px}
 .mc-eg{appearance:none;text-align:left;min-height:44px;padding:8px 16px;border-radius:999px;border:2px solid var(--line2);background:var(--lavtint);color:var(--mc-indigo,#3d2c8d);font-family:var(--body);font-weight:800;font-size:14.5px;cursor:pointer}
 .mc-eg:hover{background:#e6dcff}
-.mc-styles{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.4rem,1fr));gap:10px}
+.mc-styles{display:grid;grid-template-columns:repeat(auto-fill,minmax(9.6rem,1fr));gap:10px}
 .mc-style{appearance:none;display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 12px 6px 6px;border-radius:20px;border:2px solid var(--line);background:#fff;cursor:pointer;font-family:var(--body);font-weight:800;font-size:14.5px;color:var(--ink);text-align:left}
 .mc-style i{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-style:normal;font-family:var(--head);font-weight:900;font-size:18px;color:var(--plum);border:1.5px solid rgba(0,0,0,.12)}
+.mc-style>span{min-width:0;overflow-wrap:anywhere;hyphens:auto;line-height:1.2} /* [HF-MERCH-STYLE-CHIP-1] long names (Watercolour, Typography) stay inside the chip */
 .mc-style.on{border-color:var(--rani);background:var(--blush);box-shadow:0 0 0 3px var(--blush)}
 .mc-aiopts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-top:6px}
 .mc-aspects{display:flex;gap:8px;flex-wrap:wrap}
