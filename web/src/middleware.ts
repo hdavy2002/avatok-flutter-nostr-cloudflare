@@ -9,7 +9,7 @@ import { BRAND } from './lib/brand';
 // this middleware sees every one of these requests.
 //
 // NOTE FOR AI: paths already 301'd in public/_redirects (/tokens, /payouts, /dmca,
-// /organisers, /child-safety, /biometric-retention,
+// /organisers, /biometric-retention, (/child-safety is live again: HF-CHILD-SAFETY-1)
 // /india, /ideas via page) keep their redirect — _redirects wins before this runs.
 // /community-guidelines is now a Hello Fraands page and is no longer retired.
 // Other retired routes keep their existing behavior.
@@ -17,7 +17,7 @@ const GONE_EXACT = new Set([
   '/add',
   '/careers',
   '/acceptable-use', '/consultation-terms', '/marketplace-terms', '/prohibited-services', '/recording',
-  '/biometric-retention', '/child-safety', '/dmca',
+  '/biometric-retention', '/dmca',
   '/organisers', '/payouts', '/pricing-fees', '/tokens',
   '/pricing', '/pricing-preview', '/global-ideas', '/global-next', '/india-next', '/india',
   '/ideas', '/landing-steps-preview',
