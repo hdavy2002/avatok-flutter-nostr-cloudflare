@@ -182,7 +182,12 @@ export function bookingError(error: unknown): { status: number; code: string; me
   if (error instanceof ApiError) {
     const body = (error.body && typeof error.body === 'object' ? error.body : {}) as Record<string, unknown>;
     // [HF-CHANNEL-QA-1] Never show a raw code ("no_session") to a fan.
-    const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : 'Something went wrong. Please try again.';
+    const KNOWN: Record<string, string> = {
+      host_unavailable: 'This influencer can’t take bookings right now. (You can’t book your own page.)',
+      slot_taken: 'Someone just took that time. Please pick another.',
+      slot_unavailable: 'That time is no longer free. Please pick another.',
+    };
+    const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : KNOWN[error.error] ?? 'Something went wrong. Please try again.';
     return { status: error.status, code: error.error, message: typeof body.message === 'string' ? body.message : friendly };
   }
   return { status: 0, code: 'network', message: 'We could not reach the server. Check your connection and try again.' };
