@@ -7,7 +7,7 @@ import AiPanel from './AiPanel';
 import PriceStep from './PriceStep';
 import ProductStep from './ProductStep';
 import StartStep, { AddArtDialog, EARLIER } from './StartStep';
-import { fetchArtFile, getAi, type AiInfo, type CatalogInfo, type CatalogItem, type Product } from './api';
+import { deleteAiPicture, fetchArtFile, getAi, type AiInfo, type CatalogInfo, type CatalogItem, type Product } from './api';
 import Designer from './studio/Designer';
 import type { DesignResult, Layer, Side, StudioArt } from './studio/types';
 
@@ -78,9 +78,22 @@ export default function Wizard({ info, minMarkup, onClose, onPublished, onSaved 
     setArts(p => (p.some(x => x.artId === a.artId) ? p : [...p, a]));
     if (select) setSel(s => (s.includes(a.artId) ? s : [...s, a.artId]));
   }, []);
+  const [rmErr, setRmErr] = useState<string | null>(null);
   const removeArt = (id: string) => {
-    setArts(p => p.filter(a => a.artId !== id)); setSel(s => s.filter(x => x !== id));
+    const gone = arts.find(a => a.artId === id);
+    setArts(p => p.filter(a => a.artId !== id)); setSel(s => s.filter(x => x !== id)); setRmErr(null);
     if (layers.some(l => l.type === 'image' && l.artId === id)) { setLayers(l => l.filter(x => x.type !== 'image' || x.artId !== id)); setPlaced(null); }
+    // [HF-MERCH-AI-DELETE-1] an AI picture comes back from the server on every load, so it is deleted there too (not just hidden here).
+    if (gone?.source === 'ai') {
+      setAi(x => (x ? { ...x, recent: x.recent.filter(g => g.artId !== id) } : x));
+      capture('merch_ai', { action: 'delete_picture' });
+      void deleteAiPicture(id).then(r => {
+        if (r.ok) return;
+        setArts(p => (p.some(a => a.artId === id) ? p : [...p, gone]));
+        setRmErr(r.message || 'We could not delete that picture. Please try again.');
+        captureException(new Error(`merch_ai_delete_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: 'ai_delete' });
+      });
+    }
   };
 
   const selected = useMemo(() => sel.map(id => arts.find(a => a.artId === id)).filter((a): a is StudioArt => !!a), [sel, arts]);
@@ -125,6 +138,7 @@ export default function Wizard({ info, minMarkup, onClose, onPublished, onSaved 
     </nav>
 
     <div className="mc-body">
+      {step === 0 && rmErr && <p role="alert" className="mc-err">{rmErr}</p>}
       {step === 0 && <StartStep arts={arts} sel={sel} setSel={setSel} remove={removeArt} addArt={a => addArt(a)} ai={ai} openAi={() => setAiOpen(true)}
         own={own} setOwn={setOwn} needOwn={needOwn} onNext={() => setStep(1)} />}
       {step === 1 && <ProductStep info={info} item={item} colours={colours} sizes={sizes} side={side} pick={pickItem} setColours={setColours} setSizes={setSizes} setSide={setSide}

@@ -502,6 +502,48 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
   }, 200, { "cache-control": "private, no-store" });
 }
 
+// [HF-WALLET-DEDUCTIONS-1] Wallet spends that are not calls. settleCall writes one 'spend' row per lot under a call id with a prefix;
+// these are summed per payment. Add a prefix here when a new feature pays from the wallet.
+const OTHER_SPENDS: Array<{ prefix: string; kind: string; label: (ref: string, no: string | null) => string }> = [
+  { prefix: "merch:", kind: "merch_spent", label: (_r, no) => (no ? `Merch order #${no}` : "Merch order") },
+  { prefix: "merchai:", kind: "ai_spent", label: () => "AI picture for your merch" },
+];
+export function otherRefundOf(note: string | null | undefined): { kind: string; label: string } | null {
+  const n = String(note ?? "");
+  if (n.startsWith("merch_refund:")) return { kind: "merch_refund", label: "Merch order refunded" };
+  if (n.startsWith("merchai_refund:")) return { kind: "ai_refund", label: "AI picture refunded (it could not be made)" };
+  return null;
+}
+async function otherSpends(env: Env, uid: string): Promise<Array<{ at: number; kind: string; paise: number; label: string }>> {
+  try {
+    const like = OTHER_SPENDS.map((_, i) => `call_id LIKE ?${i + 2}`).join(" OR ");
+    const rows = (await env.DB_META.prepare(
+      `SELECT call_id, SUM(rupee_value_paise) AS v, MAX(created_at) AS at FROM hf_token_ledger
+        WHERE uid=?1 AND kind='spend' AND lot_id IS NOT NULL AND (${like}) GROUP BY call_id ORDER BY at DESC LIMIT 50`,
+    ).bind(uid, ...OTHER_SPENDS.map((o) => `${o.prefix}%`)).all<{ call_id: string; v: number; at: number }>()).results ?? [];
+    const orderIds = rows.filter((r) => r.call_id.startsWith("merch:")).map((r) => r.call_id.slice(6));
+    const nos = new Map<string, string>();
+    if (orderIds.length) {
+      const ph = orderIds.map((_, i) => `?${i + 2}`).join(",");
+      const os = (await env.DB_META.prepare(`SELECT order_id, order_no FROM shop_orders WHERE uid=?1 AND order_id IN (${ph})`).bind(uid, ...orderIds)
+        .all<{ order_id: string; order_no: string | null }>().catch(() => ({ results: [] as Array<{ order_id: string; order_no: string | null }> }))).results ?? [];
+      for (const o of os) if (o.order_no) nos.set(String(o.order_id), String(o.order_no));
+    }
+    const out: Array<{ at: number; kind: string; paise: number; label: string }> = [];
+    for (const r of rows) {
+      const def = OTHER_SPENDS.find((o) => r.call_id.startsWith(o.prefix));
+      const paise = Math.max(0, Math.trunc(Number(r.v ?? 0)));
+      if (!def || paise <= 0) continue;
+      const ref = r.call_id.slice(def.prefix.length);
+      out.push({ at: Number(r.at), kind: def.kind, paise, label: def.label(ref, nos.get(ref) ?? null) });
+    }
+    return out;
+  } catch (e) {
+    await trackException(env, e, { uid, route: "/api/hf/wallet", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_wallet", step: "other_spends" } }).catch(() => {});
+    return [];
+  }
+}
+
 async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>, cfgAll: Record<string, unknown>): Promise<Response> {
   const [sum, isHostRow, allLots] = await Promise.all([
     balanceSummary(env, uid),
@@ -516,12 +558,14 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
   const sign = (p: number, owed = false) => `${p < 0 ? "-" : owed ? "" : "+"}${formatRupees(Math.abs(p))}`;
   const led = (await env.DB_META.prepare(
     // A call-charge correction writes two rows (the credit and the "Call charge corrected" marker): show only the marker, linked to the call.
-    `SELECT l.kind, l.delta_micro, l.rupee_value_paise, l.created_at, l.lot_id, l.call_id, t.paid_paise, t.gst_paise, t.provider_ref
+    // [HF-WALLET-DEDUCTIONS-1] a merch / AI-picture refund also writes a credit row + a marker: show only the marker (labelled by its note).
+    `SELECT l.kind, l.delta_micro, l.rupee_value_paise, l.created_at, l.lot_id, l.call_id, l.note, t.paid_paise, t.gst_paise, t.provider_ref
        FROM hf_token_ledger l LEFT JOIN hf_token_lots t ON t.id = l.lot_id
       WHERE l.uid=?1 AND l.kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear','call_refund','payout_take','payout_return')
-        AND NOT (l.kind IN ('purchase','admin_adjust') AND (l.note LIKE 'call_refund:%' OR l.note LIKE 'payout_return:%'))
-        AND NOT (l.kind='admin_adjust' AND l.note = 'hf_std_migration') ORDER BY l.created_at DESC LIMIT 50`,
-  ).bind(uid).all<{ kind: string; delta_micro: number; rupee_value_paise: number; created_at: number; lot_id: string | null; call_id: string | null; paid_paise: number | null; gst_paise: number | null; provider_ref: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+        AND NOT (l.kind IN ('purchase','admin_adjust') AND (COALESCE(l.note,'') LIKE 'call_refund:%' OR COALESCE(l.note,'') LIKE 'payout_return:%' OR COALESCE(l.note,'') LIKE 'merch_refund:%' OR COALESCE(l.note,'') LIKE 'merchai_refund:%'))
+        AND NOT (l.kind='admin_adjust' AND COALESCE(l.note,'') = 'hf_std_migration') ORDER BY l.created_at DESC LIMIT 50`,
+    // (COALESCE: a row with no note must still show; NOT(... NULL ...) is NULL in SQL and silently dropped a top-up with no note.)
+  ).bind(uid).all<{ kind: string; delta_micro: number; rupee_value_paise: number; created_at: number; lot_id: string | null; call_id: string | null; note: string | null; paid_paise: number | null; gst_paise: number | null; provider_ref: string | null }>().catch(() => ({ results: [] }))).results ?? [];
   const lbl: Record<string, string> = {
     purchase: "Money added", admin_adjust: "Test credit added", refund_revoke: "Money removed (refund)", debt_create: "Amount owed after a refund",
     debt_clear: "Amount owed paid from new money", call_refund: "Call charge corrected",
@@ -532,6 +576,8 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
     const neg = Number(l.delta_micro) < 0 || l.kind === "refund_revoke" || l.kind === "debt_clear";
     const v = Math.abs(Math.trunc(Number(l.rupee_value_paise ?? 0)));
     const amt = l.kind === "debt_create" ? v : neg ? -v : v;
+    const other = l.kind === "call_refund" ? otherRefundOf(l.note) : null; // a merch order or AI picture put back, not a call
+    if (other) { hist.push({ at: Number(l.created_at), kind: other.kind, amountPaise: amt, amount: sign(amt), tokens: (amt / 100).toFixed(2), label: other.label }); continue; }
     hist.push({
       at: Number(l.created_at), kind: l.kind, amountPaise: amt, amount: sign(amt, l.kind === "debt_create"), tokens: (amt / 100).toFixed(2), label: lbl[l.kind] ?? l.kind,
       ...(l.kind === "call_refund" && l.call_id ? { callId: l.call_id } : {}),
@@ -545,6 +591,10 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
   for (const c of calls) {
     const p = -Math.max(0, Math.trunc(Number(c.consumed_value_paise ?? 0)));
     hist.push({ at: Number(c.ended_at ?? c.created_at), kind: "call_spent", amountPaise: p, amount: sign(p), tokens: (p / 100).toFixed(2), label: c.money_rule === RULE_FIRST_MINUTE_DROP ? `Call with ${callerHandle(c.host_name)} (ended in the first minute)` : `Call with ${callerHandle(c.host_name)} (${formatDuration(Number(c.billable_seconds))})`, callId: c.id });
+  }
+  // [HF-WALLET-DEDUCTIONS-1] money paid from the wallet for things that are not calls (merch orders, AI pictures): one line per payment.
+  for (const o of await otherSpends(env, uid)) {
+    hist.push({ at: o.at, kind: o.kind, amountPaise: -o.paise, amount: sign(-o.paise), tokens: (-o.paise / 100).toFixed(2), label: o.label });
   }
   hist.sort((a, b) => b.at - a.at);
   const testPaise = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + Math.floor((l.leftMicro * l.valuePaisePerToken) / 1_000_000), 0);

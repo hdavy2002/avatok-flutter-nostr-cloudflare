@@ -170,6 +170,11 @@ class MerchRepo {
     return ArtUpload.fromJson(_map(j['art']));
   }
 
+  /// [HF-MERCH-AI-DELETE-1] Takes an AI picture off "earlier pictures" for good (a reload does not bring it back). Idempotent.
+  Future<void> deleteAiPicture(String artId) async {
+    await _api.deleteJson('$_base/ai/pictures/${Uri.encodeComponent(artId)}');
+  }
+
   Future<MerchProduct> createProduct(Map<String, Object?> body) async {
     final j = await _api.postJson('$_base/products', body: body);
     return MerchProduct.fromJson(_map(j['product']));

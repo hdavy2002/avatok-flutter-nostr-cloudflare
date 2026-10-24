@@ -3,7 +3,7 @@
 int _i(Object? v) => v is num ? v.round() : int.tryParse('$v') ?? 0;
 
 /// What the history row was for. Unknown server words fall back to [topup].
-enum LedgerKind { call, topup, hold, release, payout, refund }
+enum LedgerKind { call, topup, hold, release, payout, refund, spend } // spend: paid from the wallet for something that is not a call (merch, AI picture)
 
 LedgerKind _kind(Object? v) {
   for (final k in LedgerKind.values) {

@@ -117,6 +117,8 @@ export interface AiGenerateBody {
 export const getAi = () => hfCall<{ ok: boolean } & AiInfo>('GET', `${B}/ai`);
 /** Charges the wallet (paid money only); refunded by the server if the picture cannot be made. 402 insufficient_funds carries chargePaise/balancePaise/shortPaise in `body`. */
 export const generateAi = (b: AiGenerateBody) => hfCall<{ ok: boolean; gen: { genId: string; chargedPaise: number }; art: ArtUpload; balancePaise: number }>('POST', `${B}/ai/generate`, b, { timeoutMs: 150_000 });
+/** [HF-MERCH-AI-DELETE-1] Take an AI picture off "earlier pictures" for good (the server marks it deleted; a reload does not bring it back). */
+export const deleteAiPicture = (artId: string) => hfCall<{ ok: boolean; removed: number }>('DELETE', `${B}/ai/pictures/${encodeURIComponent(artId)}`);
 export const removeBackground = (artId: string) => hfCall<{ ok: boolean; art: ArtUpload }>('POST', `${B}/art/${encodeURIComponent(artId)}/remove-bg`, {}, { timeoutMs: 90_000 });
 /** The influencer's own art bytes through the API (CORS-safe for canvas work; the public media host sends no CORS headers). */
 export async function fetchArtFile(artId: string): Promise<Blob | null> {

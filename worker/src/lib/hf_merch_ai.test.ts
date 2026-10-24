@@ -15,7 +15,7 @@ vi.mock("./hf_merch_notify", () => ({
   merchTrack: async (_e: any, _u: string, event: string, props: any) => { tracked.push({ event, props }); },
   merchFail: async () => {},
 }));
-import { generateAiPicture, buildAiPrompt, refundWalletForAi, aiRefundMarkOpId, type AiDeps } from "./hf_merch_ai";
+import { generateAiPicture, buildAiPrompt, refundWalletForAi, aiRefundMarkOpId, aiState, deleteAiPicture, type AiDeps } from "./hf_merch_ai";
 
 const T = (n: number) => Math.round(n * MICRO);
 const lot = (env: any, uid: string, kind: "purchase" | "test", tokens: number, op: string) =>
@@ -170,5 +170,24 @@ describe("buildAiPrompt", () => {
   it("edit keeps the rest and no plain background when off", () => {
     const p = buildAiPrompt({ prompt: "make it blue", style: null, plainBackground: false, refCount: 0, isEdit: true });
     expect(p).toContain("Edit the given image: make it blue"); expect(p).not.toContain("#FFFFFF");
+  });
+});
+
+describe("[HF-MERCH-AI-DELETE-1] delete an earlier AI picture", () => {
+  it("is gone from GET ai for good (a reload does not bring it back), only for its owner, and is idempotent", async () => {
+    await lot(env, "u1", "purchase", 500, "p1");
+    const a = await generateAiPicture(env, "u1", body(), deps);
+    expect(a.ok).toBe(true);
+    expect((await aiState(env, "u1")).recent).toHaveLength(1);
+    expect(await deleteAiPicture(env, "u2", "dsn-aaaaaaaa")).toMatchObject({ ok: true, removed: 0 }); // someone else's: nothing changes
+    expect((await aiState(env, "u1")).recent).toHaveLength(1);
+    expect(await deleteAiPicture(env, "u1", "dsn-aaaaaaaa")).toMatchObject({ ok: true, removed: 1 });
+    expect((await aiState(env, "u1")).recent).toHaveLength(0);
+    expect((await aiState(env, "u1")).recent).toHaveLength(0); // "after refresh"
+    expect(await deleteAiPicture(env, "u1", "dsn-aaaaaaaa")).toMatchObject({ ok: true, removed: 0 });
+    expect(await deleteAiPicture(env, "u1", "../etc")).toMatchObject({ ok: false, status: 400 });
+    const again = await generateAiPicture(env, "u1", body(), deps); // the same request key still answers with its picture, no new charge
+    expect(again.ok).toBe(true);
+    expect(spendRows(env)).toBe(1000);
   });
 });

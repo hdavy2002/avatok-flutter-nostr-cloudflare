@@ -1,6 +1,6 @@
 // [HF-WIRE-6] One wallet shape for the Android app. The existing GET /api/hf/wallet answers in three shapes (rupee WalletDO, token lots,
 // Standard plan); this folds them into {balancePaise, testCreditPaise, heldPaise, ledger[], nextCursor}. Pure: no I/O.
-export type AppLedgerKind = "call" | "topup" | "hold" | "release" | "payout" | "refund";
+export type AppLedgerKind = "call" | "topup" | "hold" | "release" | "payout" | "refund" | "spend";
 export interface AppLedgerRow { id: string; kind: AppLedgerKind; amountPaise: number; at: number; label: string; paidPaise?: number; gstPaise?: number }
 export interface AppWallet { balancePaise: number; testCreditPaise: number; heldPaise: number; ledger: AppLedgerRow[]; nextCursor: string | null }
 
@@ -14,6 +14,8 @@ export function kindOf(raw: string): AppLedgerKind {
     case "refund_revoke": case "call_refund": case "debt_create": case "debt_clear": return "refund";
     case "payout": case "payout_take": return "payout"; // [HF-WIRE-13] money leaving the wallet for the person's UPI
     case "payout_return": return "refund"; // [HF-WIRE-13] a cancelled/rejected withdrawal is back in the wallet
+    case "merch_spent": case "ai_spent": return "spend"; // [HF-WALLET-DEDUCTIONS-1] paid from the wallet for something that is not a call
+    case "merch_refund": case "ai_refund": return "refund";
     default: return "topup"; // purchase, admin_adjust, grant, migrate, test_credit(_removed)
   }
 }

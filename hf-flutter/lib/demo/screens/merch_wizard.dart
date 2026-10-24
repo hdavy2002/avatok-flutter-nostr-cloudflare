@@ -128,11 +128,32 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   }
 
   void _removeFromTray(StudioArt a) {
+    final wasEarlier = _earlierIds.contains(a.artId);
     setState(() {
       _arts.removeWhere((x) => x.artId == a.artId);
       _earlierIds.remove(a.artId);
       _picked.remove(a.artId);
     });
+    // [HF-MERCH-AI-DELETE-1] an AI picture comes back from the server on every visit, so it is deleted there too (not just hidden here).
+    if (a.source == 'ai') unawaited(_deleteAi(a, wasEarlier));
+  }
+
+  Future<void> _deleteAi(StudioArt a, bool wasEarlier) async {
+    String? problem;
+    try {
+      await _repo.deleteAiPicture(a.art.artId);
+    } on ApiException catch (e) {
+      problem = e.userMessage;
+    } catch (e, st) {
+      merchCapture(e, st, 'ai_delete');
+      problem = 'We could not delete that picture. Please try again.';
+    }
+    if (!mounted || problem == null) return;
+    setState(() {
+      if (_arts.every((x) => x.artId != a.artId)) _arts.add(a);
+      if (wasEarlier) _earlierIds.add(a.artId);
+    });
+    toast(context, problem);
   }
 
   List<StudioArt> _designerArts() {

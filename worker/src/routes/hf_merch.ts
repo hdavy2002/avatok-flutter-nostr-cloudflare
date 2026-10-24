@@ -1,7 +1,7 @@
 // [HF-MERCH-CORE-1 2026-10-23] Influencer merch shop: influencer, public and fan routes. Spec: Specs/SPEC-2026-10-23-HF-MERCH.md section 5.
 // Every response is { ok:true, ... } or { ok:false, error, message }. Everything is dark behind hfMerchEnabled (404 not_enabled);
 // checkout is also behind hfMerchCheckoutEnabled (403 checkout_off). Admin routes live in routes/admin2_merch.ts.
-//   Influencer: GET catalog | GET quote | POST art | GET ai | POST ai/generate | POST art/:id/remove-bg | GET art/:id/file | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
+//   Influencer: GET catalog | GET quote | POST art | GET ai | POST ai/generate | DELETE ai/pictures/:artId | POST art/:id/remove-bg | GET art/:id/file | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
 //   Public:     GET public/:host | GET public/:host/:product | GET pincode/:pin | GET sitemap
 //   Fan:        POST checkout | GET my-orders(/:id) | POST my-orders/:id/problem(-photo) | GET addresses | DELETE addresses/:id
 //   Gateway:    POST webhook/cashfree
@@ -34,7 +34,7 @@ import {
 import { startMerchBagCheckout, MERCH_BAG_MAX_LINES } from "../lib/hf_merch_group"; // [HF-CHANNEL-CORE-1]
 import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt, saveMerchMockup, saveMerchPrintFile, MERCH_ART_MAX_BYTES, type PFail } from "../lib/hf_merch_products";
 import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
-import { AI_UNAVAILABLE, aiState, aiTableOk, generateAiPicture, removeBackground } from "../lib/hf_merch_ai";
+import { AI_UNAVAILABLE, aiState, aiTableOk, deleteAiPicture, generateAiPicture, removeBackground } from "../lib/hf_merch_ai";
 import { merchPublicCategory } from "../lib/hf_merch_public_category"; // [HF-CHANNEL-CORE-1]
 
 const APP = "hf_merch";
@@ -151,6 +151,10 @@ async function artFileRoute(env: Env, s: SellerCtx, artId: string): Promise<Resp
   const obj = await env.DIGITAL.get(d.art_key);
   if (!obj) return bad(404, "not_found", "That picture was not found.");
   return new Response(obj.body, { headers: { "content-type": d.art_mime || "image/png", "cache-control": "private, max-age=3600", "access-control-allow-origin": "*" } });
+}
+async function aiDeleteRoute(env: Env, s: SellerCtx, artId: string): Promise<Response> {
+  const r = await deleteAiPicture(env, s.uid, artId);
+  return r.ok ? out({ removed: r.removed }) : failOf(r);
 }
 async function removeBgRoute(env: Env, s: SellerCtx, artId: string): Promise<Response> {
   const limited = await rateLimit(env, `merch:bgrm:${s.uid}`, 60, 3600); if (limited) return limited;
@@ -515,6 +519,7 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (a === "ai") {
       if (rest.length === 1 && m === "GET") return await aiStateRoute(env, s);
       if (rest.length === 2 && b2 === "generate" && m === "POST") return await aiGenerateRoute(req, env, s);
+      if (rest.length === 3 && b2 === "pictures" && m === "DELETE") return await aiDeleteRoute(env, s, c2);
     }
     if (a === "art" && rest.length === 3 && c2 === "remove-bg" && m === "POST") return await removeBgRoute(env, s, b2);
     if (a === "art" && rest.length === 3 && c2 === "file" && m === "GET") return await artFileRoute(env, s, b2);

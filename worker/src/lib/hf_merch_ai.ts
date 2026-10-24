@@ -311,7 +311,7 @@ export async function generateAiPicture(env: Env, uid: string, b: Record<string,
   const find = () => db.prepare(`SELECT ${GEN_COLS} FROM hf_merch_ai_gens WHERE uid=?1 AND request_key=?2`).bind(uid, requestKey).first<GenRow>();
   const replay = async (row: GenRow): Promise<AiOk | PFail> => {
     const charged = Number(row.charge_paise);
-    if (row.status === "done" && row.result_art_id) {
+    if ((row.status === "done" || row.status === "deleted") && row.result_art_id) {
       const art = await artOf(env, uid, row.result_art_id);
       if (art) return { ok: true, body: { gen: { genId: row.id, chargedPaise: charged }, art, balancePaise: (await balanceSummary(env, uid)).availablePaidPaise } };
     }
@@ -414,6 +414,21 @@ export async function generateAiPicture(env: Env, uid: string, b: Record<string,
 }
 
 // ---------------------------------------------------------------------------
+// DELETE ai/pictures/:artId  [HF-MERCH-AI-DELETE-1]
+// ---------------------------------------------------------------------------
+/** Take an AI picture off the influencer's "earlier pictures" list for good (status 'deleted', so GET ai never lists it again).
+ *  The stored file stays: a product already made with it still prints. Idempotent: deleting twice is fine. */
+export async function deleteAiPicture(env: Env, uid: string, artId: string): Promise<{ ok: true; removed: number } | PFail> {
+  if (!ART_ID.test(artId)) return fail(400, "invalid_art", "That picture id is not valid.");
+  if (!(await aiTableOk(env))) return AI_UNAVAILABLE();
+  const r = await metaDb(env).prepare("UPDATE hf_merch_ai_gens SET status='deleted', updated_at=?1 WHERE uid=?2 AND result_art_id=?3 AND status='done'")
+    .bind(Date.now(), uid, artId).run();
+  const removed = Number(r.meta?.changes ?? 0);
+  await merchTrack(env, uid, "merch_ai_delete", { art_id: artId, removed });
+  return { ok: true, removed };
+}
+
+// ---------------------------------------------------------------------------
 // POST art/:artId/remove-bg
 // ---------------------------------------------------------------------------
 export async function removeBackground(env: Env, uid: string, artId: string, fetcher: typeof fetch = fetch): Promise<{ ok: true; art: ArtOut } | PFail> {
@@ -454,8 +469,8 @@ export async function adminAiOverview(env: Env, hostName: (uids: string[]) => Pr
   const now = Date.now();
   const istDay = Math.floor((now + IST_MS) / 86_400_000) * 86_400_000 - IST_MS;
   const [today, l30, ref, rows] = await Promise.all([
-    db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(charge_paise),0) AS c FROM hf_merch_ai_gens WHERE status='done' AND created_at>=?1").bind(istDay).first<{ n: number; c: number }>(),
-    db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(charge_paise),0) AS c FROM hf_merch_ai_gens WHERE status='done' AND created_at>=?1").bind(now - 30 * 86_400_000).first<{ n: number; c: number }>(),
+    db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(charge_paise),0) AS c FROM hf_merch_ai_gens WHERE status IN ('done','deleted') AND created_at>=?1").bind(istDay).first<{ n: number; c: number }>(),
+    db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(charge_paise),0) AS c FROM hf_merch_ai_gens WHERE status IN ('done','deleted') AND created_at>=?1").bind(now - 30 * 86_400_000).first<{ n: number; c: number }>(),
     db.prepare("SELECT COALESCE(SUM(charge_paise),0) AS c FROM hf_merch_ai_gens WHERE status='refunded' AND created_at>=?1").bind(now - 30 * 86_400_000).first<{ c: number }>(),
     db.prepare(
       `SELECT g.id AS id, g.uid AS uid, g.prompt AS prompt, g.style AS style, g.status AS status, g.charge_paise AS charge, g.error AS error, g.created_at AS created_at, d.art_preview_url AS url

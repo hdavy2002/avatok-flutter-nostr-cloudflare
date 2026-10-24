@@ -21,7 +21,12 @@ const KIND: Record<string, { label: string; cls: string; tab: Tab }> = {
   purchase: { label: 'Top-up', cls: '', tab: 'purchase' }, call_spent: { label: 'Call', cls: 'lav', tab: 'call_spent' },
   call_refund: { label: 'Correction', cls: 'gold', tab: 'call_refund' }, test_credit: { label: 'Test credit', cls: 'gold', tab: 'test' },
   test_credit_removed: { label: 'Test credit', cls: 'dec', tab: 'test' }, call_earned: { label: 'Earned', cls: '', tab: 'all' },
+  // [HF-WALLET-DEDUCTIONS-1] money that left the wallet for something other than a call, and its refunds
+  merch_spent: { label: 'Merch', cls: 'dec', tab: 'call_spent' }, ai_spent: { label: 'AI picture', cls: 'dec', tab: 'call_spent' },
+  merch_refund: { label: 'Refund', cls: 'gold', tab: 'call_refund' }, ai_refund: { label: 'Refund', cls: 'gold', tab: 'call_refund' },
+  payout_take: { label: 'Withdrawal', cls: 'dec', tab: 'all' }, payout_return: { label: 'Refund', cls: 'gold', tab: 'call_refund' },
 };
+const SPENT = new Set(['call_spent', 'merch_spent', 'ai_spent']);
 const paiseOf = (h: WalletHistoryItem) => h.amountPaise ?? (h.rupees != null ? Math.round(h.rupees * 100) : 0);
 
 export default function Wallet() {
@@ -36,7 +41,7 @@ export default function Wallet() {
   useEffect(() => { const h = location.hash.replace('#', ''); if (h === 'add' || h === 'withdraw' || h === 'payout') setTimeout(() => document.getElementById(h === 'payout' ? 'withdraw' : h)?.scrollIntoView({ block: 'start' }), 350); }, []);
   const hist = useMemo(() => (w?.history ?? []).filter(h => tab === 'all' || (KIND[h.kind]?.tab ?? 'all') === tab), [w, tab]);
   const added = (w?.history ?? []).filter(h => h.kind === 'purchase').reduce((s, h) => s + (h.purchase?.walletPaise ?? Math.max(0, paiseOf(h))), 0);
-  const used = (w?.history ?? []).filter(h => h.kind === 'call_spent').reduce((s, h) => s + Math.abs(paiseOf(h)), 0);
+  const used = (w?.history ?? []).filter(h => SPENT.has(h.kind)).reduce((s, h) => s + Math.abs(paiseOf(h)), 0);
   const hp = w?.host ? hostPaise(w.host) : null;
 
   return <>
@@ -68,9 +73,9 @@ export default function Wallet() {
 
     <section className="h3-row c21">
       <Card title="History" note="Every rupee in and out">
-        <div className="h3-tabs">{([['all', 'All'], ['purchase', 'Top-ups'], ['call_spent', 'Calls'], ['call_refund', 'Corrections'], ['test', 'Test credits']] as [Tab, string][]).map(([k, l]) =>
+        <div className="h3-tabs">{([['all', 'All'], ['purchase', 'Top-ups'], ['call_spent', 'Spent'], ['call_refund', 'Refunds'], ['test', 'Test credits']] as [Tab, string][]).map(([k, l]) =>
           <button key={k} type="button" className={tab === k ? 'on' : ''} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
-        <div className="h3-scroll">{!w ? <Skel h={240} /> : hist.length === 0 ? <Empty text="Nothing here yet. Calls and top-ups show up here." /> :
+        <div className="h3-scroll">{!w ? <Skel h={240} /> : hist.length === 0 ? <Empty text="Nothing here yet. Top-ups, calls and things you buy show up here." /> :
           <table className="h3-table"><thead><tr><th>Type</th><th>What</th><th className="hide-n">When</th><th className="r">Amount</th></tr></thead><tbody>
             {hist.map((h, i) => { const k = KIND[h.kind] ?? { label: 'Wallet', cls: 'dec' }; const v = paiseOf(h); return <tr key={`${h.at}-${h.callId ?? i}`} style={{ cursor: 'default' }}>
               <td><span className={`h3-chip ${k.cls}`}>{k.label}</span></td>
@@ -83,7 +88,7 @@ export default function Wallet() {
         <Card title="In & out" note="Across your wallet history" tone={1}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={{ padding: 14, borderRadius: 16, background: 'var(--teatint)' }}><div className="small muted">Added</div><div className="num" style={{ fontSize: '1.5rem', color: 'var(--peacock)' }}>{w ? formatPaise(added) : '—'}</div></div>
-            <div style={{ padding: 14, borderRadius: 16, background: 'var(--blush)' }}><div className="small muted">Used on calls</div><div className="num" style={{ fontSize: '1.5rem', color: 'var(--rani)' }}>{w ? formatPaise(used) : '—'}</div></div>
+            <div style={{ padding: 14, borderRadius: 16, background: 'var(--blush)' }}><div className="small muted">Spent</div><div className="num" style={{ fontSize: '1.5rem', color: 'var(--rani)' }}>{w ? formatPaise(used) : '—'}</div></div>
           </div>
           <RefundBox key={`rf${rcptKey}`} />
         </Card>

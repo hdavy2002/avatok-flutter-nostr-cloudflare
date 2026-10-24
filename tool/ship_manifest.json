@@ -12006,5 +12006,23 @@
   "HF-IDV-WHATSAPP-4": {
     "description": "[HF-IDV-WHATSAPP-4] Creator onboarding: one Clerk bridge kept mounted across the loading and steps layouts, so avatars load and the draft autosaves (HF-IDV-WHATSAPP-3 fix was not enough).",
     "no_telemetry": "Success is HF-IDV-WHATSAPP-3's hf_host_generate_started; this only keeps the session token alive."
+  },
+  "HF-MERCH-AI-DELETE-1": {
+    "description": "[HF-MERCH-AI-DELETE-1 2026-10-24] Deleting an earlier AI picture is saved on the server (it no longer comes back after a refresh, web and app), and the wallet history now lists merch orders and AI pictures as deductions with their refunds as one plus line (HF-MERCH-21, HF-MERCH-22).",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchAiEnabled"
+    ],
+    "success": [
+      {
+        "event": "merch_ai_delete",
+        "property": "removed",
+        "equals": 1,
+        "min_events": 1,
+        "note": "An influencer deleted an earlier AI picture and the server marked it deleted."
+      }
+    ]
   }
 }
