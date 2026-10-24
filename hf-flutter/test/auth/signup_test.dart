@@ -478,6 +478,7 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('su-wa')));
     await _fillSignup(tester);
     await tester.ensureVisible(find.text('SEND EMAIL CODE'));
+    await tester.pumpAndSettle(); // [HF-HEADER-EVERYWHERE-1] let the scroll land before tapping (the tap hit the old position)
     await tester.tap(find.text('SEND EMAIL CODE'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
