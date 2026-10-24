@@ -7,6 +7,9 @@ import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-
 import { capture } from '../../lib/analytics';
 import { callModeFlags, holdLine, lengthLabel, offeredLengths } from '../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import '../../styles/hf-bookings.css';
+import '../../styles/hf-channel.css';
+import Sticker from '../channel/Sticker';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
 const DEFAULT_DURATIONS = [10]; // replaced by the lengths this influencer really offers as soon as the server tells us
@@ -15,7 +18,10 @@ const addDays = (key: string, days: number) => { const d = new Date(key + 'T12:0
 const randomKey = () => globalThis.crypto?.randomUUID?.() ?? 'bk_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 type Phase = 'loading' | 'ready' | 'error';
 
-export default function CustomerBooking() {
+export type BookingHostInfo = { name: string; photo: string | null; rate: string | null };
+const meterArt = artUrl('meterIcon');
+
+export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostInfo | null }) {
   const feature = useBookingFeature();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const host = params.get('host') || '';
@@ -34,6 +40,7 @@ export default function CustomerBooking() {
   const [message, setMessage] = useState('');
   const [topUp, setTopUp] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [laneNeed, setLaneNeed] = useState<'women' | 'lgbtq' | null>(null); // [HF-CREATOR-SPACES-1]
   const key = useRef('');
   const authEpoch = useRef(0);
@@ -149,6 +156,12 @@ export default function CustomerBooking() {
     } finally { setBusy(false); }
   };
 
+  // [HF-BOOK-GP-1] Keep the week strip on the week that holds the chosen day (URL, restored intent or a click).
+  useEffect(() => {
+    const diff = Math.round((Date.parse(date + 'T12:00:00') - Date.parse(localDate(new Date()) + 'T12:00:00')) / 86_400_000);
+    if (Number.isFinite(diff) && diff >= 0) setWeekOffset(Math.floor(diff / 7));
+  }, [date]);
+
   const goTopUp = () => {
     sessionStorage.setItem('hf_booking_intent', JSON.stringify({ host, date, duration, startUtc: selected?.startUtc }));
     window.location.assign('/wallet?return_to=' + encodeURIComponent(window.location.pathname + window.location.search));
@@ -158,45 +171,97 @@ export default function CustomerBooking() {
 
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
-  return <main className="hfb-page" aria-labelledby="hfb-title">
+  // [HF-BOOK-GP-1] Galli Pop skin, matching the channel page (/h/<slug>): photo + name up top, a week strip instead of a date box, and the
+  // review step painted like a rickshaw meter. All booking logic above is unchanged.
+  const name = hostInfo?.name || 'this influencer';
+  const first = hostInfo?.name ? hostInfo.name.split(/\s+/)[0] : 'them';
+  const dayFmt = (key: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-IN', o).format(new Date(key + 'T12:00:00'));
+  const timeFmt = (iso: string) => new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+  const weekStart = addDays(minDate, weekOffset * 7);
+  const week = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter(d => d <= maxDate);
+  const pickDay = (d: string) => { setDate(d); syncUrl(d, duration); setQuote(null); setSelected(null); void loadSlots(d, duration); };
+  const lenText = (m: number) => (lengthsOn ? lengthLabel(m) : `${m} min`);
+  const held = lengthsOn && quote?.holdPaise != null;
+  return <main className="gp bkp" aria-labelledby="hfb-title">
     <SessionBridge on />
-    <header className="hfb-heading"><p className="hfb-eyebrow">Book a conversation</p><h1 id="hfb-title">Choose a time</h1><p>Call now stays available separately on the influencer’s profile. This booking is confirmed only after the server accepts your reservation.</p></header>
-    {!host && <section className="hfb-card"><p role="alert">{message}</p><a className="hfb-button" href="/marketplace">Explore influencers</a></section>}
-    {host && <>
-      {looksSignedOut() && <section className="hfb-card"><h2>Sign in to book</h2><p>Your selected booking details will be kept when you return.</p><a className="hfb-button hfb-primary" href={signInUrl(back)}>Sign in</a></section>}
-      <section className="hfb-card" aria-labelledby="hfb-options">
-        <h2 id="hfb-options">Appointment length</h2>
-        <div className="hfb-choice-row" role="group" aria-label="Appointment length">
-          {durations.map(minutes => <button type="button" key={minutes} className={duration === minutes ? 'hfb-choice is-selected' : 'hfb-choice'} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); if (lengthsOn) capture('hf_web_booking_length_picked', { host, minutes }); void loadSlots(date, minutes); }}>{lengthsOn ? lengthLabel(minutes) : `${minutes} minutes`}</button>)}
+    <div className="wrap">
+      {host && <a className="lnk bk-back" href={`/h/${encodeURIComponent(host)}`}>‹ Back to {hostInfo?.name ? `${first}’s page` : 'the profile'}</a>}
+      <header className="bk-hero">
+        {hostInfo?.photo ? <img className="bk-ava" src={hostInfo.photo} width={112} height={140} alt={hostInfo.name} decoding="async" /> : hostInfo?.name ? <span className="bk-ava bk-ini" aria-hidden="true">{first.charAt(0).toUpperCase()}</span> : null}
+        <div className="bk-ht">
+          <p className="eyebrow">Book a time</p>
+          <h1 id="hfb-title" className="h2">{hostInfo?.name ? <>Book a time with {first}</> : 'Choose a time'}</h1>
+          <p className="sub">Pick a day and a time that suits you. You see the full price before you confirm.</p>
+          {hostInfo?.rate && <div className="bk-chips"><span className="chip">{hostInfo.rate}</span><span className="chip">Your number stays private</span></div>}
         </div>
-        <label className="hfb-label" htmlFor="hfb-date">Date</label>
-        <input id="hfb-date" className="hfb-input" type="date" min={minDate} max={maxDate} value={date} onChange={e => { setDate(e.target.value); syncUrl(e.target.value, duration); setQuote(null); setSelected(null); void loadSlots(e.target.value, duration); }} />
-        <p className="hfb-muted">Times are shown in your device’s timezone. The influencer’s timezone and offset appear on each option.</p>
-      </section>
-      <section className="hfb-card" aria-labelledby="hfb-times" aria-busy={phase === 'loading'}>
-        <h2 id="hfb-times">Available times</h2>
-        {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
-        {phase === 'loading' && <p role="status">Checking current availability…</p>}
-        {phase === 'error' && <div><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={() => void loadSlots()}>Try again</button></div>}
-        {phase === 'ready' && slots.length === 0 && <p>No times are available for this date. Try another day.</p>}
-        {phase === 'ready' && slots.length > 0 && <div className="hfb-slot-grid" role="group" aria-label="Available appointment times">
-          {slots.map(slot => <button type="button" key={slot.startUtc} className={selected?.startUtc === slot.startUtc ? 'hfb-slot is-selected' : 'hfb-slot'} aria-pressed={selected?.startUtc === slot.startUtc} onClick={() => void choose(slot)} disabled={busy}>
-            <strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(slot.startUtc))}</strong><span>{slot.hostLocalLabel} influencer time</span><small>{slot.offsetLabel}</small>
-          </button>)}
-        </div>}
-        {message && phase === 'ready' && !quote && <p role="status" className="hfb-message">{message}</p>}
-      </section>
-      {quote && selected && <section className="hfb-card hfb-quote" aria-labelledby="hfb-confirm">
-        <h2 id="hfb-confirm">Review and confirm</h2>
-        <dl className="hfb-details"><div><dt>Date and time</dt><dd>{new Date(quote.startUtc).toLocaleString()} · {selected.hostLocalLabel} influencer time ({selected.offsetLabel})</dd></div><div><dt>Length</dt><dd>{lengthsOn ? lengthLabel(quote.durationMinutes) : `${quote.durationMinutes} minutes`}</dd></div><div><dt>{lengthsOn && quote.holdPaise != null ? 'Held now' : 'Price to reserve'}</dt><dd><strong>{lengthsOn && quote.holdPaise != null ? money(quote.holdPaise) : quote.priceRupees || money(quote.reservedPaise)}</strong></dd></div><div><dt>Quote expires</dt><dd>{new Date(quote.expiresAt).toLocaleTimeString()}</dd></div></dl>
-        {lengthsOn && quote.holdPaise != null && <p className="hfb-muted">{holdLine(money(quote.holdPaise), quote.holdMinutes ?? 15)}</p>}
-        <p className="hfb-muted">Before the call connects, either person may cancel and the server releases the reservation. No cancellation penalty or no-show fee applies. After connection, the call charges only for verified connected time.</p>
-        <label className="hfb-check"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><span>I understand the reservation and cancellation policy.</span></label>
-        {message && <p role="status" className="hfb-message">{message}</p>}
-        {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
-        <div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void confirm()} disabled={busy || !policyAccepted}>{busy ? 'Confirming…' : 'Confirm and reserve'}</button><button type="button" className="hfb-button" onClick={() => { setQuote(null); setSelected(null); setMessage(''); }}>Pick another time</button></div>
-        {topUp && <div className="hfb-note" role="alert"><p>Add funds to your wallet to continue. Your chosen time may change while you top up, so we’ll check availability and show a fresh quote when you return.</p><button className="hfb-button" type="button" onClick={goTopUp}>Add money</button></div>}
-      </section>}
-    </>}
+        <div className="bk-stk"><Sticker k="booking" /></div>
+      </header>
+      {!host && <section className="panel"><p role="alert">{message}</p><a className="btn btn-r" href="/marketplace">Explore influencers</a></section>}
+      {host && <>
+        {looksSignedOut() && <section className="panel bk-signin"><div><h2>Sign in to book</h2><p>We keep the time you picked, so you can carry on right after.</p></div><a className="btn btn-r" href={signInUrl(back)}>Sign in</a></section>}
+        <div className="bk-grid">
+          <section className="cal" aria-labelledby="hfb-times" aria-busy={phase === 'loading'}>
+            <p className="nun lbl2" id="hfb-len">How long?</p>
+            <div className="bk-lens" role="group" aria-labelledby="hfb-len">
+              {durations.map(minutes => <button type="button" key={minutes} className={`chip${duration === minutes ? ' on' : ''}`} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); if (lengthsOn) capture('hf_web_booking_length_picked', { host, minutes }); void loadSlots(date, minutes); }}>{lenText(minutes)}</button>)}
+            </div>
+            <div className="cal-h" style={{ marginTop: 22 }}>
+              <h3 id="hfb-times">{dayFmt(week[0], { day: 'numeric', month: 'short' })} – {dayFmt(week[week.length - 1], { day: 'numeric', month: 'short' })}</h3>
+              <span className="nav2">
+                <button className="ibtn" type="button" aria-label="Previous week" disabled={weekOffset === 0} onClick={() => setWeekOffset(w => Math.max(0, w - 1))}>‹</button>
+                <button className="ibtn" type="button" aria-label="Next week" disabled={addDays(weekStart, 7) > maxDate} onClick={() => setWeekOffset(w => w + 1)}>›</button>
+              </span>
+            </div>
+            <div className="days" role="group" aria-label="Pick a day">
+              {week.map(d => <button key={d} type="button" className={`day${d === date ? ' on' : ''}`} aria-pressed={d === date} onClick={() => pickDay(d)}>
+                <small>{d === minDate ? 'Today' : dayFmt(d, { weekday: 'short' })}</small><b>{dayFmt(d, { day: 'numeric' })}</b><em>{dayFmt(d, { month: 'short' })}</em>
+              </button>)}
+            </div>
+            <p className="nun" style={{ marginBottom: 12 }}>{dayFmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
+            {phase === 'loading' && <p className="cal-msg" role="status">Finding open times…</p>}
+            {phase === 'error' && <div className="cal-msg" role="alert"><p>{message}</p><button className="btn btn-o bk-retry" type="button" onClick={() => void loadSlots()}>Try again</button></div>}
+            {phase === 'ready' && slots.length === 0 && <p className="cal-msg" role="status">No open times on this day. Try another day.</p>}
+            {phase === 'ready' && slots.length > 0 && <div className="slots" role="group" aria-label="Pick a time">
+              {slots.map(slot => <button type="button" key={slot.startUtc} className={`slot${selected?.startUtc === slot.startUtc ? ' on' : ''}`} aria-pressed={selected?.startUtc === slot.startUtc} onClick={() => void choose(slot)} disabled={busy} title={`${slot.hostLocalLabel} for ${first} (${slot.offsetLabel})`}>{timeFmt(slot.startUtc)}</button>)}
+            </div>}
+            <p className="bk-tz">Times are in your own time zone. Hover or tap a time to see {first === 'them' ? 'their' : `${first}’s`} local time.</p>
+            {message && phase === 'ready' && !quote && <p role="status" className="cal-msg" style={{ marginTop: 14 }}>{message}</p>}
+          </section>
+          <aside className="bk-side" aria-live="polite">
+            {!(quote && selected) && <section className="panel bk-how" aria-label="How booking works">
+              <h2>How it works</h2>
+              <ol>
+                <li><span className="bk-n">1</span><span><b className="nun">Pick a time</b>Choose a day and a slot on the left.</span></li>
+                <li><span className="bk-n">2</span><span><b className="nun">Check the price</b>We show the exact amount before anything is reserved.</span></li>
+                <li><span className="bk-n">3</span><span><b className="nun">Confirm</b>Your time with {first} is booked. Meter down, baat shuru.</span></li>
+              </ol>
+              {busy && <p className="cal-msg" role="status">Getting the price…</p>}
+            </section>}
+            {quote && selected && <section className="bk-ticket" aria-labelledby="hfb-confirm">
+              <div className="bk-tt">
+                {meterArt && <img className="meter-ic" src={meterArt} width={ART_DIMS.meterIcon.w} height={ART_DIMS.meterIcon.h} alt="" decoding="async" />}
+                <div><p className="eyebrow" style={{ color: 'var(--yel)' }}>Your booking</p><h2 id="hfb-confirm">Check and confirm</h2></div>
+              </div>
+              <dl className="bk-dl">
+                <div><dt>When</dt><dd>{new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(quote.startUtc))}<small>{selected.hostLocalLabel} for {first} ({selected.offsetLabel})</small></dd></div>
+                <div><dt>How long</dt><dd>{lenText(quote.durationMinutes)}</dd></div>
+                <div><dt>{held ? 'Held now' : 'You pay'}</dt><dd className="bk-amt">{held ? money(quote.holdPaise!) : quote.priceRupees || money(quote.reservedPaise)}</dd></div>
+              </dl>
+              {held && <p className="bk-fine">{holdLine(money(quote.holdPaise!), quote.holdMinutes ?? 15)}</p>}
+              <p className="bk-fine">Either of you can cancel before the call starts, and nothing is charged for cancelling. Once you are talking, you pay only for the time you actually talk. This price is kept for you until {new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' }).format(new Date(quote.expiresAt))}.</p>
+              <label className="ck"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><i aria-hidden="true">✓</i><span>I understand how booking and cancelling work.</span></label>
+              {message && <p role="status" className="bk-msg">{message}</p>}
+              {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
+              <div className="bk-act">
+                <button type="button" className="btn btn-r" onClick={() => void confirm()} disabled={busy || !policyAccepted}>{busy ? 'Confirming…' : 'Confirm and reserve'}</button>
+                <button type="button" className="btn bk-ghost" onClick={() => { setQuote(null); setSelected(null); setMessage(''); }}>Pick another time</button>
+              </div>
+              {topUp && <div className="bk-topup" role="alert"><p>Add money to your wallet to continue. When you come back we check the time again and show a fresh price.</p><button className="btn btn-y" type="button" onClick={goTopUp}>Add money</button></div>}
+            </section>}
+          </aside>
+        </div>
+      </>}
+    </div>
   </main>;
 }

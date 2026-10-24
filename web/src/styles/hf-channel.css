@@ -504,3 +504,66 @@
   .gp .pbar .cv-call-button{padding:0 12px}
 }
 .gp .acts:not(:has(.hfc-call)) .cv-call-button.hfc-book-time{order:-1}
+
+/* [HF-BOOK-GP-1 2026-10-24] Booking form (/bookings?host=<slug>) in the Galli Pop skin. */
+.gp.bkp{padding:28px 0 72px;min-height:70vh}
+.gp .bk-back{display:inline-block;margin-bottom:8px;text-decoration:none}
+.gp .bk-hero{display:flex;align-items:center;gap:24px;margin-bottom:28px;flex-wrap:wrap}
+.gp .bk-ava{width:112px;height:140px;border-radius:22px;object-fit:cover;flex:none;background:var(--tile)}
+.gp .bk-ini{display:grid;place-items:center;font-family:Nunito;font-weight:900;font-size:48px;color:var(--ink);background:var(--mari-t)}
+.gp .bk-ht{flex:1 1 320px;min-width:0}
+.gp .bk-ht .h2{margin:6px 0 8px}
+.gp .bk-chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.gp .bk-stk{flex:none;max-width:260px}
+.gp .bk-stk .stk-img{width:240px;height:auto;display:block}
+.gp .bk-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:28px;align-items:start}
+.gp .bk-lens{display:flex;gap:10px;flex-wrap:wrap}
+.gp .bk-tz{font-size:13px;color:var(--muted);margin-top:14px}
+.gp .bk-retry{margin-top:12px;min-height:48px}
+.gp .bk-signin{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;background:var(--mari-t)}
+.gp .bk-signin p{margin-top:4px}
+.gp .bk-side{position:sticky;top:calc(var(--hdr) + 16px)}
+.gp .bk-how ol{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:16px}
+.gp .bk-how li{display:flex;gap:14px;align-items:flex-start}
+.gp .bk-how li b{display:block;font-size:17px}
+.gp .bk-how li span:last-child{font-size:15px;color:var(--muted)}
+.gp .bk-how li b{color:var(--ink)}
+.gp .bk-n{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:Nunito;font-weight:900;background:var(--yel);color:var(--ink);border:2px solid var(--ink)}
+.gp .bk-how li:nth-child(2) .bk-n{background:var(--ranit)}
+.gp .bk-how li:nth-child(3) .bk-n{background:var(--bluet)}
+.gp .bk-ticket{background:var(--ink);color:#fff;border-radius:28px;padding:24px 24px 24px 34px;position:relative;overflow:hidden;box-shadow:0 12px 40px #1f163033}
+.gp .bk-ticket::before{content:"";position:absolute;left:0;top:0;bottom:0;width:12px;background:repeating-conic-gradient(#000 0 25%,var(--yel) 0 50%) 0 0/12px 12px}
+.gp .bk-ticket h2{color:#fff;font-size:24px}
+.gp .bk-tt{display:flex;align-items:center;gap:14px}
+.gp .bk-tt .meter-ic{width:72px;height:72px;object-fit:contain;flex:none}
+.gp .bk-dl{margin:18px 0 6px;display:grid;gap:12px}
+.gp .bk-dl div{display:flex;justify-content:space-between;gap:14px;padding-bottom:12px;border-bottom:1px dashed #ffffff33}
+.gp .bk-dl dt{color:#cfc8e0;font-size:14px}
+.gp .bk-dl dd{margin:0;text-align:right;font-family:Nunito;font-weight:900;font-size:17px}
+.gp .bk-dl dd small{display:block;font-family:Comfortaa;font-weight:600;font-size:12px;color:#cfc8e0}
+.gp .bk-dl .bk-amt{font-size:28px;color:var(--yel);letter-spacing:.03em}
+.gp .bk-fine{font-size:14px;color:#e2dbee;margin-top:10px}
+.gp .bk-ticket .ck{color:#fff;margin-top:16px}
+.gp .bk-ticket .ck i{border-color:#fff;background:transparent}
+.gp .bk-ticket .ck input:checked+i{background:var(--yel);color:var(--ink);border-color:var(--yel)}
+.gp .bk-msg{margin-top:12px;padding:12px 14px;border-radius:14px;background:#ffffff1a;font-size:14px}
+.gp .bk-act{display:grid;gap:10px;margin-top:18px}
+.gp .bk-act .btn{width:100%}
+.gp .bk-act .btn[disabled]{opacity:.5;cursor:not-allowed}
+.gp .bk-ghost{background:transparent;color:#fff;border:2px solid #ffffff66}
+.gp .bk-topup{margin-top:16px;padding:14px;border-radius:16px;background:#ffffff14;display:grid;gap:10px;font-size:14px}
+@media(max-width:900px){
+  .gp .bk-grid{grid-template-columns:minmax(0,1fr)}
+  .gp .bk-side{position:static}
+  .gp .bk-stk{display:none}
+}
+@media(max-width:700px){
+  .gp.bkp{padding-top:16px}
+  .gp .bk-hero{flex-direction:column;text-align:center;gap:14px}
+  .gp .bk-ht{flex-basis:auto;width:100%}
+  .gp .bk-chips{justify-content:center}
+  .gp .bk-ava{width:96px;height:120px}
+  .gp .bk-ticket{padding:20px 18px 20px 28px}
+  .gp .bk-dl dd{font-size:16px}
+}
+.gp.bkp .wrap{max-width:1240px}

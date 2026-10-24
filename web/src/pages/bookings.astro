@@ -5,11 +5,24 @@ import HostBookings from '../islands/host-bookings/HostBookings';
 import CustomerBooking from '../islands/host-bookings/CustomerBooking';
 import '../styles/hf-bookings.css';
 import { BRAND } from '../lib/brand';
+import { API_BASE, publicImage } from '../lib/config';
+import type { BookingHostInfo } from '../islands/host-bookings/CustomerBooking';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const role = Astro.url.searchParams.get('role') === 'host' ? 'host' : 'customer';
 // [HF-CHANNEL-QA-1] A fan coming from an influencer page (?host=<slug>[&date&duration&slot]) gets the booking form, not the calendar redirect.
 const bookHost = role === 'customer' && /^[a-z0-9-]{3,40}$/.test(Astro.url.searchParams.get('host') ?? '');
+// [HF-BOOK-GP-1] Name, photo and rate for the booking form's header. Optional: the form still works if this lookup fails.
+let hostInfo: BookingHostInfo | null = null;
+if (bookHost) {
+  try {
+    const res = await fetch(`${API_BASE}/api/hosts/public/${Astro.url.searchParams.get('host')}`, { headers: { accept: 'application/json' } });
+    if (res.ok) {
+      const h = (await res.json()) as { displayName?: string; avatarUrl?: string | null; priceLabel?: string | null; pricePerMin?: number | null };
+      if (h.displayName) hostInfo = { name: h.displayName, photo: h.avatarUrl ? publicImage(h.avatarUrl, { width: 240 }) : null, rate: h.priceLabel || (h.pricePerMin ? `₹${Number(h.pricePerMin).toLocaleString('en-IN')}/min` : null) };
+    }
+  } catch (err) { console.warn('[HF-BOOK-GP-1] host lookup failed', err instanceof Error ? err.message : String(err)); }
+}
 ---
-<Base title={`Appointment calendar · ${BRAND.name}`} description="View your appointments." noindex keywords="">
-  {bookHost ? <CustomerBooking client:only="react" /> : <HostBookings client:only="react" role={role} />}
+<Base title={bookHost ? `${hostInfo ? `Book a time with ${hostInfo.name}` : 'Book a time'} · ${BRAND.name}` : `Appointment calendar · ${BRAND.name}`} description="View your appointments." noindex keywords="">
+  {bookHost ? <CustomerBooking client:only="react" hostInfo={hostInfo} /> : <HostBookings client:only="react" role={role} />}
 </Base>
