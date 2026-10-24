@@ -92,23 +92,62 @@ async function myDesign(env: Env, uid: string, id: string): Promise<DesignRow | 
   return d && d.created_by === uid && d.step === "merch" ? d : null;
 }
 
-export type PrintResult = { ok: true; printFileId: string; url: string; width: number; height: number };
-export async function saveMerchPrintFile(env: Env, uid: string, artId: string, bytes: Uint8Array): Promise<PrintResult | PFail> {
-  const d = await myDesign(env, uid, artId);
+/** [HF-MERCH-ART-REUSE-1] True when a design is already bound to a product (or locked). Its print file must never change again. */
+export const designInUse = (d: { product_id: string | null; locked_at: number | null }): boolean => !!(d.product_id || d.locked_at);
+
+/**
+ * [HF-MERCH-ART-REUSE-1] Copies a used design into a NEW draft row for the same influencer, so the same art can go on another product
+ * (a tee and a hoodie). Same art bytes (art_key is content-addressed and never overwritten), same checks incl. moderation; no print file,
+ * version 1, not bound to a product. The used row is left exactly as it is. Returns the new row, or null if the source is not this user's.
+ */
+export async function forkMerchDesign(env: Env, uid: string, sourceId: string): Promise<DesignRow | null> {
+  const id = `dsn-${hex8()}`;
+  const now = Date.now();
+  const r = await metaDb(env).prepare(
+    `INSERT INTO studio_designs (id, name, status, step, art_key, art_w, art_h, art_bytes, art_mime, art_checks_json, art_preview_url, products_json, version, colours_json, product_id, locked_at, created_by, created_at, updated_at)
+     SELECT ?2, name, 'draft', 'merch', art_key, art_w, art_h, art_bytes, art_mime, json_patch(COALESCE(art_checks_json,'{}'), json_object('forked_from', id)), art_preview_url, '[]', 1, '[]', NULL, NULL, created_by, ?4, ?4
+       FROM studio_designs WHERE id=?1 AND created_by=?3 AND step='merch' AND art_key IS NOT NULL`,
+  ).bind(sourceId, id, uid, now).run();
+  if (!r.meta?.changes) return null;
+  await merchTrack(env, uid, "merch_art_forked", { design_id: id, from_design_id: sourceId });
+  return myDesign(env, uid, id);
+}
+
+/**
+ * [HF-MERCH-ART-REUSE-1] An older page or app build sends the picture it started from as artId, while the print file was saved on the copy
+ * made from it. Accept that pair only when the print-file design really is this user's copy of that picture; otherwise return artId unchanged.
+ */
+export async function resolveArtForPrint(env: Env, uid: string, artId: string, printFileId: string): Promise<string> {
+  if (!artId || !printFileId || artId === printFileId) return artId;
+  const pf = await myDesign(env, uid, printFileId);
+  if (!pf) return artId;
+  try { return (JSON.parse(pf.art_checks_json ?? "{}") as { forked_from?: unknown }).forked_from === artId ? printFileId : artId; } catch { return artId; }
+}
+
+export type PrintResult = { ok: true; printFileId: string; url: string; width: number; height: number; forkedFrom?: string };
+export async function saveMerchPrintFile(env: Env, uid: string, artIdIn: string, bytes: Uint8Array): Promise<PrintResult | PFail> {
+  let d = await myDesign(env, uid, artIdIn);
   if (!d) return fail(404, "not_found", "That art was not found. Upload it again.");
-  if (d.locked_at || d.product_id) return fail(409, "locked", "This art is already on a product. Upload it again to make a new product.");
   if (bytes.byteLength > MERCH_PRINT_MAX_BYTES) return fail(413, "too_large", "The print file must be 15 MB or smaller.");
   const info = parseImageInfo(bytes);
   const check = checkPrintFile(info, bytes.byteLength);
   if (!check.ok || !info) { const c = check as Extract<typeof check, { ok: false }>; return fail(c.status, c.code, c.message); }
+  // [HF-MERCH-ART-REUSE-1] Art already on a product: work on a fresh copy, never on the used row. The client continues with printFileId.
+  let forkedFrom: string | undefined;
+  if (designInUse(d)) {
+    const f = await forkMerchDesign(env, uid, d.id);
+    if (!f) return fail(404, "not_found", "That art was not found. Upload it again.");
+    forkedFrom = d.id; d = f;
+  }
+  const artId = d.id;
   const sha = await sha256Hex(bytes);
   const key = `merch/${uid}/${artId}/print-v${d.version}-${sha.slice(0, 8)}.png`;
   await env.DIGITAL.put(key, bytes, { httpMetadata: { contentType: "image/png" } });
   const url = bytes.byteLength <= 6 * 1024 * 1024 ? await putPublic(env, uid, `${artId}/print-`, bytes, "image/png") : (d.art_preview_url ?? "");
   await metaDb(env).prepare("UPDATE studio_designs SET print_key=?2, print_w=?3, print_h=?4, print_sha256=?5, print_preview_url=?6, updated_at=?7 WHERE id=?1")
     .bind(artId, key, info.w, info.h, sha, url || null, Date.now()).run();
-  await merchTrack(env, uid, "merch_studio_step", { step: "print_file", design_id: artId, w: info.w, h: info.h });
-  return { ok: true, printFileId: artId, url, width: info.w, height: info.h };
+  await merchTrack(env, uid, "merch_studio_step", { step: "print_file", design_id: artId, w: info.w, h: info.h, ...(forkedFrom ? { forked_from: forkedFrom } : {}) });
+  return { ok: true, printFileId: artId, url, width: info.w, height: info.h, ...(forkedFrom ? { forkedFrom } : {}) };
 }
 
 export async function saveMerchMockup(env: Env, uid: string, bytes: Uint8Array): Promise<{ ok: true; url: string } | PFail> {
@@ -149,13 +188,15 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   const side = b.side === "back" ? "back" : b.side === "front" ? "front" : null;
   if (!side) return fail(400, "invalid_side", "Pick front or back.", { field: "side" });
   const catalogId = cleanText(b.catalogId, 80);
-  const artId = cleanText(b.artId, 40), printFileId = cleanText(b.printFileId, 40);
+  const printFileId = cleanText(b.printFileId, 40);
+  const artId = await resolveArtForPrint(env, uid, cleanText(b.artId, 40), printFileId);
   if (!artId || !printFileId || artId !== printFileId) return fail(400, "art_required", "Upload your art and save the print file first.", { field: "artId" });
   const count = await db.prepare("SELECT COUNT(*) AS c FROM shop_products WHERE seller_uid=?1 AND deleted_at IS NULL").bind(uid).first<{ c: number }>();
   if (Number(count?.c ?? 0) >= MERCH_MAX_PRODUCTS) return fail(409, "too_many_products", `You can have up to ${MERCH_MAX_PRODUCTS} products. Delete one to add another.`);
   const design = await myDesign(env, uid, artId);
   if (!design || !design.print_key || !design.print_w || !design.print_h) return fail(404, "art_not_found", "We could not find your art or print file. Upload them again.");
-  if (design.product_id || design.locked_at) return fail(409, "art_used", "This art is already on a product. Upload it again for a new one.");
+  // [HF-MERCH-ART-REUSE-1] The print-file step forks a used design, so this only trips on an out-of-date page.
+  if (designInUse(design)) return fail(409, "art_used", "This design was already used for a product. Go back to the design step and tap Looks good again.");
 
   const text = await moderate(env, { text: `${title}. ${description}`.trim(), field: "listing_title" }).catch(() => null);
   if (text && text.ok && !text.safe) return fail(422, "text_blocked", text.reason || "Please change the name or description.", { field: "title" });

@@ -191,3 +191,25 @@ describe("[HF-MERCH-AI-DELETE-1] delete an earlier AI picture", () => {
     expect(spendRows(env)).toBe(1000);
   });
 });
+
+describe("[HF-MERCH-ART-REUSE-1] earlier AI pictures", () => {
+  it("lists each real AI picture once, with a preview; skips blank rows, copies and other art", async () => {
+    const raw = env.DB_META._raw;
+    const d = raw.prepare("INSERT INTO studio_designs VALUES (?,?,?,?,'image/png',9,?,?,?)");
+    d.run("dsn-00000001", "u1", "merch", "k1", "https://x/1.png", 2048, 2048); // a real AI picture
+    d.run("dsn-00000002", "u1", "merch", "k2", null, 2048, 2048);            // no preview
+    d.run("dsn-00000003", "u1", "merch", null, "https://x/3.png", 2048, 2048); // no art bytes
+    d.run("dsn-00000004", "u1", "merch", "k4", "", 0, 0);                    // empty
+    d.run("dsn-00000005", "u1", "merch", "k1", "https://x/1.png", 2048, 2048); // a reuse copy of dsn-00000001 (never an AI gen)
+    const g = raw.prepare("INSERT INTO hf_merch_ai_gens (id,uid,request_key,status,charge_paise,prompt,result_art_id,created_at,updated_at) VALUES (?, 'u1', ?, ?, 1000, 'p', ?, ?, ?)");
+    g.run("aig_1", "key-00000001", "done", "dsn-00000001", 1, 1);
+    g.run("aig_1b", "key-00000011", "done", "dsn-00000001", 2, 2); // same picture twice -> one tile
+    g.run("aig_2", "key-00000002", "done", "dsn-00000002", 3, 3);
+    g.run("aig_3", "key-00000003", "done", "dsn-00000003", 4, 4);
+    g.run("aig_4", "key-00000004", "done", "dsn-00000004", 5, 5);
+    g.run("aig_5", "key-00000005", "refunded", null, 6, 6);
+    const st = await aiState(env, "u1");
+    expect((st.recent as any[]).map((r) => r.artId)).toEqual(["dsn-00000001"]);
+    expect((st.recent as any[])[0]).toMatchObject({ url: "https://x/1.png", width: 2048, height: 2048 });
+  });
+});

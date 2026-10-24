@@ -257,9 +257,12 @@ export async function aiState(env: Env, uid: string): Promise<Record<string, unk
   if (tableOk) {
     await sweepStaleGens(env, uid);
     const rows = (await metaDb(env).prepare(
-      `SELECT g.id AS id, g.result_art_id AS art_id, g.prompt AS prompt, g.style AS style, g.created_at AS created_at, d.art_preview_url AS url, d.art_w AS w, d.art_h AS h
+      // [HF-MERCH-ART-REUSE-1] Only real AI source pictures: the row the generator saved, with its art bytes, a size and a public preview.
+      // Print files, cutouts, uploads and reuse copies are never AI gens, so they never show here; one tile per picture.
+      `SELECT MAX(g.id) AS id, g.result_art_id AS art_id, MAX(g.prompt) AS prompt, MAX(g.style) AS style, MAX(g.created_at) AS created_at, d.art_preview_url AS url, d.art_w AS w, d.art_h AS h
          FROM hf_merch_ai_gens g JOIN studio_designs d ON d.id=g.result_art_id AND d.created_by=g.uid
-        WHERE g.uid=?1 AND g.status='done' AND d.art_preview_url IS NOT NULL ORDER BY g.created_at DESC LIMIT 24`,
+        WHERE g.uid=?1 AND g.status='done' AND d.step='merch' AND d.art_key IS NOT NULL AND d.art_w > 0 AND d.art_h > 0 AND d.art_preview_url LIKE 'http%'
+        GROUP BY g.result_art_id ORDER BY MAX(g.created_at) DESC LIMIT 24`,
     ).bind(uid).all<{ id: string; art_id: string; prompt: string; style: string | null; created_at: number; url: string; w: number; h: number }>()).results ?? [];
     recent = rows.map((r) => ({ genId: r.id, artId: r.art_id, url: r.url, width: Number(r.w), height: Number(r.h), prompt: r.prompt, style: r.style, createdAt: Number(r.created_at) }));
   }

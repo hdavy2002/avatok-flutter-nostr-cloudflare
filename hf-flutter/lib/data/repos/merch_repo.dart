@@ -110,7 +110,8 @@ class MerchRepo {
     return ArtUpload.fromJson(j);
   }
 
-  /// The art clipped to its frame, rendered at 300 DPI on the phone. Returns the print file id (equal to the art id).
+  /// The art clipped to its frame, rendered at 300 DPI on the phone. Returns the print file id: the art id, or a new copy's id when
+  /// that art is already on a product [HF-MERCH-ART-REUSE-1]. Use the returned id as the product's artId.
   Future<String> uploadPrintFile(String artId, Uint8List png) async {
     final j = await _api.postBytes('$_base/print-file', png, contentType: 'image/png', headers: {'x-art-id': artId});
     final id = j['printFileId'];

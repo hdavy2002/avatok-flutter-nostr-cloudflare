@@ -62,7 +62,8 @@ Future<DesignResult> finishDesign({
     double r2(double v) => (v * 100).round() / 100;
     final left = r2(out.leftIn), top = r2(out.topIn);
     return DesignResult(
-      artId: artId,
+      // [HF-MERCH-ART-REUSE-1] Art already on a product is copied by the server; the product must use the copy (the print file id).
+      artId: printFileId,
       printFileId: printFileId,
       wIn: math.min(r2(out.wIn), r2(areaW - left)),
       hIn: math.min(r2(out.hIn), r2(areaH - top)),

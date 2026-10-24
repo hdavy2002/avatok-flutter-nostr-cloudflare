@@ -105,7 +105,7 @@ export async function rawUpload<T>(path: string, body: Blob, headers: Record<str
 }
 const asciiName = (n: string) => { try { return encodeURIComponent(n.slice(0, 120)); } catch { return 'art'; } };
 export const uploadArt = (blob: Blob, fileName: string) => rawUpload<ArtUpload>(`${B}/art`, blob, { 'x-file-name': asciiName(fileName) });
-export const uploadPrintFile = (artId: string, blob: Blob) => rawUpload<{ printFileId: string; url: string; width: number; height: number }>(`${B}/print-file`, blob, { 'x-art-id': artId });
+export const uploadPrintFile = (artId: string, blob: Blob) => rawUpload<{ printFileId: string; /** [HF-MERCH-ART-REUSE-1] the design to use from now on */ artId?: string; forkedFrom?: string | null; url: string; width: number; height: number }>(`${B}/print-file`, blob, { 'x-art-id': artId });
 export const uploadMockup = (blob: Blob) => rawUpload<{ url: string }>(`${B}/mockup`, blob);
 
 /* ── [HF-MERCH-STUDIO-2] AI pictures + background remover (worker routes/hf_merch.ts, Specs/SPEC-2026-10-23-HF-MERCH-STUDIO-2.md §3) ── */

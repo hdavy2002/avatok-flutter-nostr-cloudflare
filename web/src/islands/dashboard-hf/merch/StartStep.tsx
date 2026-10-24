@@ -46,6 +46,14 @@ function Choices({ ai, up, onAi, compact }: { ai: AiInfo | null; up: ReturnType<
   </div>;
 }
 
+/** [HF-MERCH-ART-REUSE-1] A tray picture: falls back from the local copy to the public file; an earlier AI picture that cannot load at all is dropped, not shown blank. */
+function TileImg({ a, onDead }: { a: StudioArt; onDead: () => void }) {
+  const [useUrl, setUseUrl] = useState(false);
+  const src = useUrl ? a.url : artSrc(a);
+  return <img src={src} alt={a.label || 'Your picture'} draggable={false}
+    onError={() => { if (!useUrl && a.localUrl && a.url) setUseUrl(true); else onDead(); }} />;
+}
+
 export default function StartStep({ arts, sel, setSel, remove, addArt, ai, openAi, own, setOwn, needOwn, onNext }: {
   arts: StudioArt[]; sel: string[]; setSel: (s: string[]) => void; remove: (id: string) => void; addArt: (a: StudioArt) => void;
   ai: AiInfo | null; openAi: () => void; own: boolean; setOwn: (v: boolean) => void; needOwn: boolean; onNext: () => void;
@@ -59,7 +67,7 @@ export default function StartStep({ arts, sel, setSel, remove, addArt, ai, openA
     const on = sel.includes(a.artId);
     return <li key={a.artId} className={`mc-tile${on ? ' on' : ''}`}>
       <button type="button" className="pic" aria-pressed={on} aria-label={`${on ? 'Unselect' : 'Use'} ${a.label || 'picture'}`} onClick={() => tog(a.artId)}>
-        <img src={artSrc(a)} alt={a.label || 'Your picture'} draggable={false} />
+        <TileImg a={a} onDead={() => { if (a.label === EARLIER) remove(a.artId); }} />
         {on && <span className="tick" aria-hidden="true"><Ic name="shield" className="" size={20} /></span>}
         {a.source === 'ai' && <span className="tag">AI</span>}
       </button>

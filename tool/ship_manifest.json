@@ -12024,5 +12024,14 @@
         "note": "An influencer deleted an earlier AI picture and the server marked it deleted."
       }
     ]
+  },
+  "HF-MERCH-ART-REUSE-1": {
+    "description": "[HF-MERCH-ART-REUSE-1 2026-10-24] Merch studio: a picture already on a product (even a deleted one) can go on a new product. On 'Looks good' the server copies the used design into a new draft row (same art, checks and moderation; no print file; not on a product) and returns its id, which the web wizard and the app studio use for the product (the app change needs a build; create-product also accepts an older client's picture id + copy print file pair). The used row and its print file never change. 'Earlier AI pictures' lists only real AI pictures with art bytes, a size and a preview, one tile per picture; a tile that cannot load is dropped; 'Make another' keeps the earlier AI pictures.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "merch_art_forked (design_id, from_design_id) fires on each copy; merch_studio_step step=print_file carries forked_from. Verified by making a product from an earlier AI picture that was already used, and reading studio_designs (new row with art_checks_json.forked_from)."
   }
 }

@@ -122,7 +122,8 @@ async function printFileRoute(req: Request, env: Env, s: SellerCtx): Promise<Res
   const bytes = await readBytes(req, 15 * 1024 * 1024);
   if (!bytes) return bad(413, "too_large", "The print file must be 15 MB or smaller.");
   const r = await saveMerchPrintFile(env, s.uid, artId, bytes);
-  return r.ok ? out({ printFileId: r.printFileId, url: r.url, width: r.width, height: r.height }) : failOf(r);
+  // [HF-MERCH-ART-REUSE-1] artId is the design the client must use from now on (a fresh copy when the art was already on a product).
+  return r.ok ? out({ printFileId: r.printFileId, artId: r.printFileId, forkedFrom: r.forkedFrom ?? null, url: r.url, width: r.width, height: r.height }) : failOf(r);
 }
 async function mockupRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
   const limited = await rateLimit(env, `merch:mockup:${s.uid}`, 60, 3600); if (limited) return limited;

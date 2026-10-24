@@ -48,7 +48,9 @@ export default function Wizard({ info, minMarkup, onClose, onPublished, onSaved 
       setAi(r.data);
       setArts(prev => {
         const have = new Set(prev.map(a => a.artId));
-        const more = (r.data.recent ?? []).filter(g => !have.has(g.artId)).map((g): StudioArt => ({
+        // [HF-MERCH-ART-REUSE-1] One tile per picture, and only pictures that can be shown.
+        const usable = (r.data.recent ?? []).filter(g => /^dsn-[a-f0-9]{8}$/.test(g.artId) && /^https?:\/\//.test(g.url) && g.width > 0 && g.height > 0 && !have.has(g.artId) && (have.add(g.artId), true));
+        const more = usable.map((g): StudioArt => ({
           artId: g.artId, url: g.url, width: g.width, height: g.height, checks: { ok: true, dpiAtFullWidth: 0, warnings: [] }, source: 'ai', label: EARLIER,
         }));
         return more.length ? [...prev, ...more] : prev;
@@ -110,7 +112,9 @@ export default function Wizard({ info, minMarkup, onClose, onPublished, onSaved 
   const goTo = (i: number) => { if (i < step) setStep(i); };
   const again = () => { // "Make another": start clean, keep the AI info
     for (const a of arts) if (a.localUrl) URL.revokeObjectURL(a.localUrl);
-    setPlaced(null); setArts(a => a.filter(x => x.label === EARLIER && !x.localUrl)); setSel([]); setOwn(false); setItem(null); setColoursState([]); setSizes([]); setSideState('front'); setLayers([]); setStep(0); setDone(null);
+    // [HF-MERCH-ART-REUSE-1] Keep the earlier AI pictures (fetched again, the old local copies are freed) so the same art can go on another product.
+    fetching.current.clear();
+    setPlaced(null); setArts(a => a.filter(x => x.label === EARLIER).map(x => ({ ...x, localUrl: undefined }))); setSel([]); setOwn(false); setItem(null); setColoursState([]); setSizes([]); setSideState('front'); setLayers([]); setStep(0); setDone(null);
   };
 
   if (done) return <div className="mc-wiz" ref={topRef}><div className="mc-done">

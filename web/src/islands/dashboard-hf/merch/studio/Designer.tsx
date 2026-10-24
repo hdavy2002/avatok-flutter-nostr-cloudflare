@@ -41,6 +41,9 @@ function useWide(el: RefObject<HTMLDivElement | null>): boolean {
   return wide;
 }
 
+/** [HF-MERCH-ART-REUSE-1] Picture id -> the copy the server made when that picture was already on a product. Saving the design again reuses the copy. */
+const reuseCopy = new Map<string, string>();
+
 export default function Designer(props: DesignerProps) {
   const { item, side, colours, arts } = props;
   const family = useMemo(() => familyOf(item), [item]);
@@ -294,7 +297,8 @@ export default function Designer(props: DesignerProps) {
       const out = await exportDesign({ layers: snapshot, areaIn, arts });
       if (!liveRef.current) return;
       setBusy('Saving…');
-      let artId = snapshot.find((l): l is ImageLayer => l.type === 'image' && l.visible)?.artId ?? '';
+      const firstArt = snapshot.find((l): l is ImageLayer => l.type === 'image' && l.visible)?.artId ?? '';
+      let artId = firstArt ? (reuseCopy.get(firstArt) ?? firstArt) : '';
       if (!artId) {
         const up = await uploadArt(out.blob, 'text-design.png');
         if (!up.ok) { setProblem(up.message || 'Could not save your design.'); if (up.status >= 500 || up.status === 0) captureException(new Error(`merch_composite_${up.status}_${up.code}`), { area: 'hf_merch_creator', step: STEP }); setBusy(null); return; }
@@ -317,7 +321,10 @@ export default function Designer(props: DesignerProps) {
       }
       if (!liveRef.current) return;
       capture('merch_studio_step', { step: 'design_export_ok', dpi: out.dpi, mockups: urls.length, scaled_down: out.scaledDown });
-      propsRef.current.onDone({ artId, printFileId: pf.data.printFileId, wIn, hIn, leftIn: left, topIn: top, dpi: out.dpi, mockupUrls: urls, previewUrl: URL.createObjectURL(out.preview), layers: snapshot });
+      // [HF-MERCH-ART-REUSE-1] Art already on a product comes back as a fresh copy: the product must use that copy's id.
+      const usedId = pf.data.artId || pf.data.printFileId;
+      if (firstArt && usedId !== firstArt) reuseCopy.set(firstArt, usedId);
+      propsRef.current.onDone({ artId: usedId, printFileId: pf.data.printFileId, wIn, hIn, leftIn: left, topIn: top, dpi: out.dpi, mockupUrls: urls, previewUrl: URL.createObjectURL(out.preview), layers: snapshot });
     } catch (e) {
       captureException(e, { area: 'hf_merch_creator', step: STEP });
       setProblem(e instanceof ExportError ? e.message : e instanceof Error && e.message ? e.message : 'Could not make the print file. Please try again.');
