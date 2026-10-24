@@ -100,9 +100,9 @@ void main() {
       expect(p.nextCursor, 'abc');
       expect(p.likedByMe, isTrue);
       expect(p.comments!.total, 9);
-      expect(p.items[0].sourceLabel, 'YouTube');
+      expect(p.items[0].source, 'youtube');
       expect(p.items[0].likeCount, 4);
-      expect(p.items[1].sourceLabel, isNull);
+      expect(p.items[1].isOurs, isTrue);
       expect(p.items[1].mine, isTrue);
       expect(p.items[1].replies.single.parentId, 'hfrc_1');
     });

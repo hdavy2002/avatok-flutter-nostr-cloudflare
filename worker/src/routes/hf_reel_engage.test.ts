@@ -56,9 +56,9 @@ function makeEnv() {
 }
 
 let n = 0;
-function host(uid: string) {
+function host(uid: string, providerRef: string | null = "youtube-oauth") {
   db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, price_per_min, presence) VALUES (?,?,?,?,?,?)").run(uid, "slug-" + uid, "approved", "Name " + uid, 12, "online");
-  db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at) VALUES (?,?,?,?,?,?,?,?)").run("hfch_" + uid, uid, "youtube", "@" + uid, 100, "approved", 1, 1);
+  db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, provider_ref) VALUES (?,?,?,?,?,?,?,?,?)").run("hfch_" + uid, uid, "youtube", "@" + uid, 100, "approved", 1, 1, providerRef);
 }
 function reel(id: string, uid: string, o: any = {}) {
   db.prepare("INSERT INTO hf_reels (id, host_uid, channel_id, platform, platform_video_id, embed_url, caption, likes, comments, visible, is_demo, published_at, imported_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
@@ -274,14 +274,6 @@ describe("YouTube comments (read only)", () => {
     expect(db.prepare("SELECT id, body FROM hf_reel_ext_comments ORDER BY id").all()).toEqual([{ id: "youtube:Ugx11111111", body: "edited" }, { id: "youtube:Ugx33333333", body: "c" }]);
     expect(calls.some((u) => u.includes("commentThreads"))).toBe(false); // never pulls new ones
   });
-  it("[ONCE] Instagram stops paying once it has enough", async () => {
-    env.TREG_API_KEY = "t";
-    let calls = 0;
-    const f = async () => { calls++; return new Response(JSON.stringify({ comments: Array.from({ length: 15 }, (_, i) => ({ id: String(2000000000 + calls * 100 + i), text: "x" + i, user: { username: "u" } })), cursor: "more" }), { status: 200 }); };
-    const r = await refreshExtComments(env, R1, "DOq6eV6iIgD", f as any, "instagram", 20);
-    expect(calls).toBe(2);
-    expect(r.count).toBe(20);
-  });
   it("[PREFETCH] video ids come from the stored links", () => {
     expect(videoIdOf("youtube", "https://www.youtube.com/watch?v=abcDEF12345")).toBe("abcDEF12345");
     expect(videoIdOf("youtube", "https://youtu.be/abcDEF12345")).toBe("abcDEF12345");
@@ -308,28 +300,69 @@ describe("YouTube comments (read only)", () => {
     expect(r.ok).toBe(false);
     expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments").get().c).toBe(1);
   });
-  it("Instagram: comments come through treg (2 pages), tagged instagram, and can be replied to", async () => {
-    env.TREG_API_KEY = "t";
+  it("[LOGIN-P1] Instagram comments are never imported through treg, not even for a login channel", async () => {
+    env.TREG_API_KEY = "t"; env.YOUTUBE_API_KEY = "k";
+    db.prepare("INSERT INTO hf_reels (id, host_uid, channel_id, platform, platform_video_id, embed_url, caption, likes, comments, visible, is_demo, published_at, imported_at) VALUES ('hfrl_igreel0001','h1','hfch_h1','instagram','DOq6eV6iIgD','https://e/ig','c',1,1,1,0,?,1)").run(Date.now() - 1000);
+    const orig = globalThis.fetch;
     const urls: string[] = [];
-    const f = async (url: string) => {
-      urls.push(url);
-      const page2 = url.includes("cursor=");
-      const comments = page2 ? [{ id: "1000000002", text: "second page", comment_like_count: 1, created_at: "2026-10-21T10:00:00Z", user: { username: "b.user" } }]
-        : [{ id: "1000000001", text: "so cute", comment_like_count: 7, created_at: "2026-10-20T10:00:00Z", user: { username: "a_user" } }];
-      return new Response(JSON.stringify({ success: true, comments, cursor: page2 ? null : "abc" }), { status: 200 });
-    };
-    const r = await refreshExtComments(env, R1, "DOq6eV6iIgD", f as any, "instagram");
-    expect(r.ok).toBe(true);
-    expect(r.count).toBe(2);
-    expect(urls[0]).toContain("scrapecreators.instagram.post.comments");
-    expect(urls[0]).toContain(encodeURIComponent("https://www.instagram.com/reel/DOq6eV6iIgD/"));
-    kv.set(`hfx:done:${R1}`, "1");
-    const j = await body(await route(`/api/hf/reels/${R1}/comments`));
-    const ig = j.items.filter((i: any) => i.source === "instagram");
-    expect(ig.map((i: any) => i.author.name)).toEqual(["@a_user", "@b.user"]);
-    const rep = await comment("agreed", "u1", { parentId: "instagram:1000000001" });
-    expect(rep.item.parentId).toBe("instagram:1000000001");
-    expect((await post(`/api/hf/reels/comments/instagram:1000000002/report`, { reason: "spam" }, "r1")).status).toBe(200);
+    globalThis.fetch = vi.fn(async (u: any) => { urls.push(String(u)); return new Response(JSON.stringify({ items: [] }), { status: 200 }); }) as any;
+    try {
+      await route("/api/hf/reels/hfrl_igreel0001/comments");
+      expect(await prefetchFeedComments(env, cfg, [{ id: "hfrl_igreel0001", platform: "instagram", url: "https://www.instagram.com/reel/DOq6eV6iIgD/" }])).toBe(0);
+      await refreshRecentReelComments(env, cfg);
+      expect(urls.some((u) => u.includes("treg.to") || u.includes("instagram"))).toBe(false);
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id='hfrl_igreel0001'").get().c).toBe(0);
+    } finally { globalThis.fetch = orig; }
+  });
+  it("[LOGIN-P1] a bio-code channel's reel gets no import; a login (-oauth) channel's reel does", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    host("h2", "bio-code"); reel("hfrl_biocode001", "h2");
+    host("h3", null); reel("hfrl_nullref0001", "h3");
+    const orig = globalThis.fetch;
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (u: any) => { urls.push(String(u)); return new Response(JSON.stringify({ items: [thread("Ugx55555555", "hi")] }), { status: 200 }); }) as any;
+    try {
+      await route("/api/hf/reels/hfrl_biocode001/comments");
+      await route("/api/hf/reels/hfrl_nullref0001/comments");
+      expect(urls).toHaveLength(0);
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id IN ('hfrl_biocode001','hfrl_nullref0001')").get().c).toBe(0);
+      await route(`/api/hf/reels/${R1}/comments`);
+      expect(urls).toHaveLength(1);
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id=?").get(R1).c).toBe(1);
+    } finally { globalThis.fetch = orig; }
+  });
+  it("[LOGIN-P1] demo reels (no channel, is_demo=1) still import", async () => {
+    env.YOUTUBE_API_KEY = "k";
+    db.prepare("INSERT INTO hf_reels (id, host_uid, channel_id, platform, platform_video_id, embed_url, caption, likes, comments, visible, is_demo, published_at, imported_at) VALUES ('hfrl_demoreel001','h1',NULL,'youtube','demovid1234','https://e/d','c',1,1,1,1,?,1)").run(Date.now() - 1000);
+    const orig = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ items: [thread("Ugx66666666", "demo")] }), { status: 200 })) as any;
+    try {
+      await route("/api/hf/reels/hfrl_demoreel001/comments");
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id='hfrl_demoreel001'").get().c).toBe(1);
+    } finally { globalThis.fetch = orig; }
+  });
+  it("[LOGIN-P1] invite reels: YouTube imports with hfInviteYoutubeComments on (default), none with it off; Instagram never; prefetch follows the same gate", async () => {
+    env.YOUTUBE_API_KEY = "k"; env.TREG_API_KEY = "t";
+    db.prepare("INSERT INTO hf_invite_creators (platform, handle, display_name, followers, hidden, last_lookup_at, created_at) VALUES ('youtube','zed','Zed',10,0,1,1), ('instagram','ina','Ina',10,0,1,1)").run();
+    const ins = (id: string, plat: string, vid: string) => db.prepare("INSERT INTO hf_invite_reels (id, platform, handle, platform_video_id, embed_url, likes, comments, views, published_at, fetched_at) VALUES (?,?,?,?,?,1,1,0,?,?)").run(id, plat, plat === "youtube" ? "zed" : "ina", vid, "https://e/" + id, Date.now() - 1000, Date.now() - 1000);
+    ins("hfiv_ytinvite001", "youtube", "zvid1234567"); ins("hfiv_ytinvite002", "youtube", "zvid7654321"); ins("hfiv_iginvite001", "instagram", "DOq6eV6iIgD");
+    const orig = globalThis.fetch;
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (u: any) => { urls.push(String(u)); return new Response(JSON.stringify({ items: [thread("Ugx" + (10000000 + urls.length), "inv")] }), { status: 200 }); }) as any;
+    try {
+      await route("/api/hf/reels/hfiv_ytinvite001/comments");
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id='hfiv_ytinvite001'").get().c).toBe(1);
+      await route("/api/hf/reels/hfiv_iginvite001/comments");
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id='hfiv_iginvite001'").get().c).toBe(0);
+      expect(urls.some((u) => u.includes("treg.to"))).toBe(false);
+      cfg.hfInviteYoutubeComments = false;
+      await route("/api/hf/reels/hfiv_ytinvite002/comments");
+      expect(await prefetchFeedComments(env, cfg, [{ id: "hfiv_ytinvite002", platform: "youtube", url: "https://www.youtube.com/watch?v=zvid7654321" }])).toBe(0);
+      await refreshRecentReelComments(env, cfg);
+      expect(db.prepare("SELECT COUNT(*) AS c FROM hf_reel_ext_comments WHERE reel_id='hfiv_ytinvite002'").get().c).toBe(0);
+      cfg.hfInviteYoutubeComments = true;
+      expect(await prefetchFeedComments(env, cfg, [{ id: "hfiv_ytinvite002", platform: "youtube", url: "https://www.youtube.com/watch?v=zvid7654321" }])).toBe(1);
+    } finally { globalThis.fetch = orig; }
   });
   it("an imported comment reported by enough users is hidden; replying to one stays ours", async () => {
     env.YOUTUBE_API_KEY = "k";

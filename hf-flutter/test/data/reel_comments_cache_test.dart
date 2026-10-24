@@ -28,7 +28,7 @@ void main() {
     final p = (await fresh.read('hfrl_1'))!;
     expect(p.items.single.body, 'hello');
     expect(p.items.single.replies.single.parentId, 'x');
-    expect(p.items.single.sourceLabel, 'YouTube');
+    expect(p.items.single.source, 'youtube');
     expect(p.nextCursor, 'next1');
     expect(p.comments!.total, 5);
     expect(p.likes!.ours, 1);

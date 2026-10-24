@@ -508,7 +508,6 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
   }
 
   Widget _row(ReelComment c) {
-    final label = c.sourceLabel;
     final ago = commentTimeAgo(c.createdAt);
     return Padding(
       key: ValueKey('comment-${c.id}'),
@@ -533,12 +532,6 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(c.mine ? 'You' : c.authorName, style: t(14)),
-                    if (label != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: C.lavtint, borderRadius: BorderRadius.circular(10)),
-                        child: Text(label, style: t(14, color: C.maroon, w: FontWeight.w700)),
-                      ),
                     if (ago.isNotEmpty) Text(ago, style: t(14, color: C.muted, w: FontWeight.w600)),
                   ],
                 ),

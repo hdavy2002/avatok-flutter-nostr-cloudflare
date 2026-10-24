@@ -199,7 +199,7 @@ void main() {
     expect(find.text('34 comments'), findsOneWidget);
   });
 
-  testWidgets('existing comments show the source chip only for YouTube, with a Delete menu on mine', (tester) async {
+  testWidgets('imported comments carry no source chip (HF-REEL-60) and look like ours, with a Delete menu on mine', (tester) async {
     final repo = _Repo()
       ..existing.addAll([
         const ReelComment(id: 'yt:1', source: 'youtube', authorName: 'Ravi', body: 'From YouTube'),
@@ -209,7 +209,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('reel-comment')));
     await _settle(tester);
     expect(find.text('From YouTube'), findsOneWidget);
-    expect(find.text('YouTube'), findsOneWidget);
+    expect(find.text('YouTube'), findsNothing);
+    expect(find.text('Instagram'), findsNothing);
+    expect(find.text('Ravi'), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-yt:1')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('more-hfrc_7')));
     await _settle(tester);
     expect(find.text('Delete'), findsOneWidget);

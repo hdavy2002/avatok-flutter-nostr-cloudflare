@@ -18,7 +18,7 @@ import { isAdminUid } from "../lib/preview";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { obviousSexualPrompt } from "../lib/hf_merch_ai";
 import { optionalUid, visibleReel } from "./hf_reels";
-import { canPullComments, engageOn, extImportDone, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
+import { canPullComments, engageOn, importAllowed, extImportDone, hideAtOf, maxLenOf, recountStmt, refreshExtComments, split, ourCounts } from "../lib/hf_reel_engage";
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -95,8 +95,8 @@ export async function hfReelEngageRoute(req: Request, env: Env, p: string, ctx?:
       // Stale-while-revalidate: show what we have, refresh YouTube in the background (older than 6 h or never pulled).
       // [HF-REEL-COMMENTS-ONCE-1] The reel's platform comments are imported ONCE (a random 18-30), the first time its sheet opens (or by the
       // daily cron for new reels). We wait for it so the sheet opens with them; after that we never call YouTube / treg for this reel again.
-      if (!cursor && (reel.platform === "youtube" || reel.platform === "instagram") && canPullComments(env, reel.platform) && !(await extImportDone(env, id))) {
-        await refreshExtComments(env, id, reel.videoId, fetch, reel.platform);
+      if (!cursor && reel.platform === "youtube" && canPullComments(env, reel.platform) && (await importAllowed(env, cfg, id, reel.platform)) && !(await extImportDone(env, id))) { // [HF-CHANNEL-LOGIN-P1]
+        await refreshExtComments(env, id, reel.videoId, fetch, "youtube");
       }
       const items: any[] = [];
       let nextCursor: string | null = null;

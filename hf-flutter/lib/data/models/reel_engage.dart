@@ -42,12 +42,7 @@ class ReelComment {
 
   bool get isOurs => source == 'ours';
 
-  /// "YouTube" / "Instagram" for the small chip; null for ours (no chip).
-  String? get sourceLabel => source == 'youtube'
-      ? 'YouTube'
-      : source == 'instagram'
-      ? 'Instagram'
-      : null;
+  // [HF-CHANNEL-LOGIN-P1] (HF-REEL-60) imported comments carry no source label: they render like our users' comments.
 
   Map<String, dynamic> toJson() => {
     'id': id,

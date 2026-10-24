@@ -12311,5 +12311,23 @@
         "min_events": 1
       }
     ]
+  },
+  "HF-CHANNEL-LOGIN-P1": {
+    "description": "Channel-login phase 1: platform comments imported only via official APIs for login-connected channels, demo and YouTube invite reels (hfInviteYoutubeComments); treg Instagram import removed; source chip removed from the app.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled",
+      "hfInviteYoutubeComments"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_ext_comments_fetch",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Official-API YouTube import still works."
+      }
+    ]
   }
 }
