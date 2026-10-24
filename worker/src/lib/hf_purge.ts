@@ -181,6 +181,33 @@ export async function purgeHfUser(env: HfPurgeEnv, uid: string, opts: HfPurgeOpt
     } catch (e) { res.errors.push(`avatars:${String(e).slice(0, 120)}`); }
   }
 
+  // 2b. [HF-REEL-ENGAGE-API-1] Likes, comments and reports written by the account. Reels they liked / commented on are re-counted so the
+  //     public numbers drop with them. Imported YouTube comments are third-party data and are not tied to the account.
+  if (scope === "full") {
+    try {
+      const touched = new Set<string>();
+      for (const t of ["hf_reel_likes", "hf_reel_comments"]) {
+        const cols = await tableColumns(env.DB_META, t, opts.colsCache);
+        if (!cols.includes("uid")) { res.skipped.push(`${t}_absent`); continue; }
+        for (const r of (await env.DB_META.prepare(`SELECT DISTINCT reel_id FROM ${t} WHERE uid=?1`).bind(uid).all<{ reel_id: string }>()).results ?? []) touched.add(r.reel_id);
+      }
+      for (const t of ["hf_reel_likes", "hf_reel_comment_reports", "hf_reel_comments"]) {
+        const sql = buildDeleteSql(t, await tableColumns(env.DB_META, t, opts.colsCache), ["uid"]);
+        if (!sql) { if (t !== "hf_reel_likes" && t !== "hf_reel_comments") res.skipped.push(`${t}_absent`); continue; }
+        const r = await env.DB_META.prepare(sql).bind(uid).run();
+        res.counts[t] = Number(r.meta?.changes ?? 0);
+      }
+      const now = Date.now();
+      for (const reelId of touched) {
+        await env.DB_META.prepare(
+          `INSERT INTO hf_reel_counts (reel_id, likes, comments, updated_at)
+           VALUES (?1, (SELECT COUNT(*) FROM hf_reel_likes WHERE reel_id=?1), (SELECT COUNT(*) FROM hf_reel_comments WHERE reel_id=?1 AND status='visible'), ?2)
+           ON CONFLICT(reel_id) DO UPDATE SET likes=excluded.likes, comments=excluded.comments, updated_at=excluded.updated_at`,
+        ).bind(reelId, now).run();
+      }
+    } catch (e) { res.errors.push(`hf_reel_engage:${String(e).slice(0, 120)}`); }
+  }
+
   // 3. Rows. Anchors last, and only when R2 is clean.
   const specs = hfPurgeTables(scope, !!opts.includeSafetyRecords);
   for (const spec of [...specs.filter((s) => !s.anchor), ...specs.filter((s) => s.anchor)]) {

@@ -28,6 +28,7 @@ import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
+import { enrichItems } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -149,18 +150,41 @@ async function inviteItems(env: Env, offset: number, take: number, ids?: string[
 }
 
 /** Resolve saved IDs against current visibility; never persist a stale snapshot of a creator. */
-export async function savedReelItems(env: Env, ids: string[], cfg: Record<string, unknown>): Promise<unknown[]> {
+export async function savedReelItems(env: Env, ids: string[], cfg: Record<string, unknown>, uid?: string | null): Promise<unknown[]> {
   if (!ids.length || cfg.hfReelsEnabled !== true) return [];
   const network = ids.filter((id) => REEL_ID.test(id));
   const invites = ids.filter((id) => /^hfiv_[a-z0-9]{8,40}$/.test(id));
   const rows = network.length ? (await env.DB_META.prepare(
     `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.id IN (${network.map((_, i) => `?${i + 1}`).join(",")}) AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false, unplayableHideAt(cfg))}`,
   ).bind(...network).all<FeedRow>()).results ?? [] : [];
-  return [...await toItems(env, rows, cfg), ...(invites.length && inviteReelsOn(cfg) ? (await inviteItems(env, 0, invites.length, invites, unplayableHideAt(cfg))).items : [])];
+  const out = [...await toItems(env, rows, cfg), ...(invites.length && inviteReelsOn(cfg) ? (await inviteItems(env, 0, invites.length, invites, unplayableHideAt(cfg))).items : [])];
+  await enrichItems(env, cfg, out, uid); // [HF-REEL-ENGAGE-API-1] likeCounts / commentCounts / likedByMe (flag hfReelEngageEnabled)
+  return out;
+}
+
+/** [HF-REEL-ENGAGE-API-1] The signed-in uid when a valid bearer is sent, else null (never fails the request). */
+export async function optionalUid(req: Request, env: Env): Promise<string | null> {
+  if (!req.headers.get("authorization")) return null;
+  try { const u = await requireUser(req, env); return isFail(u) ? null : u.uid; } catch { return null; }
+}
+
+/** [HF-REEL-ENGAGE-API-1] One publicly visible reel (same rules as the feed) with the platform numbers and the id the platform knows it by, or null. */
+export async function visibleReel(env: Env, cfg: Record<string, unknown>, id: string): Promise<{ id: string; platform: string; videoId: string; likes: number; comments: number; publishedAt: number | null } | null> {
+  const hideAt = unplayableHideAt(cfg);
+  if (REEL_ID.test(id)) {
+    const r = await env.DB_META.prepare(`SELECT r.platform, r.platform_video_id, r.likes, r.comments, r.published_at ${FROM} WHERE r.id=?1 AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false, hideAt)}`).bind(id).first<{ platform: string; platform_video_id: string; likes: number; comments: number; published_at: number | null }>();
+    return r ? { id, platform: r.platform, videoId: r.platform_video_id, likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), publishedAt: r.published_at ?? null } : null;
+  }
+  if (/^hfiv_[a-z0-9]{8,40}$/.test(id) && inviteReelsOn(cfg)) {
+    if (!(await inviteItems(env, 0, 1, [id], hideAt)).items.length) return null;
+    const r = await env.DB_META.prepare("SELECT platform, platform_video_id, likes, comments, published_at FROM hf_invite_reels WHERE id=?1").bind(id).first<{ platform: string; platform_video_id: string; likes: number; comments: number; published_at: number | null }>();
+    return r ? { id, platform: r.platform, videoId: r.platform_video_id, likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), publishedAt: r.published_at ?? null } : null;
+  }
+  return null;
 }
 
 /** Visible reels of one host for the public profile (GET /api/hosts/public/:slug). Returns null when the flag is off or the tables are missing. */
-export async function profileReels(env: Env, hostUid: string, cfg: Record<string, unknown>): Promise<{ reels: unknown[]; followers: number; handle: string | null } | null> {
+export async function profileReels(env: Env, hostUid: string, cfg: Record<string, unknown>, uid?: string | null): Promise<{ reels: unknown[]; followers: number; handle: string | null } | null> {
   if (cfg.hfReelsEnabled !== true) return null;
   try {
     const demoVisible = cfg.hfDemoInfluencersVisible !== false;
@@ -168,6 +192,7 @@ export async function profileReels(env: Env, hostUid: string, cfg: Record<string
       `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.host_uid=?1 AND ${publicWhere(demoVisible, unplayableHideAt(cfg))} ORDER BY ts DESC, r.id DESC LIMIT 60`,
     ).bind(hostUid).all<FeedRow>()).results ?? [];
     const items = await toItems(env, rows, cfg);
+    await enrichItems(env, cfg, items, uid); // [HF-REEL-ENGAGE-API-1]
     const f = (await hostFacts(env, [hostUid])).get(hostUid);
     return { reels: items.map(({ host: _h, ...rest }) => rest), followers: f?.followers ?? 0, handle: at(f?.handle ?? null) };
   } catch {
@@ -260,9 +285,9 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
 
     // ── GET one reel (deep link) ───────────────────────────────────────────────────────────────────────────────
     if (id) {
-      const item = (await savedReelItems(env, [id], cfg))[0];
+      const item = (await savedReelItems(env, [id], cfg, await optionalUid(req, env)))[0];
       if (!item) return err(404, "not_found", "That video is not available any more.");
-      return json({ ok: true, item }, 200, FEED_CACHE);
+      return json({ ok: true, item }, 200, cfg.hfReelEngageEnabled === true ? NO_STORE : FEED_CACHE); // likedByMe is per user
     }
 
     // ── GET feed ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -295,7 +320,9 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
       items = items.concat(r.items);
       if (r.more) nextCursor = `i:${invOffset + r.items.length}`;
     }
-    return json({ ok: true, items, nextCursor }, 200, FEED_CACHE);
+    const engage = cfg.hfReelEngageEnabled === true;
+    if (engage) await enrichItems(env, cfg, items as any[], await optionalUid(req, env)); // [HF-REEL-ENGAGE-API-1]
+    return json({ ok: true, items, nextCursor }, 200, engage ? { "cache-control": "private, no-store" } : FEED_CACHE); // per-user likedByMe: never shared-cached
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_reels" } });
     return err(500, "internal_error", "Something went wrong. Please try again.");

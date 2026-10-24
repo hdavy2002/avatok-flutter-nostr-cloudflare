@@ -22,7 +22,7 @@ export async function hfReelBookmarksRoute(req: Request, env: Env, path: string)
     const rows = (await env.DB_META.prepare("SELECT reel_id FROM hf_reel_bookmarks WHERE uid=?1 ORDER BY created_at DESC, reel_id LIMIT 500").bind(uid).all<{ reel_id: string }>()).results ?? [];
     // Keep each SQL statement below D1's bind limit.
     const items: unknown[] = [];
-    for (let i = 0; i < rows.length; i += 50) items.push(...await savedReelItems(env, rows.slice(i, i + 50).map(r => r.reel_id), cfg));
+    for (let i = 0; i < rows.length; i += 50) items.push(...await savedReelItems(env, rows.slice(i, i + 50).map(r => r.reel_id), cfg, uid)); // [HF-REEL-ENGAGE-API-1] likedByMe
     const positions = new Map(rows.map((r, i) => [r.reel_id, i]));
     items.sort((a: any, b: any) => (positions.get(a.id) ?? 0) - (positions.get(b.id) ?? 0));
     return json({ ok: true, items }, 200, headers);

@@ -28,6 +28,7 @@ import { goLiveFacts, canGoLive } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES
 import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
+import { refreshRecentReelComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 import {
   lookupChannel, makeVerifyCode, bioHasCode, ProviderError, youtubeOwnChannel, type ChannelLookup, type ChannelPlatform,
 } from "../lib/hf_channel_providers";
@@ -424,6 +425,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
     }
   }
   try { await refreshDemoReels(env); } catch { /* demo details refresh is best effort */ } // [HF-WIRE-14]
+  try { await refreshRecentReelComments(env, cfg as unknown as Record<string, unknown>); } catch { /* YouTube comments refresh + 30-day purge are best effort */ } // [HF-REEL-ENGAGE-API-1]
   for (const uid of hosts) {
     try {
       const before = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();

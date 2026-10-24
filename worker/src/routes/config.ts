@@ -2211,6 +2211,9 @@ export interface PlatformConfig {
   hfInviteReelsEnabled: boolean; // [HF-WIRE-22] HF-REEL-40: reels of creators not on the network appear after network reels in the feed, with an Invite button. Default true.
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
   hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 50 (HF-WIRE-14), max 200
+  hfReelEngageEnabled: boolean; // [HF-REEL-ENGAGE-API-1] HF-REEL-53: likes + comments on every reel (routes /api/hf/reels/:id/like|comments, feed likeCounts/commentCounts/likedByMe). Default false.
+  hfReelCommentHideAt: number; // [HF-REEL-ENGAGE-API-1] NUMERIC (numericKeys): reports from different users that hide a comment. Default 3.
+  hfReelCommentMaxLen: number; // [HF-REEL-ENGAGE-API-1] NUMERIC (numericKeys): longest comment in characters. Default 500.
   hfReelUnplayableHideAt: number; // [HF-REEL-SKIP-2] NUMERIC (numericKeys): distinct phones that must report a reel as unplayable inside the app before it is hidden from everyone (30 days). 0 = never hide. Default 2.
   hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 20 [HF-CREATOR-SPACES-1]
   hfInfluencerMinViews: number; // [HF-CREATOR-SPACES-1] NUMERIC (numericKeys): total channel views needed on a YouTube channel (Instagram has no total views); default 1000
@@ -3014,6 +3017,9 @@ const DEFAULTS: PlatformConfig = {
   hfInviteReelsEnabled: true, // [HF-WIRE-22]
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
+  hfReelEngageEnabled: false, // [HF-REEL-ENGAGE-API-1] stays off until migration 2026-10-24-hf-reel-engage.sql is applied
+  hfReelCommentHideAt: 3, // [HF-REEL-ENGAGE-API-1]
+  hfReelCommentMaxLen: 500, // [HF-REEL-ENGAGE-API-1]
   hfReelUnplayableHideAt: 2, // [HF-REEL-SKIP-2] owner 2026-10-22: unplayable reels leave the feed for everyone
   hfInfluencerMinFollowers: 20, // [HF-WIRE-1B] owner 2026-10-19; raised 10 -> 20 by [HF-CREATOR-SPACES-1] 2026-10-24
   hfInfluencerMinViews: 1000, // [HF-CREATOR-SPACES-1] owner 2026-10-24: >= 1,000 total views on a YouTube channel
@@ -3260,7 +3266,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", /* [HF-CALL-MODES-P0] */ "hfCallChunkMinutes", "hfCallMaxMinutes", "hfQueueMaxLength", "hfQueueBreakSeconds", "hfQueueMaxWaitMinutes", "hfQueuePauseExpireMinutes", "hfBookingHoldMinutes", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfInfluencerMinViews", /* [HF-CREATOR-SPACES-1] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", /* [HF-CALL-MODES-P0] */ "hfCallChunkMinutes", "hfCallMaxMinutes", "hfQueueMaxLength", "hfQueueBreakSeconds", "hfQueueMaxWaitMinutes", "hfQueuePauseExpireMinutes", "hfBookingHoldMinutes", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfInfluencerMinViews", /* [HF-CREATOR-SPACES-1] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelCommentHideAt", "hfReelCommentMaxLen", /* [HF-REEL-ENGAGE-API-1] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",

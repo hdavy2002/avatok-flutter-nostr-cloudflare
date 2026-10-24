@@ -12208,5 +12208,34 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Navigation row only; the screen already emits its own events."
+  },
+  "HF-REEL-ENGAGE-API-1": {
+    "description": "Likes and comments on every reel: like/unlike, comment sheet API (paged, replies, report, delete), platform + our counts on feed items, YouTube comment pull (on open if older than 6 h, daily for the last 7 days, 30-day purge). Flag-gated, off by default.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled",
+      "hfReelCommentHideAt",
+      "hfReelCommentMaxLen"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_comment_sent",
+        "property": "is_reply",
+        "in": [
+          true,
+          false
+        ],
+        "min_events": 1,
+        "note": "A comment was stored and counted. Proof of the app UI needs the app lane's own check; this does not assert deployment."
+      },
+      {
+        "event": "hf_reel_ext_comments_fetch",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "The YouTube comment pull completed (including videos with comments turned off, which store none)."
+      }
+    ]
   }
 }

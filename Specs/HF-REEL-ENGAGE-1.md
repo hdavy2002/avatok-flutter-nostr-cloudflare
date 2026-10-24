@@ -59,9 +59,24 @@ mine:boolean, parentId?, replies?:[…]}`. **Never** return uid or phone. Our au
 (first name + initial if no display name). Order: our newest first, then the platform's top comments; one list,
 cursor-paged (20 a page). Replies one level deep, only on our side (a reply under a YouTube comment stays ours).
 
-Feed + saved + profile items gain (only when the flag is on):
-`likes:{platform,ours,total}`, `comments:{platform,ours,total}`, `likedByMe` (when a bearer is sent).
-**Keep the old flat `likes` / `comments` numbers too** (old app builds read them) — set them to the totals.
+Feed + saved + profile items (flag on only; flag off = none of these keys) gain **new keys** — the old flat `likes` /
+`comments` numbers keep their type (old app builds read them) and are set to the totals:
+`likeCounts:{platform,ours,total}`, `commentCounts:{platform,ours,total}`, `likedByMe:boolean` (only when a bearer is
+sent; absent for guests). With the flag on the feed is `private, no-store` (likedByMe is per user). The profile
+(`/api/hosts/public/:slug`) reels carry the counts but no `likedByMe`.
+
+**As built (API lane, 2026-10-24) — exact shapes the app matches:**
+- Like / unlike: `{ok:true, liked:boolean, likes:{platform,ours,total}}`.
+- Comments GET: `{ok:true, counts:{likes:{platform,ours,total}, comments:{platform,ours,total}}, likedByMe:boolean, items:[comment], nextCursor:string|null}`.
+  Cursor is opaque (`o:…` our part, `x:N` imported part); pass it back as `?cursor=`.
+- Comment: `{id, source:'ours'|'youtube'|'instagram', author:{name, avatar:string|null, url?:string}, body, likeCount? (imported only), createdAt (ms), mine:boolean, parentId?, replies?:[comment]}`.
+  An unknown name or a phone-like name shows as "A fan".
+- Comment POST `{body, parentId?}`: `{ok:true, item:comment, counts:{likes:{..}, comments:{..}}}`. Errors: 401 guest, 403 `not_verified`,
+  404 `not_found` (reel not visible), 422 `empty` | `too_long` | `no_links` | `not_allowed` | `bad_parent`, 429 rate limited.
+  `parentId` must be a top-level comment on the same reel (ours `hfrc_…` or imported `youtube:…`); a reply to a reply is `bad_parent`.
+- Comment DELETE: `{ok:true}` (idempotent; 404 for anyone but the author or an admin). Report POST `{reason}`: `{ok:true, reported:true, hidden:boolean}`
+  (works on ours and on imported `youtube:…` ids; imported ones are hidden for everyone after the same number of reports).
+- Like / comment / report need a WhatsApp-verified account (403 `not_verified`); unlike and delete do not.
 
 ### 4.3 Pulling YouTube comments
 - `commentThreads.list?part=snippet&videoId=<id>&order=relevance&maxResults=50&textFormat=plainText` with

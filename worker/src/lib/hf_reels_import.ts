@@ -199,3 +199,42 @@ export async function importChannelReels(env: Env, ch: ReelChannel, n: number, p
   }
   return { fetched: list.length, inserted, updated };
 }
+
+// ── [HF-REEL-ENGAGE-API-1] YouTube comments (read only; nothing is ever sent back, HF-REEL-54) ──────────────────────────────────────────
+export interface ExtComment { id: string; authorName: string; authorAvatar: string | null; authorUrl: string | null; body: string; likeCount: number; publishedAt: number | null }
+export type CommentPull = { ok: true; disabled: boolean; items: ExtComment[] };
+
+const httpsOrNull = (v: unknown): string | null => (typeof v === "string" && v.startsWith("https://") ? v.slice(0, 500) : null);
+
+/** commentThreads.list (1 quota unit): the top 50 comments by relevance. Comments turned off (or video gone) -> { disabled:true, items:[] }. Throws ProviderError otherwise. */
+export async function youtubeCommentThreads(env: Pick<Env, "YOUTUBE_API_KEY">, videoId: string, f: FetchLike = fetch): Promise<CommentPull> {
+  const key = ytKey(env);
+  if (!YT_ID.test(videoId)) return { ok: true, disabled: true, items: [] };
+  const q = ytQuery({ part: "snippet", videoId, order: "relevance", maxResults: "50", textFormat: "plainText" }, key);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), PROVIDER_TIMEOUT_MS);
+  let res: Response;
+  try { res = await f(`https://www.googleapis.com/youtube/v3/commentThreads?${q}`, { headers: ytHeaders(), signal: ctl.signal }); }
+  catch { throw new ProviderError("provider_unavailable"); } // never include the URL (it carries the key)
+  finally { clearTimeout(timer); }
+  if (!res.ok) {
+    let reason = "";
+    try { reason = String(((await res.json()) as any)?.error?.errors?.[0]?.reason ?? ""); } catch { /* not json */ }
+    if ((res.status === 403 && reason === "commentsDisabled") || (res.status === 404 && reason === "videoNotFound")) return { ok: true, disabled: true, items: [] };
+    throw new ProviderError("provider_unavailable");
+  }
+  const body: any = await res.json().catch(() => null);
+  const items: ExtComment[] = [];
+  for (const t of Array.isArray(body?.items) ? body.items : []) {
+    const s = t?.snippet?.topLevelComment?.snippet;
+    const cid = String(t?.id ?? "");
+    const text = typeof s?.textDisplay === "string" ? s.textDisplay.trim() : "";
+    if (!/^[A-Za-z0-9_.-]{8,80}$/.test(cid) || !text) continue;
+    const pub = Date.parse(String(s?.publishedAt ?? ""));
+    items.push({
+      id: `youtube:${cid}`, authorName: String(s?.authorDisplayName ?? "").slice(0, 80) || "YouTube user", authorAvatar: httpsOrNull(s?.authorProfileImageUrl),
+      authorUrl: httpsOrNull(s?.authorChannelUrl), body: text.slice(0, 1000), likeCount: num(s?.likeCount), publishedAt: Number.isFinite(pub) ? pub : null,
+    });
+  }
+  return { ok: true, disabled: false, items };
+}

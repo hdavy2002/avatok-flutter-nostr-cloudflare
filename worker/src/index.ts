@@ -343,6 +343,7 @@ import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
 import { hfDemoAdminRoute } from "./routes/hf_demo_admin"; // [HF-WIRE-14] demo influencers from pasted YouTube links
 import { hfReelsRoute } from "./routes/hf_reels"; // [HF-WIRE-4] reels feed (flag hfReelsEnabled)
+import { hfReelEngageRoute } from "./routes/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1] likes + comments (flag hfReelEngageEnabled)
 import { hfInviteAdminRoute } from "./routes/hf_invite_admin"; // [HF-WIRE-22]
 import { refreshInviteCreators } from "./lib/hf_invite_reels"; // [HF-WIRE-22]
 import { hfSearchRoute } from "./routes/hf_search"; // [HF-WIRE-9] search + invite votes
@@ -1188,7 +1189,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/channels" || p.startsWith("/api/hf/channels/")) { const r = await hfChannelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-3]
       if (p === "/api/admin/hf/invite-creators" || p.startsWith("/api/admin/hf/invite-creators/")) { const r = await hfInviteAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-22]
       if (p === "/api/admin/hf/demo-influencers" || p.startsWith("/api/admin/hf/demo-influencers/")) { const r = await hfDemoAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-14]
-      if (p === "/api/hf/reels" || p.startsWith("/api/hf/reels/") || p === "/api/hf/hosts/me/reels") { const r = await hfReelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-4]
+      if (p === "/api/hf/reels" || p.startsWith("/api/hf/reels/") || p === "/api/hf/hosts/me/reels") { const r = (await hfReelEngageRoute(req, env, p, ctx)) ?? (await hfReelsRoute(req, env, p, ctx)); if (r) return r; } // [HF-WIRE-4] [HF-REEL-ENGAGE-API-1]
       if (p === "/api/hf/me/summary") { const r = await hfDashSummaryRoute(req, env); if (r) return r; } // [HF-DASH-SUMMARY-1]
       if (p === "/api/hf/me/registration" || p === "/api/hf/me/username" || p === "/api/hf/me/policy-update") { const r = await hfRegistrationRoute(req, env, p); if (r) return r; } // [HF-REF-AUTH-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
