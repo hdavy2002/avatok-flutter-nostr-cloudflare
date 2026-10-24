@@ -40,8 +40,8 @@ async function audit(env: Env, adminUid: string, action: string, target: string,
 
 // [HF-WALLET-HELD-LABEL-1] amount_rupees is whole rupees (Rs 120.36 was listed as Rs 120.00): a Google Play purchase record carries the exact
 // paise split in its data, so the list sends that and the wallet shows the real amount.
-function receiptSplitOf(r: { source: string; data: string | null }): { paidPaise?: number; gstPaise?: number; walletPaise?: number } {
-  if (r.source !== "play_purchase" || !r.data) return {};
+export function receiptSplitOf(r: { source: string; data: string | null }): { paidPaise?: number; gstPaise?: number; walletPaise?: number } {
+  if (!r.data) return {}; // [HF-QA-WEB-1024] website top-ups carry the split too: every row reads "paid X - GST Y"
   try {
     const d = JSON.parse(r.data) as Record<string, unknown>;
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : null);

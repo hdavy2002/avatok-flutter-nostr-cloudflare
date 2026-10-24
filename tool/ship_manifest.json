@@ -12104,5 +12104,12 @@
       "hfMerchUpscaleEnabled"
     ],
     "no_telemetry": "merch_art_upscaled {ok, from_w, to_w, ms, stage generate|button, factor | reason} fires on every upscale attempt; merch_ai_generate status=done carries image_size, w and upscaled. Verified by making an AI picture (art_w >= 4000 in studio_designs) and pressing Make it sharper on a 2048 px upload (new row with art_checks_json.upscaled_from)."
+  },
+  "HF-QA-WEB-1024": {
+    "description": "[HF-QA-WEB-1024] Live QA fixes: influencer status pill hover contrast, calls billing copy, /report copy, receipts list/printable GST split and title-cased name, admin desk counters refresh after acts.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Copy, CSS and display fixes with no new user-visible flow to assert in telemetry; verified by opening the dashboard, /report, wallet receipts and /admin/hosts/desk after deploy."
   }
 }

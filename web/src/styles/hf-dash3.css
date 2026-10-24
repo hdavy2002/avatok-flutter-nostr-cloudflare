@@ -398,9 +398,10 @@
 /* [HF-CALL-MODES-E1] three-way call mode switch, offline warning and the queue card (no green: rani when on, plum text) */
 .h3-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .h3-mode{appearance:none;min-height:56px;padding:10px 8px;border-radius:18px;border:1.5px solid var(--line2);background:#fff;color:var(--plum);font:inherit;font-family:var(--head);font-weight:800;font-size:clamp(14px,13.32px + 0.181vw,16.8px);line-height:1.2;cursor:pointer;text-align:center}
-.h3-mode:hover:not(:disabled){background:var(--lavtint)}
+.h3-mode:hover:not(:disabled):not(.is-on){background:var(--lavtint)}
 .h3-mode.is-on{background:linear-gradient(100deg,var(--rani),#f0408f);border-color:transparent;color:#fff}
 .h3-mode.is-on.off{background:var(--plum)}
+.h3-mode.is-on:hover:not(:disabled){color:#fff;filter:brightness(.94)}
 .h3-mode:disabled{opacity:.6;cursor:not-allowed}
 .h3-mode:focus-visible{outline:3px solid var(--lav);outline-offset:2px}
 .h3-modewarn{margin-top:12px;padding:12px 14px;border-radius:16px;background:var(--goldtint);color:var(--plum)}

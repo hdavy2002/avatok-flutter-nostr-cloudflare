@@ -215,6 +215,10 @@ function Timeline({ acts }: { acts: Act[] | undefined }) {
 
 const TEXT_STYLE = { ...T14, width: '100%', minHeight: 44, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', fontFamily: 'inherit' } as const;
 
+// [HF-QA-WEB-1024] After any act (resolve, note, reply, report action) the header counters are re-read, so "Open questions" is not stale until reload.
+const summaryListeners = new Set<() => void>();
+const refreshSummary = () => summaryListeners.forEach((f) => f());
+
 /** One admin action against the worker: posts, tells PostHog, reloads the list, shows the error in plain words. */
 function useActor(reload: () => void) {
   const [busy, setBusy] = useState(false);
@@ -222,7 +226,7 @@ function useActor(reload: () => void) {
   const [done, setDone] = useState<string | null>(null);
   const run = async (label: string, path: string, body: Record<string, unknown>): Promise<boolean> => {
     setBusy(true); setError(null); setDone(null);
-    try { await adminCall(path, { method: 'POST', body }); capture('hf_admin_desk_action', { action: label, ok: true }); setDone('Done.'); reload(); return true; }
+    try { await adminCall(path, { method: 'POST', body }); capture('hf_admin_desk_action', { action: label, ok: true }); setDone('Done.'); reload(); refreshSummary(); return true; }
     catch (e) { setError(fail('hf_desk_action', e, { action: label })); return false; }
     finally { setBusy(false); }
   };
@@ -518,7 +522,11 @@ export default function HfDesk() {
   const [sum, setSum] = useState<Summary | null>(null);
   const [sumErr, setSumErr] = useState<string | null>(null);
   useEffect(() => { setTab(initial()); try { setUid(new URLSearchParams(window.location.search).get('uid')); } catch { /* ssr */ } }, []);
-  useEffect(() => { adminCall<Summary>('/api/admin/hf/desk/summary').then(setSum).catch((e) => setSumErr(fail('hf_desk_summary', e))); }, []);
+  useEffect(() => {
+    const load = () => { adminCall<Summary>('/api/admin/hf/desk/summary').then((v) => { setSum(v); setSumErr(null); }).catch((e) => setSumErr(fail('hf_desk_summary', e))); };
+    load(); summaryListeners.add(load);
+    return () => { summaryListeners.delete(load); };
+  }, []);
   const setUrl = (k: TabKey | null, u: string | null) => { try { const x = new URL(window.location.href); if (k) x.searchParams.set('tab', k); if (u) x.searchParams.set('uid', u); else x.searchParams.delete('uid'); window.history.replaceState(null, '', x); } catch { /* ignore */ } };
   const pick = (k: TabKey) => { setTab(k); setUid(null); setUrl(k, null); };
   const openMember = useCallback((u: string) => { setUid(u); setUrl(null, u); window.scrollTo?.({ top: 0 }); }, []);

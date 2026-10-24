@@ -244,6 +244,10 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "
 const inr = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const istDateTime = (ms: number) => new Date(ms + IST_OFFSET_MS).toISOString().replace("T", " ").slice(0, 16) + " IST";
 
+/** Display only: "ravi KUMAR" -> "Ravi Kumar". The stored name is never changed. */
+export function titleCaseName(n: string | null): string {
+  return (n ?? "").trim().split(/\s+/).filter(Boolean).map((w) => w.charAt(0).toLocaleUpperCase("en-IN") + w.slice(1).toLocaleLowerCase("en-IN")).join(" ");
+}
 export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: string | null): string {
   const data = (() => { try { return JSON.parse(r.data ?? "{}") as Record<string, any>; } catch { return {} as Record<string, any>; } })();
   const isInvoice = r.kind === "tax_invoice";
@@ -258,6 +262,18 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
     const kept = Math.max(0, paid - added);
     return kept > 0 ? `<tr><td>Held back (${added > 0 ? Math.round((kept / added) * 100) : 0}%)</td><td class="n">${inr(kept)}</td></tr>` : "";
   };
+  // [HF-QA-WEB-1024] With GST: Paid, GST (18%) shown as a minus line, then Added to wallet (the total). Without GST the old order stays.
+  const splitRows = (paidLabel: string, paid: number, gst: number, added: number): string => {
+    if (gst > 0) {
+      const g = paid - gst !== added && paid > added ? paid - added : gst;
+      return `<tr><td>${paidLabel}</td><td class="n">${inr(paid)}</td></tr>
+      <tr><td>GST (18%)</td><td class="n">\u2212 ${inr(g)}</td></tr>
+      <tr class="t"><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>`;
+    }
+    return `<tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
+      ${keptRow(paid, gst, added)}
+      <tr class="t"><td>${paidLabel}</td><td class="n">${inr(paid)}</td></tr>`;
+  };
   let body: string;
   if (isPlay) {
     // [HF-TOPUP-NOTIFY-1] The wallet holds rupees (HF-WALLET-RUPEES): show what was added, not tokens. Paid includes 18% GST (HF-PAY-19).
@@ -265,9 +281,7 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
     const added = Math.round((micro / 1_000_000) * v);
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
       <tr><td>Order</td><td class="n">${esc(data.orderId ?? "")}</td></tr>
-      <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
-      ${keptRow(paid, Number(data.gstPaise ?? 0), added)}
-      <tr class="t"><td>Paid</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      ${splitRows("Paid", paid, Number(data.gstPaise ?? 0), added)}</tbody></table>
       <p class="muted">This is a payment receipt, not a tax invoice.</p>`;
   } else if (isInvoice) {
     const cgst = Number(data.cgstPaise ?? 0), sgst = Number(data.sgstPaise ?? 0), igst = Number(data.igstPaise ?? 0);
@@ -282,9 +296,7 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
     const paid = Number(data.paidPaise ?? r.amount_rupees * 100), added = Number(data.walletPaise), gst = Number(data.gstPaise ?? 0);
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
       <tr><td>Order</td><td class="n">${esc(data.topupId ?? r.source_id)}</td></tr>
-      <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
-      ${keptRow(paid, gst, added)}
-      <tr class="t"><td>Paid (secure payment)</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      ${splitRows("Paid (secure payment)", paid, gst, added)}</tbody></table>
       ${data.gatewayPaymentId ? `<p class="muted">Payment reference: ${esc(data.gatewayPaymentId)}</p>` : ""}
       <p class="muted">This is a payment receipt, not a tax invoice.</p>`;
   } else {
@@ -306,7 +318,7 @@ tr.t td{font-weight:700;border-top:2px solid #1d1320}.bar{margin-bottom:16px}but
 </style></head><body><main>
 <div class="bar"><button type="button" onclick="window.print()">Print or save as PDF</button></div>
 <div class="top"><div><h1>${esc(title)}</h1><div class="muted">No. ${esc(r.number)}<br>Date: ${esc(istDateTime(r.issued_at))}</div></div><div>${supplierBlock}</div></div>
-<p><strong>Billed to</strong><br>${esc(customerName || "Account holder")}</p>
+<p><strong>Billed to</strong><br>${esc(titleCaseName(customerName) || "Account holder")}</p>
 ${body}
 <p class="muted">${esc(BRAND.name)} · ${esc(BRAND.webOrigin)}</p>
 </main></body></html>`;

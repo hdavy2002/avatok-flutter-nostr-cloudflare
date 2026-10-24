@@ -111,7 +111,8 @@ export default function Calls({ account }: { account: DashboardAccount }) {
         <div style={{ display: 'grid', gap: 10 }}>
           {[['⏱️', 'Billed by the minute of connected time, at the influencer’s rate.'], ['🔔', 'If the influencer declines, cancels or does not answer, you pay nothing.'],
             ['⚡', 'If a joined call breaks in the first minute, we charge ₹1 and return the rest to your wallet.'],
-            ['💰', 'You need at least ₹20 in your wallet to start a call.'], ['⌛', 'A call can last up to 60 minutes; you hear a heads-up near the end.'],
+            ['💰', 'You need at least ₹20 in your wallet to start a call, or the cost of 5 minutes at the influencer’s rate if that is more.'], ['🧮', 'Money is set aside 5 minutes at a time as the call goes on, and anything unused comes back to your wallet.'],
+            ['⌛', 'A call can last up to 5 hours. If your wallet runs low, only you hear a warning, and you can top up during the call to keep talking.'],
             ['#️⃣', 'Press # any time to end the call, block the person and report it.'], ['🧾', 'Charged twice, or for a call that was never made? It comes back to your wallet.']]
             .map(([e, t]) => <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><span style={{ fontSize: 20 }} aria-hidden="true">{e}</span><span>{t}</span></div>)}
           {wallet.data?.mode === 'rupees' && !wallet.data.plan?.influencerSetsRate && <div className="h3-break"><b>Standard plan</b>{rateCardLines(tiers).map(l => <div key={l}><span>{l}</span></div>)}</div>}
