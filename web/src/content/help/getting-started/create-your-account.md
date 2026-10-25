@@ -3,12 +3,12 @@ title: "How do I create my account?"
 description: "Sign up with your name, email and WhatsApp number. You type one code from your email and one from WhatsApp. No password, and free to join."
 section: getting-started
 order: 3
-updated: 2026-10-24
+updated: 2026-10-25
 keywords: ["sign up", "register", "account banao", "OTP", "WhatsApp login", "no password", "18+", "join"]
 audience: both
 faq:
   - q: "Do I need a password?"
-    a: "No. You log in with a one-time code (OTP) sent to your WhatsApp number."
+    a: "No. You log in with a one-time code (OTP) sent to your WhatsApp number, or with Google."
   - q: "Is it free to join?"
     a: "Yes. It is free for callers and influencers. There is no subscription. You pay only for the minutes you talk."
   - q: "Can I be both a caller and an influencer?"
@@ -27,7 +27,9 @@ Creating an account on {{brand.name}} is free and quick. You do not need a passw
 3. We send one code to your email and one code on WhatsApp. These are called OTPs.
 4. Type both codes. Your account is ready.
 
-Next time, you log in with just your WhatsApp number. We send a code on WhatsApp and you type it. There is no password to remember or lose, and no email or Google login.
+Next time, you log in with just your WhatsApp number. We send a code on WhatsApp and you type it. There is no password to remember or lose.
+
+You can also tap **Continue with Google** on the log-in or sign-up page. Google only proves who you are. Before you like, comment or call, we still ask you to verify your WhatsApp number once with a code.
 
 If your email already has an account, log in with your WhatsApp number instead.
 

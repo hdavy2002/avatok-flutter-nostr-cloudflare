@@ -278,9 +278,24 @@ export function Divider({ label }: { label: string }) {
 }
 
 /* ── Social buttons ───────────────────────────────────────────────────── */
-/* [HF-AUTH-WA-ONLY-1 2026-10-24, owner] No social sign-in anywhere on the web: sign-in is a WhatsApp code, sign-up is
- * name + email code + WhatsApp code. The Google button, its flag and the OAuth hand-off are deleted (YouTube channel
- * linking has its own Google consent and is unaffected). Do not add a social button without a new owner decision. */
+/* [HF-AUTH-GOOGLE-BACK-1 2026-10-25, owner] "Continue with Google" is back on /sign-in and /sign-up (it was removed by
+ * HF-AUTH-WA-ONLY-1). `oauth_google` is the ONLY provider enabled on the Clerk instance, so this is one button and no
+ * Facebook/Apple. A Google sign-in always ends at the WhatsApp gate (/sign-up?finish=1, finishUrl) because liking,
+ * commenting and calling need a verified WhatsApp number. The OAuth hand-off is continueWithGoogle (passwordless.ts);
+ * the return page is pages/sso-callback.astro. */
+export function GoogleButton({
+  onClick, disabled, label = 'Continue with Google',
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <div className="auth-social">
+      <Button variant="ghost" onClick={onClick} disabled={disabled}>{label}</Button>
+    </div>
+  );
+}
 
 /* ── Code step ────────────────────────────────────────────────────────── */
 /**

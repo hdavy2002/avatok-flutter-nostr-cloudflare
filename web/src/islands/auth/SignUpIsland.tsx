@@ -6,7 +6,9 @@ import { UiText } from "../../lib/i18n/react";
  *
  * [HF-AUTH-WA-ONLY-1 2026-10-24, owner decision] Sign-in is WhatsApp-only, and an account is
  * only created once BOTH the email and the WhatsApp number have been proven by a 6-digit code.
- * No Google, no Clerk sign-up resource, no session until the very end:
+ * [HF-AUTH-GOOGLE-BACK-1 2026-10-25] Google is back as a button under the form; its return lands in RESUME / FINISH MODE
+ * below (signed in, WhatsApp not verified yet), which verifies a number and bootstraps the account.
+ * The code path itself has no Clerk sign-up resource, no session until the very end:
  *
  *   1. details  — name, email, WhatsApp number, the 18+/terms box. "Send codes" emails a code
  *                 (POST /api/auth/signup/email/send) and sends one on WhatsApp.
@@ -32,13 +34,13 @@ import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, captureException } from '../../lib/analytics';
 import {
-  Field, Button, CheckRow,
+  Field, Button, CheckRow, Divider, GoogleButton,
   validateEmail, validateRequired,
   useClerkStalled, STALLED_MESSAGE,
   type FieldErrors,
 } from './AuthKit';
 import {
-  bootstrapAccount, getPhoneStatus, sendPhoneCode, verifyPhoneCode, apiMessage, apiCode,
+  bootstrapAccount, continueWithGoogle, pwlError, finishUrl, getPhoneStatus, sendPhoneCode, verifyPhoneCode, apiMessage, apiCode,
   type PwlSignIn,
 } from './passwordless';
 import {
@@ -322,6 +324,18 @@ function Inner() {
     }
   }
 
+  /** [HF-AUTH-GOOGLE-BACK-1] Hand off to Google; it comes back through the WhatsApp gate on this page (?finish=1). */
+  async function google() {
+    if (submitting) return;
+    setFormError(null);
+    try {
+      capture('login_method_chosen', { method: 'google', surface: 'sign_up' });
+      await continueWithGoogle(signIn as unknown as PwlSignIn, finishUrl(destination()));
+    } catch (err) {
+      setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
+    }
+  }
+
   function onPhoneChange(v: string, c: string) {
     setPhone(v);
     setPhoneCountry(c);
@@ -546,6 +560,8 @@ function Inner() {
       <Button type="submit" loading={submitting || (!authLoaded && !stalled)} disabled={stalled}>
         Send my codes
       </Button>
+      <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+      <GoogleButton onClick={() => void google()} disabled={!authLoaded || stalled || submitting} />
       <div className="auth-foot">
         <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
         </p>

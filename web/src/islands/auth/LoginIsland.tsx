@@ -2,7 +2,10 @@
 import { UiMessage } from "../../lib/i18n/react";
 import { useTranslation as useUiTranslation } from "../../lib/i18n/react";
 import { UiText } from "../../lib/i18n/react";
-/* /sign-in — log in with a WhatsApp code. That is the ONLY way in.
+/* /sign-in — log in with a WhatsApp code, or with Google.
+ *
+ * [HF-AUTH-GOOGLE-BACK-1 2026-10-25, owner] Google is back (below the WhatsApp form). A Google sign-in still passes the
+ * WhatsApp gate (/sign-up?finish=1) so a number gets verified. /sign-in?google=1 starts Google immediately.
  *
  * [HF-AUTH-WA-ONLY-1 2026-10-24, owner decision] Email codes and Google are gone
  * from sign-in. A person types their WhatsApp number, gets a 6-digit code on
@@ -16,17 +19,17 @@ import { UiText } from "../../lib/i18n/react";
  * Custom Clerk flow, NOT the prebuilt <SignIn/> component: the design is a bespoke
  * form that Clerk's drop-in cannot be themed to.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSignIn } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture } from '../../lib/analytics';
 import { postLoginTarget, isFreeWatchTarget } from '../../lib/authRedirect';
 import {
-  Field, Button, CheckRow,
+  Field, Button, CheckRow, Divider, GoogleButton,
   useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
 } from './AuthKit';
-import { finishUrl, type PwlSignIn } from './passwordless';
+import { finishUrl, continueWithGoogle, pwlError, type PwlSignIn } from './passwordless';
 import {
   sendWhatsAppCode, verifyWhatsAppCode, redeemWhatsAppTicket, waApiMessage, confirmAge18,
 } from './whatsappAuth';
@@ -75,6 +78,30 @@ function Inner() {
   const finishingRef = useRef(false); // holds the auto-redirect while we finish sign-in ourselves
   const leaving = useRedirectIfSignedIn(nextUrl, finishingRef);
   useFormReady(isLoaded && !leaving, 'sign_in');
+
+  /** [HF-AUTH-GOOGLE-BACK-1] Hand off to Google; the return goes through the WhatsApp gate (finishUrl) via afterSignInUrl(). */
+  async function google(surface = 'sign_in') {
+    if (!isLoaded || submitting) return;
+    setFormError(null);
+    try {
+      capture('login_method_chosen', { method: 'google', surface });
+      await continueWithGoogle(signIn as unknown as PwlSignIn, afterSignInUrl());
+    } catch (err) {
+      setFormError(pwlError(err, 'Couldn’t open Google sign-in. Please try again.').message);
+    }
+  }
+
+  // [HF-AUTH-GOOGLE-BACK-1] /sign-in?google=1 (the Explore sign-in card) starts Google at once, honouring ?redirect_url=.
+  const autoGoogleRef = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || leaving || autoGoogleRef.current) return;
+    let want = false;
+    try { want = new URLSearchParams(location.search).get('google') === '1'; } catch { /* */ }
+    if (!want) return;
+    autoGoogleRef.current = true;
+    void google('explore_card');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, leaving]);
 
   const waE164 = () => toE164(waCountry, waNational);
   const waResendIn = Math.max(0, Math.ceil((waResendAt - Date.now()) / 1000));
@@ -211,6 +238,12 @@ function Inner() {
               <a href="#change" onClick={(ev) => { ev.preventDefault(); setWaStage('number'); setWaCode(''); setFormError(null); }}>Use a different number</a>
             </p>
           </div>
+        </>
+      )}
+      {waStage === 'number' && (
+        <>
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
         </>
       )}
       <div className="auth-foot">

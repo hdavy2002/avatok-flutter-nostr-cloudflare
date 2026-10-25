@@ -274,3 +274,23 @@ export async function verifyPasswordlessCode(opts: {
   await opts.setActive({ session: res.createdSessionId });
   return { created: false };
 }
+
+/**
+ * [HF-AUTH-GOOGLE-BACK-1 2026-10-25] Hand off to Google. Returns only if the redirect could not be started.
+ *
+ * `oauth_google` is the one social provider enabled on the Clerk instance. `/sso-callback` is the page that completes
+ * it (pages/sso-callback.astro); without it the handshake silently evaporates. `next` is where Clerk lands the person
+ * when done: callers pass finishUrl(...) so the WhatsApp gate still runs for a Google user.
+ */
+export async function continueWithGoogle(
+  signIn: PwlSignIn | null | undefined,
+  next: string,
+): Promise<void> {
+  if (!signIn) throw new PasswordlessError('Sign-in is still loading. Try again in a moment.', 'signin_unavailable');
+  capture('auth_signin_start', { method: 'oauth_google' });
+  await signIn.authenticateWithRedirect({
+    strategy: 'oauth_google',
+    redirectUrl: `/sso-callback?next=${encodeURIComponent(next)}`,
+    redirectUrlComplete: next,
+  });
+}
