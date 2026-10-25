@@ -9,6 +9,10 @@ import { capture } from '../../lib/analytics';
 import { brandUrl } from '../../lib/brand';
 import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
 
+const YT_ORIGIN = 'https://www.youtube-nocookie.com';
+/** [HF-EXPLORE-SMOOTH-1] What one YouTube player last told us (it only talks after the "listening" handshake). */
+interface YtState { ready: boolean; state: number; time: number; warm: boolean; seen: boolean; hello: number; tries: number }
+
 interface Comment { id: string; author: { name: string; avatar?: string | null }; body: string; createdAt: number | string; mine?: boolean }
 interface Props { initial: ReelItem[]; nextCursor: string | null }
 
@@ -66,6 +70,15 @@ function Reels({ initial, nextCursor }: Props) {
   const known = useRef(new Set<string>());
   const fetching = useRef(false);
   const origin = typeof location !== 'undefined' ? location.origin : '';
+  // [HF-EXPLORE-SMOOTH-1] player states, the poster switch, and when the current reel came on screen
+  const yt = useRef<Record<string, YtState>>({});
+  const [shown, setShown] = useState<Record<string, boolean>>({});
+  const curSince = useRef(Date.now());
+  const soundOff = useRef(new Set<string>());
+  const started = useRef(new Set<string>());
+  const wheelAcc = useRef(0);
+  const wheelLast = useRef(0);
+  const wheelLock = useRef(false);
 
   const cur = items[idx];
   const live = useRef({ idx, items, muted, paused, cursor, panel });
@@ -127,22 +140,105 @@ function Reels({ initial, nextCursor }: Props) {
     });
   }, [signedIn, cur]);
 
-  // ---- play the current reel, pause the rest ----
-  const settle = useCallback((id?: string) => {
-    const { items: its, idx: i, muted: m } = live.current;
+  // ---- [HF-EXPLORE-SMOOTH-1] play the current reel, warm the next one, pause the rest ----
+  // The old code fired play commands blind at 0 / 0.6 / 1.6 s. A player that was not ready by then never got one (photo, no
+  // video), and a scroll-wheel is not a "user gesture", so an unmuted play was refused by the browser (paused, or sound off).
+  // Now every player reports its state to us and a 300 ms loop keeps the current one playing.
+  const ys = (id: string): YtState => (yt.current[id] ??= { ready: false, state: -1, time: 0, warm: false, seen: false, hello: 0, tries: 0 });
+  const hello = (id: string) => {
+    try { frames.current[id]?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id, channel: 'widget' }), YT_ORIGIN); } catch { /* not loaded yet */ }
+  };
+  const reveal = (id: string) => setShown(m => (m[id] ? m : { ...m, [id]: true }));
+  const drive = useCallback(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    const { items: its, idx: i, paused: pz } = live.current;
     const curId = its[i]?.id;
-    for (const [fid, el] of Object.entries(frames.current)) {
-      if (!el || (id && fid !== id)) continue;
-      if (fid === curId) { ytCmd(el, m ? 'mute' : 'unMute'); ytCmd(el, 'playVideo'); } else ytCmd(el, 'pauseVideo');
+    const now = Date.now();
+    const curIt = its[i];
+    const curBusy = !!curId && !!curIt && playerFor(curIt)?.platform === 'youtube' && yt.current[curId]?.state !== 1;
+    for (const [id, el] of Object.entries(frames.current)) {
+      if (!el) continue;
+      const it = its.find(x => x.id === id);
+      if (!it || playerFor(it)?.platform !== 'youtube') continue;
+      const s = ys(id);
+      const isCur = id === curId;
+      if (!s.ready) {
+        if (s.hello < 80) { s.hello++; hello(id); }
+        if (isCur) {
+          ytCmd(el, live.current.muted ? 'mute' : 'unMute'); ytCmd(el, 'playVideo'); // blind, as before, in case the player never answers
+          if (now - curSince.current > 4000) reveal(id); // never hide a video behind its poster for good
+        }
+        continue;
+      }
+      if (isCur) {
+        if (pz) { if (s.state === 1) ytCmd(el, 'pauseVideo'); continue; }
+        if (s.state === 1 || s.state === 3) continue; // playing, or buffering on its way
+        if (!live.current.muted && !soundOff.current.has(id) && now - curSince.current > 2500) {
+          // the browser refused to start it with sound: play it muted rather than show a still photo
+          soundOff.current.add(id);
+          live.current.muted = true;
+          setMuted(true);
+          say('Sound is off. Tap the speaker to turn it on.');
+          capture('explore_reel_sound_blocked', { reel_id: id });
+        }
+        ytCmd(el, live.current.muted ? 'mute' : 'unMute');
+        ytCmd(el, 'playVideo');
+      } else if (s.state === 1) {
+        ytCmd(el, 'pauseVideo');
+        s.warm = true;
+      } else if (!s.warm && s.state !== 3 && !curBusy && s.tries < 30) {
+        s.tries++;
+        ytCmd(el, 'mute'); ytCmd(el, 'playVideo'); // warm up: play muted to the first frame, then stop (below)
+      }
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const onState = (id: string) => {
+    const s = ys(id);
+    const { items: its, idx: i } = live.current;
+    const isCur = its[i]?.id === id;
+    if (s.state !== 1) return;
+    if (!isCur) { ytCmd(frames.current[id], 'pauseVideo'); s.warm = true; return; }
+    s.warm = true; s.seen = true;
+    reveal(id);
+    if (!started.current.has(id)) {
+      started.current.add(id);
+      capture('explore_reel_start', { reel_id: id, ms: Date.now() - curSince.current, index: i });
+    }
+  };
+  useEffect(() => {
+    const on = (e: MessageEvent) => {
+      if (e.origin !== YT_ORIGIN && e.origin !== 'https://www.youtube.com') return;
+      let d: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+      if (!d || typeof d !== 'object') return;
+      const id = Object.keys(frames.current).find(k => frames.current[k]?.contentWindow === e.source);
+      if (!id) return;
+      const s = ys(id);
+      let st: number | null = null;
+      if (d.event === 'onReady') s.ready = true;
+      if (d.event === 'onStateChange' && typeof d.info === 'number') st = d.info;
+      if (d.event === 'infoDelivery' && d.info && typeof d.info === 'object') {
+        s.ready = true;
+        if (typeof d.info.playerState === 'number') st = d.info.playerState;
+        if (typeof d.info.currentTime === 'number') s.time = d.info.currentTime;
+      }
+      if (st != null && st !== s.state) { s.state = st; onState(id); }
+      if (d.event === 'onReady') drive();
+    };
+    window.addEventListener('message', on);
+    const tick = window.setInterval(drive, 300);
+    return () => { window.removeEventListener('message', on); window.clearInterval(tick); };
+  }, [drive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     setPaused(false);
-    settle();
-    const a = window.setTimeout(() => settle(), 600);
-    const b = window.setTimeout(() => settle(), 1600);
-    return () => { window.clearTimeout(a); window.clearTimeout(b); };
-  }, [idx, items.length, settle]);
+    live.current.paused = false;
+    curSince.current = Date.now();
+    const id = items[idx]?.id;
+    const s = id ? yt.current[id] : undefined;
+    // a warmed reel is a frame or two in: start it from the top only if it really moved on
+    if (id && s?.ready && s.warm && !s.seen && s.time > 1) ytCmd(frames.current[id], 'seekTo', [0, true]);
+    drive();
+  }, [idx, drive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const el = cur && frames.current[cur.id]; if (el) ytCmd(el, muted ? 'mute' : 'unMute'); }, [muted, cur]);
   useEffect(() => {
     if (!cur) return;
@@ -153,7 +249,7 @@ function Reels({ initial, nextCursor }: Props) {
   // ---- moving between reels ----
   const go = useCallback((d: 1 | -1, method: 'wheel' | 'touch' | 'button' | 'key') => {
     const now = Date.now();
-    if (now - lastNav.current < 550) return;
+    if (now - lastNav.current < (method === 'wheel' ? 280 : 550)) return; // [HF-EXPLORE-SMOOTH-1] a mouse notch every ~0.3 s is honoured
     const n = live.current.idx + d;
     if (n < 0 || n >= live.current.items.length) return;
     lastNav.current = now;
@@ -168,7 +264,25 @@ function Reels({ initial, nextCursor }: Props) {
     const wheel = (e: WheelEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.('.ex-panel, .ex-gate')) return;
       e.preventDefault();
-      if (Math.abs(e.deltaY) > 18) go(e.deltaY > 0 ? 1 : -1, 'wheel');
+      // [HF-EXPLORE-SMOOTH-1] add up small wheel steps (Firefox sends lines, smooth mice send many tiny steps — each was
+      // under the old 18 px bar, so it took several scrolls), then one move per gesture so trackpad momentum skips nothing.
+      const now = Date.now();
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * (root.clientHeight || 800) : e.deltaY;
+      const gap = now - wheelLast.current;
+      wheelLast.current = now;
+      if (wheelLock.current) {
+        if (gap < 160 && now - lastNav.current < 1000) return; // the same flick still coasting
+        wheelLock.current = false;
+        wheelAcc.current = 0;
+      }
+      if (gap > 160) wheelAcc.current = 0;
+      wheelAcc.current += px;
+      if (Math.abs(wheelAcc.current) >= 40) {
+        const d = wheelAcc.current > 0 ? 1 : -1;
+        wheelAcc.current = 0;
+        wheelLock.current = true;
+        go(d, 'wheel');
+      }
     };
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.('textarea, input')) return;
@@ -264,7 +378,7 @@ function Reels({ initial, nextCursor }: Props) {
     try { await navigator.clipboard.writeText(url); say('Link copied'); } catch { say(url); }
   };
 
-  const slides = useMemo(() => [items[idx], items[idx + 1]].filter(Boolean) as ReelItem[], [items, idx]);
+  const slides = useMemo(() => [items[idx - 1], items[idx], items[idx + 1]].filter(Boolean) as ReelItem[], [items, idx]);
   if (!cur) return <p className="ex-empty">No reels to show yet. Please check back soon.</p>;
   const who = whoOf(cur);
   const isLiked = liked[cur.id] ?? cur.likedByMe === true;
@@ -275,21 +389,24 @@ function Reels({ initial, nextCursor }: Props) {
     <div className="ex-stage">
       <div className="ex-wrap">
         <div className="ex-frame" ref={frameRef}>
-          {slides.map((it, k) => {
+          {slides.map(it => {
             const p = playerFor(it);
             if (!p) return null;
             const box = sizeFor(size.w, size.h, p.platform);
-            const active = k === 0;
+            const active = it.id === cur.id;
             const src = p.platform === 'youtube' ? p.src(it.id === items[0]?.id && active, origin) : p.src;
             return <div className="ex-slide" key={it.id} data-active={active ? '1' : undefined}>
-              {it.thumbUrl && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer" />}
+              {it.thumbUrl && p.platform !== 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer" />}
               <iframe
                 ref={el => { frames.current[it.id] = el; }}
                 src={src} title="" loading="eager" tabIndex={-1} aria-hidden="true"
                 allow="autoplay; encrypted-media; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin"
-                onLoad={() => { settle(it.id); window.setTimeout(() => settle(it.id), 700); }}
+                onLoad={() => { yt.current[it.id] = { ready: false, state: -1, time: 0, warm: false, seen: false, hello: 0, tries: 0 }; setShown(m => { if (!m[it.id]) return m; const n = { ...m }; delete n[it.id]; return n; }); hello(it.id); drive(); }}
                 style={{ width: box.width, height: box.height, left: box.left, top: box.top, pointerEvents: p.platform === 'instagram' && igLive[it.id] && active ? 'auto' : 'none' }}
               />
+              {/* [HF-EXPLORE-SMOOTH-1] YouTube: the poster sits ON TOP until the video really plays (no grey YouTube still) */}
+              {it.thumbUrl && p.platform === 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer"
+                style={{ zIndex: 1, pointerEvents: 'none', transition: 'opacity .2s', opacity: shown[it.id] ? 0 : 1 }} />}
             </div>;
           })}
           {spec && !(spec.platform === 'instagram' && igLive[cur.id]) &&
