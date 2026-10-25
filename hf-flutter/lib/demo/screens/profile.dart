@@ -30,6 +30,7 @@ import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'channel_extras.dart'; // [HF-APP-CHANNEL-PARITY-1]
 import 'channel_sections.dart'; // [HF-CHANNEL-APP-1]
 import 'sheets.dart';
+import '../verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 
 /// Public influencer channel page ([HF-CHANNEL-APP-1], built to the owner-approved phone mock PhoneChannel, 2026-10-23): big photo
 /// with the Online label, name, tagline and the stats that have data, section tabs, then Merch first, Now Showing (videos),
@@ -316,8 +317,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               videoKycVerified: prof.host.videoKycVerified,
                               channelVerified: prof.host.channelVerified,
                               kycCallersOnly: prof.host.kycCallersOnly,
+                              phoneVerified: prof.identityVerified,
                               surface: 'app_profile',
                             ),
+                      phoneVerified: prof?.identityVerified ?? false,
                       stats: stats,
                       faved: faved,
                       onHeart: onHeart,
@@ -442,7 +445,7 @@ class _SectionNav extends StatelessWidget {
 /// Full-width photo (Online now / Offline on it), then the eyebrow, name, tagline, stats and Save / Share.
 /// No decorative border, arch or curtain round the photo (decision D2).
 class _ChannelHero extends StatelessWidget {
-  const _ChannelHero({required this.who, required this.badge, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore, this.badges});
+  const _ChannelHero({required this.who, required this.badge, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore, this.badges, this.phoneVerified = false});
 
   final Influencer who;
 
@@ -457,6 +460,9 @@ class _ChannelHero extends StatelessWidget {
 
   /// [HF-CREATOR-SPACES-1] Channel tag + green Video KYC pill (nothing when the host has neither).
   final Widget? badges;
+
+  /// [HF-VERIFIED-BLIP-1] WhatsApp number checked by OTP (listed in the tick's sheet).
+  final bool phoneVerified;
 
   Widget _round(IconData icon, String label, Color color, VoidCallback onTap) => Semantics(
         button: true,
@@ -506,7 +512,7 @@ class _ChannelHero extends StatelessWidget {
         child: Column(children: [
           Text(['Creator', if (who.handle.isNotEmpty) who.handle].join(' · ').toUpperCase(), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: gpEyebrow()),
           const SizedBox(height: 6),
-          Semantics(header: true, child: Text(who.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(48, color: GP.ink, w: FontWeight.w900, h: .98))),
+          Semantics(header: true, child: nameWithTick(who.name, textAlign: TextAlign.center, maxLines: 2, style: t(48, color: GP.ink, w: FontWeight.w900, h: .98), videoKyc: who.videoKycVerified, channel: who.channelVerified, space: who.space, phone: phoneVerified, surface: 'app_profile', size: 30)), // [HF-VERIFIED-BLIP-1]
           if (badges != null) ...[
             const SizedBox(height: 12),
             badges!,

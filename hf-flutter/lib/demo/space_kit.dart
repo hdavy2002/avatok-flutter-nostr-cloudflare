@@ -79,6 +79,24 @@ class ChannelVerifiedPill extends StatelessWidget {
   }
 }
 
+/// [HF-VERIFIED-BLIP-1] "WhatsApp number verified": checked by a one-time code (plain sand pill, not green).
+class PhoneVerifiedPill extends StatelessWidget {
+  const PhoneVerifiedPill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(color: C.sand, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.brass, width: 1.5)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.check_circle_rounded, size: 18, color: C.deep),
+        const SizedBox(width: 6),
+        Text('WhatsApp number verified', style: t(14, color: C.deep, w: FontWeight.w900)),
+      ]),
+    );
+  }
+}
+
 /// [HF-CREATOR-BADGES-1] "Only video-KYC callers": the creator only takes calls from customers with full video KYC.
 class KycOnlyNote extends StatelessWidget {
   const KycOnlyNote({super.key, this.compact = false});
@@ -132,9 +150,13 @@ class SpaceBadges extends StatefulWidget {
     this.center = true,
     this.channelVerified = false,
     this.kycCallersOnly = false,
+    this.phoneVerified = false,
   });
 
   final String? space;
+
+  /// [HF-VERIFIED-BLIP-1] WhatsApp number checked by a one-time code: a plain pill on the profile (never on compact rows).
+  final bool phoneVerified;
   final bool videoKycVerified;
 
   /// [HF-CREATOR-BADGES-1] An approved channel is connected; and only video-KYC customers may call.
@@ -160,7 +182,7 @@ class _SpaceBadgesState extends State<SpaceBadges> {
     final lane = SpaceLane.parse(widget.space);
     // a space is always video-KYC callers only, so the extra note is for the other creators
     final kycNote = widget.kycCallersOnly && lane == null;
-    if (lane == null && !widget.videoKycVerified && !widget.channelVerified && !kycNote) return const SizedBox.shrink();
+    if (lane == null && !widget.videoKycVerified && !widget.channelVerified && !kycNote && !(widget.phoneVerified && !widget.compact)) return const SizedBox.shrink();
     if (widget.compact) {
       return Padding(
         padding: const EdgeInsets.only(right: 6),
@@ -180,6 +202,7 @@ class _SpaceBadgesState extends State<SpaceBadges> {
         if (lane != null) SpaceTag(lane: lane),
         if (widget.channelVerified) const ChannelVerifiedPill(),
         if (widget.videoKycVerified) const VideoKycPill(),
+        if (widget.phoneVerified) const PhoneVerifiedPill(),
         if (kycNote) const KycOnlyNote(),
       ],
     );

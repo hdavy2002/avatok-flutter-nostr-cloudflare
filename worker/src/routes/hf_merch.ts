@@ -5,6 +5,7 @@
 //   Public:     GET public/:host | GET public/:host/:product | GET pincode/:pin | GET sitemap
 //   Fan:        POST checkout | GET my-orders(/:id) | POST my-orders/:id/problem(-photo) | GET addresses | DELETE addresses/:id
 //   Gateway:    POST webhook/cashfree
+import { hostVerification } from "../lib/hf_spaces"; // [HF-VERIFIED-BLIP-1]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail, requireVerifiedWhatsApp } from "../authz";
@@ -267,7 +268,7 @@ async function publicHostRoute(env: Env, slug: string): Promise<Response> {
   if (!host || host.status !== "live") return bad(404, "not_found", "No such page.");
   const { cfg, flags } = await merchCfg(env);
   const rows = await listLiveProductsForSeller(env, host.uid);
-  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps, cfg)) }, 200, PUBLIC_CACHE);
+  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl, ...(await hostVerification(env, host.uid)) /* [HF-VERIFIED-BLIP-1] */ }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps, cfg)) }, 200, PUBLIC_CACHE);
 }
 async function publicProductRoute(env: Env, hostSlug: string, productSlug: string): Promise<Response> {
   const host = await hostBySlug(env, hostSlug.toLowerCase());
@@ -280,7 +281,7 @@ async function publicProductRoute(env: Env, hostSlug: string, productSlug: strin
   const m = productMerch(row);
   const p = productShape(row, host, cfg.platformShareBps, 0, gstCtxOf(cfg));
   return out({
-    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: p.gstRateBps,
+    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl, ...(await hostVerification(env, host.uid)) /* [HF-VERIFIED-BLIP-1] */ }, checkoutEnabled: flags.checkout, gstRateBps: p.gstRateBps,
     product: { ...publicProduct(row, host, cfg.platformShareBps, cfg), photos: p.mockups.length ? p.mockups : p.imageUrl ? [p.imageUrl] : [], description: row.description, side: m?.side ?? "front", maxQty: MERCH_QTY_MAX },
   }, 200, PUBLIC_CACHE);
 }

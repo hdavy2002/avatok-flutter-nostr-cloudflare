@@ -12375,5 +12375,22 @@
         "note": "A fan opened a social card."
       }
     ]
+  },
+  "HF-VERIFIED-BLIP-1": {
+    "description": "Verified tick beside every creator name (web: channel page, Explore/host cards, saved, merch product page; app: profile, profile cover, search rows, reel info sheet, merch product). Green = Video KYC, indigo/lavender = channel only, none = WhatsApp only. Tap opens what-we-checked sheet. Channel page also shows a WhatsApp-number-verified pill. Worker: reels feed host + merch public host carry videoKycVerified/channelVerified/space.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostsPublicEnabled",
+      "hfReelsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_verified_tick_shown",
+        "property": "level",
+        "min_events": 1,
+        "note": "A tick was drawn beside a verified creator's name."
+      }
+    ]
   }
 }

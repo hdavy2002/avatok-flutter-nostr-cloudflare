@@ -19,7 +19,7 @@ export interface PublicProductFull extends PublicProduct {
 }
 /** [HF-MERCH-GST-2] "5% GST" from 500 bps (the product's own category rate), or just "GST" when the rate is not known. */
 export const gstText = (bps?: number | null): string => { if (typeof bps !== 'number' || !(bps > 0)) return 'GST'; const v = bps / 100; return `${Number.isInteger(v) ? v : Number(v.toFixed(2))}% GST`; };
-export interface PublicHostRef { slug: string; displayName: string; avatarUrl: string | null }
+export interface PublicHostRef { slug: string; displayName: string; avatarUrl: string | null; /** [HF-VERIFIED-BLIP-1] */ videoKycVerified?: boolean; channelVerified?: boolean }
 export interface MerchSitemap { hosts: { slug: string; updatedAt: number }[]; products: { hostSlug: string; slug: string; updatedAt: number; imageUrl: string | null; title: string }[] }
 
 const get = async <T>(path: string): Promise<{ status: number; body: T | null }> => {

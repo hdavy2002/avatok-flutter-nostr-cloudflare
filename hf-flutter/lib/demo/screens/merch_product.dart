@@ -18,6 +18,7 @@ import '../merch_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'bag.dart';
+import '../verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 
 /// The standard T-shirt size guide the website shows (size, chest in inches, length in inches). Approximate garment measurements.
 const List<(String, int, int)> kMerchSizeChart = [
@@ -276,7 +277,7 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Flexible(child: Text('By ${page.host.displayName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16, color: GP.ink, w: FontWeight.w800))),
+                Flexible(child: nameWithTick('By ${page.host.displayName}', maxLines: 1, style: t(16, color: GP.ink, w: FontWeight.w800), videoKyc: page.host.videoKycVerified, channel: page.host.channelVerified, surface: 'app_merch_product', size: 18, interactive: false)),
               ]),
             ),
           ),

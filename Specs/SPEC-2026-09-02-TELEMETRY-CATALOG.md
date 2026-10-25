@@ -1504,3 +1504,10 @@ Each of the four flags must be on before its events appear. Events arrive only a
 |---|---|---|
 | web `channel_social_tap` | `host_slug`, `platform` (`instagram`/`youtube`/`facebook`/`tiktok`) | A fan tapped one of the influencer's social channel cards. **Ship-manifest success event.** |
 | web `channel_viewed` | (existing) + `socials_count` | How many social cards the page showed. |
+
+### [HF-VERIFIED-BLIP-1] Verified tick beside creator names (2026-10-25)
+
+| Event | Props | Note |
+|---|---|---|
+| web + app `hf_verified_tick_shown` | `surface`, `level` (`kyc`/`channel`) | A verified tick was drawn beside a creator's name. Once per mount. **Ship-manifest success event.** |
+| web + app `hf_verified_tick_tap` | `surface`, `level` | A fan opened "what we checked". |

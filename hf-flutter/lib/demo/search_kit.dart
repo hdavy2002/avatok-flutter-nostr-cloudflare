@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'data.dart';
 import 'desi.dart';
 import 'theme.dart';
+import 'verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 import 'widgets.dart';
 
 /// [HF-APP-DESI-2] Search screen pieces, built to the owner-approved canvas preview "2 · Search" (2026-10-22).
@@ -268,7 +269,7 @@ class SearchPersonRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(who.name, style: t(17, w: FontWeight.w800)),
+              nameWithTick(who.name, style: t(17, w: FontWeight.w800), videoKyc: who.videoKycVerified, channel: who.channelVerified, surface: 'app_search_row', size: 18, interactive: false, maxLines: 1),
               subtitle,
             ]),
           ),

@@ -326,7 +326,7 @@ class _RealSearchState extends State<RealSearch> {
       rate: h.rateRupees,
       last: last,
       subtitle: Row(children: [
-        SpaceBadges(space: h.space, videoKycVerified: h.videoKycVerified, channelVerified: h.channelVerified, kycCallersOnly: h.kycCallersOnly, surface: 'app_search', compact: true),
+        SpaceBadges(space: h.space, videoKycVerified: false, channelVerified: false, kycCallersOnly: h.kycCallersOnly, surface: 'app_search', compact: true), // [HF-VERIFIED-BLIP-1] the tick now sits beside the name
         for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
         Flexible(child: Text(h.handle ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w600))),
       ]),

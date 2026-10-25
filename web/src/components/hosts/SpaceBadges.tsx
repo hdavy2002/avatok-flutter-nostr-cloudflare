@@ -17,16 +17,17 @@ function SpaceIcon({ space }: { space: 'women' | 'lgbtq' }) {
 export interface ChannelInfo { verified?: boolean; platform?: string | null; followers?: number | null }
 
 /** [HF-CREATOR-BADGES-1] Stacked badges: channel verified (platform + followers), green Video KYC, space tag, and a small "Only video-KYC callers" note. */
-export default function SpaceBadges({ videoKyc, space, surface, large, channel, callerLevel }: { videoKyc?: boolean; space?: unknown; surface: string; large?: boolean; channel?: ChannelInfo | boolean | null; callerLevel?: unknown }) {
+export default function SpaceBadges({ videoKyc, space, surface, large, channel, callerLevel, phone }: { videoKyc?: boolean; space?: unknown; surface: string; large?: boolean; channel?: ChannelInfo | boolean | null; callerLevel?: unknown; /** [HF-VERIFIED-BLIP-1] WhatsApp number checked by OTP (channel page only) */ phone?: boolean }) {
   const sp = parseSpace(space);
   const ch: ChannelInfo | null = channel === true ? { verified: true } : channel && typeof channel === 'object' && channel.verified === true ? channel : null;
   const kycOnly = callerLevel === 'video_kyc' && !sp;
   useEffect(() => { if (videoKyc === true) { try { capture('hf_video_kyc_badge_shown', { surface }); } catch { /* ignore */ } } }, [videoKyc, surface]);
-  if (videoKyc !== true && !sp && !ch && !kycOnly) return null;
+  if (videoKyc !== true && !sp && !ch && !kycOnly && !phone) return null;
   return (
     <ul className={`hf-sb${large ? ' hf-sb-lg' : ''}`} aria-label="Verification and channel type">
       {ch && <li className="hf-ch-pill" title="Channel checked and approved"><KycCheck />{channelLabel(ch.platform, ch.followers)}</li>}
       {videoKyc === true && <li className="hf-kyc-pill" title="Aadhaar checked and selfie video approved"><KycCheck />Video KYC verified</li>}
+      {phone && <li className="hf-ph-pill" title="Confirmed with a one-time code"><KycCheck />WhatsApp number verified</li>}
       {sp && <li className="hf-space-tag"><SpaceIcon space={sp} />{SPACE_TAG[sp]}</li>}
       {kycOnly && <li className="hf-kyc-note">{KYC_ONLY_NOTE}</li>}
     </ul>

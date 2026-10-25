@@ -32,7 +32,10 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
-    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0,
+    women_lane INTEGER, lgbtq_lane INTEGER, lgbtq_public INTEGER);
+    CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT, taken_by_uid TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);
     CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT, avatar_url TEXT);`);

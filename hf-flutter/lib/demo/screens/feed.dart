@@ -30,6 +30,7 @@ import 'creator_page.dart';
 import 'original_post_page.dart';
 import 'reel_comments_sheet.dart';
 import 'sheets.dart';
+import '../verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 
 /// Reels feed: full-screen cards, swipe up/down. Presence controls instant calls; offline creators can still be booked.
 /// Demo mode keeps the dummy reels; real mode (HF-WIRE-4) pages `GET /api/hf/reels`. [reelId] opens a shared reel first.
@@ -926,7 +927,7 @@ class _ReelPageState extends State<ReelPage>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.who.name, style: t(22)),
+                  nameWithTick(r.who.name, style: t(22), videoKyc: r.who.videoKycVerified, channel: r.who.channelVerified, space: r.who.space, surface: 'app_reel_info', size: 20),
                   Text(
                     '${r.who.handle} · ${r.who.followers} followers',
                     style: t(14),

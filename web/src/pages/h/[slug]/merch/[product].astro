@@ -13,6 +13,7 @@ import { productJsonLd } from '../../../../lib/merchSeo';
 import { publicImage } from '../../../../lib/config';
 import { BRAND } from '../../../../lib/brand';
 import { splitName } from '../../../../lib/channelKit';
+import VerifiedTick from '../../../../components/hosts/VerifiedTick';
 import type { PublicContent } from '../../../../lib/seo/types';
 import '../../../../styles/hf-channel.css';
 
@@ -59,7 +60,7 @@ const [firstName] = splitName(host?.displayName ?? '');
   ) : (
     <div class="gp has-pbar" id="gp-root" data-host-slug={slug} data-product-slug={productSlug}>
       <main class="wrap" id="merch-main" style="padding-bottom:80px">
-        <nav class="crumb" aria-label="Breadcrumb"><a href={`/h/${slug}`}>{host!.displayName}</a> › <a href={`/h/${slug}#merch`}>Merch</a> › <span aria-current="page">{p!.title}</span></nav>
+        <nav class="crumb" aria-label="Breadcrumb"><a href={`/h/${slug}`}>{host!.displayName}</a><VerifiedTick client:idle name={host!.displayName} videoKyc={host!.videoKycVerified === true} channel={host!.channelVerified === true} surface="merch_product" size="sm" /> › <a href={`/h/${slug}#merch`}>Merch</a> › <span aria-current="page">{p!.title}</span></nav>
         <div class="pgrid">
           <div class="gal">
             {photos.length > 1 && <div class="thumbs" role="group" aria-label="More pictures">{photos.map((u, i) => <button type="button" class={`th${i === 0 ? ' on' : ''}`} data-hfm-thumb={publicImage(u, { width: 900 })} aria-label={`Picture ${i + 1} of ${photos.length}`} aria-pressed={i === 0 ? 'true' : 'false'}><img src={publicImage(u, { width: 200 })} alt="" width="96" height="96" loading="lazy" decoding="async" /></button>)}</div>}
@@ -95,7 +96,7 @@ const [firstName] = splitName(host?.displayName ?? '');
         </div>
       </main>
       {others.length > 0 && <section class="sec" style="background:#fff" aria-labelledby="more"><div class="wrap">
-        <div class="sec-h"><h2 class="h2" id="more" style="font-size:clamp(28px,3vw,40px)">More from {firstName || host!.displayName}</h2><a class="btn btn-o btn-sm" href={`/h/${slug}#merch`}>See all {others.length + 1}</a></div>
+        <div class="sec-h"><h2 class="h2" id="more" style="font-size:clamp(28px,3vw,40px)">More from {firstName || host!.displayName}<VerifiedTick client:idle name={host!.displayName} videoKyc={host!.videoKycVerified === true} channel={host!.channelVerified === true} surface="merch_more" size="lg" /></h2><a class="btn btn-o btn-sm" href={`/h/${slug}#merch`}>See all {others.length + 1}</a></div>
         <div class="grid">{others.slice(0, 4).map(o => <div class="card">
           <span class="img">{o.imageUrl && <img src={publicImage(o.imageUrl, { width: 480 })} alt={`${o.title} by ${host!.displayName}`} width="240" height="240" loading="lazy" decoding="async" />}</span>
           <span class="cat">{singularLabel(o.categoryLabel || 'Merch')}</span>

@@ -6,6 +6,7 @@ import '../ui/net_image.dart';
 import 'data.dart';
 import 'desi.dart';
 import 'theme.dart';
+import 'verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 import 'widgets.dart';
 
 /// [HF-APP-DESI-4] Influencer profile pieces, built to the owner-approved canvas previews "4 · Influencer profile (online,
@@ -134,7 +135,7 @@ class ProfileCover extends StatelessWidget {
                 child: Text(online ? '● Online now' : 'Offline', style: t(14, color: online ? C.onlineInk : C.muted, w: FontWeight.w800)),
               ),
               const SizedBox(height: 8),
-              Text(who.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(32, color: C.white, w: FontWeight.w900, h: 1.05)),
+              nameWithTick(who.name, maxLines: 2, style: t(32, color: C.white, w: FontWeight.w900, h: 1.05), videoKyc: who.videoKycVerified, channel: who.channelVerified, space: who.space, surface: 'app_profile_cover', size: 24),
               if (line.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(line, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: C.white, w: FontWeight.w700))),
             ]),
           ),

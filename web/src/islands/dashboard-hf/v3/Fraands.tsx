@@ -4,6 +4,7 @@ import { useState } from 'react';
 import HostCallActions from '../../calls/HostCallActions';
 import SaveHostButton from '../../../components/hosts/SaveHostButton';
 import SpaceBadges from '../../../components/hosts/SpaceBadges';
+import VerifiedTick from '../../../components/hosts/VerifiedTick';
 import { gateOf, spaceOf } from '../../../lib/hfSpaces';
 import { useDash, type Fav } from './data';
 import { Avatar, Empty, Failed, Ic, PageHead, Pill, Skel, Sticker } from './ui';
@@ -43,7 +44,7 @@ function FraandCard({ f, onRemoved }: { f: Fav; onRemoved: () => void }) {
   return <div className="h3-fr">
     <div className="h3-fr-heart"><SaveHostButton slug={f.slug} name={f.displayName} surface="dashboard" initialSaved onChange={saved => { if (!saved) onRemoved(); }} /></div>
     <a className="h" href={`/h/${f.slug}`}><Avatar name={f.displayName} seed={f.slug} photo={f.photoUrl} size="" />
-      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: 40 }}><b style={{ fontFamily: 'var(--head)', fontWeight: 900, fontSize: 17 }}>{f.displayName}</b><small className="muted small">@{f.slug}</small></span></a>
+      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: 40 }}><b style={{ fontFamily: 'var(--head)', fontWeight: 900, fontSize: 17, display: 'flex', alignItems: 'center', gap: 2 }}>{f.displayName}<VerifiedTick still name={f.displayName} videoKyc={f.videoKycVerified} channel={f.channelVerified} surface="favourites" size="sm" /></b><small className="muted small">@{f.slug}</small></span></a>
     <div><Pill presence={f.presence} /></div>
     <SpaceBadges videoKyc={f.videoKycVerified} space={spaceOf(f)} surface="favourites" channel={f.channelVerified ? { verified: true, platform: f.channelPlatform, followers: f.followers } : null} callerLevel={gateOf(f) === 'kyc' ? 'video_kyc' : 'everyone'} />
     {f.headline && <div className="topics">{f.headline}</div>}

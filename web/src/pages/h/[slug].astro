@@ -31,6 +31,7 @@ import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/hf-channel.css';
 import '../../styles/hf-spaces.css';
 import SpaceBadges from '../../components/hosts/SpaceBadges';
+import VerifiedTick from '../../components/hosts/VerifiedTick';
 import { SPACE_TAG, gateOf, spaceOf } from '../../lib/hfSpaces';
 
 interface Card {
@@ -101,7 +102,7 @@ const SOCIAL_NAME: Record<string, string> = { instagram: 'Instagram', youtube: '
 const socials = (host?.channels ?? []).filter(c => c && SOCIAL_NAME[c.platform] && c.handle).slice(0, 4);
 const socialUpdated = socials.reduce<number>((m, c) => Math.max(m, c.updatedAt ?? 0), 0);
 const socialUpdatedLabel = socialUpdated ? new Date(socialUpdated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : '';
-const channelBadge = host?.channelVerified === true ? { verified: true, platform: socials.length ? null : host.channelPlatform ?? reels[0]?.platform ?? null, followers: socials.length ? null : host.followers ?? null } : null;
+const channelBadge = host?.channelVerified === true ? { verified: true, platform: socials[0]?.platform ?? host.channelPlatform ?? reels[0]?.platform ?? null, followers: socials.length ? null : host.followers ?? null } : null;
 const callerKycOnly = gateOf(host) === 'kyc';
 const audioUrl = host?.introAudioUrl ?? null;
 // [HF-MERCH-QA-1] End the headline with a full stop when it has no ending punctuation, so the meta reads "Founder, happy to chat. From Rs 10/min."
@@ -179,9 +180,9 @@ const navItems = [
             </div>
             <div class="info">
               <p class="eyebrow">{eyebrow}</p>
-              <h1 id="nm">{firstName}{restName && <>{' '}<br />{restName}</>}</h1>
+              <h1 id="nm">{firstName}{restName && <>{' '}<br />{restName}</>}<VerifiedTick client:idle name={name} videoKyc={videoKyc} channel={host.channelVerified === true} platform={socials[0]?.platform ?? host.channelPlatform ?? null} phone={identityVerified} space={hostSpace} surface="channel_page" size="lg" /></h1>
               {host.tagline && <p class="tag">{host.tagline}</p>}
-              {(videoKyc || hostSpace || channelBadge || callerKycOnly) && <div style="margin:14px 0 4px"><SpaceBadges client:idle videoKyc={videoKyc} space={hostSpace} channel={channelBadge} callerLevel={callerKycOnly ? 'video_kyc' : 'everyone'} surface="channel_page" large /></div>}
+              {(videoKyc || hostSpace || channelBadge || callerKycOnly || identityVerified) && <div style="margin:14px 0 4px"><SpaceBadges client:idle videoKyc={videoKyc} space={hostSpace} channel={channelBadge} phone={identityVerified} callerLevel={callerKycOnly ? 'video_kyc' : 'everyone'} surface="channel_page" large /></div>}
               {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
               {socials.length > 0 && (
                 <section class="socials" aria-labelledby="soch">

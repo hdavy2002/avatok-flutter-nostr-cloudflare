@@ -27,6 +27,7 @@ import { priceFields } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
+import { videoKycSql, channelVerifiedSql, spaceOfRow } from "../lib/hf_spaces"; // [HF-VERIFIED-BLIP-1]
 import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 import { enrichItems, prefetchFeedComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 
@@ -41,9 +42,11 @@ interface FeedRow {
   id: string; host_uid: string; platform: string; url: string | null; embed_url: string | null; video_url: string | null; thumb_url: string | null;
   caption: string | null; likes: number; comments: number; views: number; published_at: number | null; imported_at: number; ts: number;
   slug: string | null; display_name: string | null; price_per_min: number; category: string | null; presence: string | null; image_key: string | null;
+  video_kyc?: number | null; channel_verified?: number | null; women_lane?: number | null; lgbtq_lane?: number | null; lgbtq_public?: number | null; // [HF-VERIFIED-BLIP-1]
 }
 
 const HOST_COLS = `h.slug AS slug, h.display_name AS display_name, h.price_per_min AS price_per_min, h.category AS category, h.presence AS presence,
+  ${videoKycSql("h.uid")} AS video_kyc, ${channelVerifiedSql("h.uid")} AS channel_verified, h.women_lane AS women_lane, h.lgbtq_lane AS lgbtq_lane, h.lgbtq_public AS lgbtq_public, /* [HF-VERIFIED-BLIP-1] name tick */
   COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key`;
 const REEL_COLS = `r.id, r.host_uid, r.platform, r.url, r.embed_url, r.video_url, r.thumb_url, r.caption, r.likes, r.comments, r.views, r.published_at, r.imported_at,
   COALESCE(r.published_at, r.imported_at) AS ts`;
@@ -105,6 +108,7 @@ async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) 
         slug: r.slug, name: r.display_name ?? "", handle: at(f?.handle ?? null), avatar: r.image_key ? mediaUrl(env, r.image_key) : null,
         ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin, followers: f?.followers ?? 0,
         presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
+        videoKycVerified: Number(r.video_kyc) === 1, channelVerified: Number(r.channel_verified) === 1, space: spaceOfRow(r), // [HF-VERIFIED-BLIP-1]
         ...(lines?.get(r.host_uid) ?? {}),
       },
       platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url, title: r.caption ?? "", caption: r.caption ?? "",

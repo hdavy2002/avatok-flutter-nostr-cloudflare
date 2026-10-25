@@ -24,7 +24,10 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
-    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+    category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0,
+    women_lane INTEGER, lgbtq_lane INTEGER, lgbtq_public INTEGER);
+    CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
     CREATE TABLE hf_host_media (id TEXT PRIMARY KEY, uid TEXT, kind TEXT, r2_key TEXT, status TEXT, created_at INTEGER);`);
   db.exec(mig("2026-10-19-hf-channels.sql"));
@@ -90,6 +93,14 @@ describe("feed", () => {
     expect(it.host).toMatchObject({ slug: "slug-a", name: "Name a", handle: "@a", ratePaise: 1200, followers: 100, presence: "online" });
     expect(JSON.stringify(j)).not.toMatch(/"uid"|host_uid/);
     expect(j.nextCursor).toBeNull();
+  });
+  it("[HF-VERIFIED-BLIP-1] each reel's host says whether Video KYC and the channel are verified", async () => {
+    host("k"); reel("hfrl_kkkkkkkk01", "k");
+    host("n"); reel("hfrl_nnnnnnnn01", "n");
+    db.exec("INSERT INTO hf_kyc VALUES ('k','F',1); INSERT INTO hf_selfie VALUES ('s1','k',1,'approved',NULL); UPDATE hf_hosts SET women_lane=1 WHERE uid='k'");
+    const j = await body(await call("/api/hf/reels"));
+    expect(j.items.find((i: any) => i.id === "hfrl_kkkkkkkk01").host).toMatchObject({ videoKycVerified: true, channelVerified: true, space: "women" });
+    expect(j.items.find((i: any) => i.id === "hfrl_nnnnnnnn01").host).toMatchObject({ videoKycVerified: false, channelVerified: true, space: null });
   });
   it("demo hosts only while hfDemoInfluencersVisible", async () => {
     host("real"); reel("hfrl_realrealreal1", "real");

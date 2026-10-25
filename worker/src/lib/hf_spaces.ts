@@ -84,6 +84,16 @@ export function channelVerifiedSql(uidExpr: string): string {
   return `EXISTS (SELECT 1 FROM hf_channels hc WHERE hc.host_uid=${uidExpr} AND hc.status='approved')`;
 }
 
+/** [HF-VERIFIED-BLIP-1] The two checks behind the verified tick beside a creator's name, for routes that do not select them in SQL. Never throws. */
+export async function hostVerification(env: Env, uid: string): Promise<{ videoKycVerified: boolean; channelVerified: boolean }> {
+  try {
+    const r = await env.DB_META.prepare(`SELECT ${videoKycSql("?1")} AS k, ${channelVerifiedSql("?1")} AS c`).bind(uid).first<{ k: number; c: number }>();
+    return { videoKycVerified: Number(r?.k) === 1, channelVerified: Number(r?.c) === 1 };
+  } catch {
+    return { videoKycVerified: false, channelVerified: false };
+  }
+}
+
 /** True when this caller must be refused because the host takes only video-KYC customers and the caller has no full video KYC. */
 export async function callerKycBlocked(env: Env, callerUid: string, host: HostSpaceCols): Promise<boolean> {
   if (effectiveCallerLevel(host) !== "video_kyc") return false;

@@ -549,16 +549,26 @@ class PublicProduct {
 }
 
 class PublicHost {
-  const PublicHost({required this.slug, required this.displayName, this.avatarUrl});
+  const PublicHost({required this.slug, required this.displayName, this.avatarUrl, this.videoKycVerified = false, this.channelVerified = false});
 
   factory PublicHost.fromJson(Object? v) {
     final j = v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
-    return PublicHost(slug: _s(j['slug']), displayName: _s(j['displayName']), avatarUrl: _sn(j['avatarUrl']));
+    return PublicHost(
+      slug: _s(j['slug']),
+      displayName: _s(j['displayName']),
+      avatarUrl: _sn(j['avatarUrl']),
+      videoKycVerified: j['videoKycVerified'] == true, // [HF-VERIFIED-BLIP-1]
+      channelVerified: j['channelVerified'] == true,
+    );
   }
 
   final String slug;
   final String displayName;
   final String? avatarUrl;
+
+  /// [HF-VERIFIED-BLIP-1] The checks behind the tick beside the name (false from an older server).
+  final bool videoKycVerified;
+  final bool channelVerified;
 }
 
 /// `GET /api/hf/merch/public/:hostSlug` (the strip) and `.../:hostSlug/:productSlug` (one product).

@@ -12,6 +12,7 @@ import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
 import HostCallActions from '../calls/HostCallActions';
 import SpaceBadges from '../../components/hosts/SpaceBadges';
+import VerifiedTick from '../../components/hosts/VerifiedTick';
 import { gateOf, spaceOf } from '../../lib/hfSpaces';
 import SaveHostButton from '../../components/hosts/SaveHostButton';
 import { callsEnabled, type HostPresence } from '../../lib/hfCallsApi';
@@ -27,7 +28,7 @@ interface HostCard {
   /** [HF-LANE-VERIFY-1] Women-lane host: only verified eligible callers can call. */
   womenOnly?: boolean;
   /** [HF-CREATOR-SPACES-1] Space channel tag and the green Video KYC badge flag. */
-  space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean;
+  space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean; identityVerified?: boolean; /* [HF-VERIFIED-BLIP-1] */
   /** [HF-CREATOR-BADGES-1] */
   channelVerified?: boolean; channelPlatform?: string | null; followers?: number | null; callerLevel?: 'everyone' | 'video_kyc';
   /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
@@ -121,7 +122,7 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
       </div>
       <div className="person-copy">
         <div className="profile-card-heading">
-          <div className="person-heading"><h3><a className="person-detail-link" href={href}>{h.displayName}</a></h3></div>
+          <div className="person-heading"><h3><a className="person-detail-link" href={href}>{h.displayName}</a><VerifiedTick name={h.displayName} videoKyc={h.videoKycVerified} channel={h.channelVerified} platform={h.channelPlatform} space={spaceOf(h)} phone={h.identityVerified} surface="host_card" size="sm" /></h3></div>
         </div>
         <p className="hfc-rate">{reviews > 0 && h.rating != null ? <><span aria-hidden="true">★</span> <strong>{h.rating.toFixed(1)}</strong> <span>({reviews})</span><span className="sr-only"> rating from {reviews} reviews</span></> : <span className="hfc-new">New</span>}</p>
         <p className="person-tagline">{h.tagline || 'A little time for a good conversation'}</p>
