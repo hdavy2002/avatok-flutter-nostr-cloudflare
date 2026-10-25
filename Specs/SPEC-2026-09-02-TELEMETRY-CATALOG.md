@@ -1513,3 +1513,16 @@ Each of the four flags must be on before its events appear. Events arrive only a
 |---|---|---|
 | web + app `hf_verified_tick_shown` | `surface`, `level` (`kyc`/`channel`) | A verified tick was drawn beside a creator's name. Once per mount. **Ship-manifest success event.** |
 | web + app `hf_verified_tick_tap` | `surface`, `level` | A fan opened "what we checked". |
+
+## `[HF-SCROLL-HERO-1]` — homepage scroll film (2026-10-25)
+
+Web only (`web/src/lib/scrollStoryHero.ts`). CTA clicks reuse `homepage_cta_click` with `cta` = `story-explore-top` / `story-explore-end` / `story-become-creator`.
+
+| Event | Props | Meaning |
+|---|---|---|
+| `home_scroll_hero_impression` | `mode` (`live`/`static`), `layout` (`cover`/`stacked`/`split`), `variant` (`large`/`small`), `reason` | The hero mounted. |
+| `home_scroll_hero_ready` | `ms`, `layout`, `variant` | First film frame decoded (time from mount). |
+| `home_scroll_hero_buffered` | `ms`, `variant` | Whole film now in memory; every seek is local. |
+| `home_scroll_hero_scene` | `scene`, `index` (1–6), `layout` | A scene's message became fully visible (once per page view). Scene 6 = the visitor reached the end. |
+| `home_scroll_hero_fallback` | `reason` (`video_error`, `metadata_timeout`, `reduced_motion_changed`) | Switched to the static version. |
+| `$exception` | `surface: home-scroll-hero`, `step`/`reason` | Film or in-memory fetch failed. |

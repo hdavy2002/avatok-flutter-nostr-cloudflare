@@ -6,6 +6,7 @@ export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
+import ScrollStoryHero from '../components/home/ScrollStoryHero.astro';
 import { shareImage, publicImage, publicImageSrcSet, ARTWORK_QUALITY } from '../lib/config';
 import { HF_PLAY_URL } from '../lib/hfApp';
 import desiBody from '../components/home/desi-home-body.html?raw';
@@ -33,6 +34,11 @@ for (const path of paths) {
   const attrs = `src="${publicImage(path, { ...opts, width: widths[widths.length - 1] })}" srcset="${publicImageSrcSet(path, widths, opts)}" sizes="(min-width: 900px) 50vw, 100vw" decoding="async"${eager ? ' fetchpriority="high"' : ' loading="lazy"'}`;
   body = body.replaceAll(`src="${path}"`, attrs);
 }
+// [HF-SCROLL-HERO-1] The scroll film opens <main>, above the desi hero. The generated body owns the <main> tag,
+// so split there instead of hand-editing the generated file.
+const MAIN_OPEN = '<main id="main-content">';
+const [bodyHead, bodyRest, ...extraMain] = body.split(MAIN_OPEN);
+if (bodyRest === undefined || extraMain.length) throw new Error('desi-home-body.html must contain exactly one ' + MAIN_OPEN);
 const bgArt = { 'toran-marigold': 1400, 'border-strip': 1400, 'block-print-tile': 420, 'warli-friends': 1400 } as const;
 const bgCss = ':root{' + Object.entries(bgArt).map(([name, width]) => `--dh-${name}:url(${publicImage(`/assets/hf-desi/${name}.webp`, { ...opts, width })})`).join(';') + '}';
 ---
@@ -54,7 +60,9 @@ const bgCss = ':root{' + Object.entries(bgArt).map(([name, width]) => `--dh-${na
 <div class="hf desi-home" data-desi-home>
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <Header homeReference />
-  <Fragment set:html={body} />
+  <Fragment set:html={bodyHead + MAIN_OPEN} />
+  <ScrollStoryHero />
+  <Fragment set:html={bodyRest} />
   <Footer />
 </div>
 <script>

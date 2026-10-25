@@ -80,7 +80,17 @@ const playUrl = `https://play.google.com/store/apps/details?id=${brandConfig.hfP
 assert(links(download).some(link => link.href === playUrl), 'Download targets the configured Hello Fraands Google Play package');
 assert(!links(download).some(link => /apps\.apple\.com/.test(link.href || '')), 'No invented Apple listing');
 assert.match(download, /<span\b[^>]*aria-disabled="true"[^>]*>[\s\S]*?Coming soon/i, 'Unknown Apple listing has a truthful non-link Coming soon state');
-assert(!/<video\b/.test(main), 'Illustrative art does not pretend an actual feed exists');
+// [HF-SCROLL-HERO-1 2026-10-25] Owner asked for a scroll-controlled explainer film above the hero. It is the ONLY
+// video allowed in <main>: muted, inline, never autoplaying, and it explains the call flow (it is not a feed).
+const storyHero = main.match(/<section\b[^>]*data-story-hero[\s\S]*?<\/section>/)?.[0] || '';
+assert(storyHero, 'Scroll story hero renders inside <main>');
+assert(main.indexOf('data-story-hero') < main.indexOf('data-home-section="hero"'), 'Scroll story hero sits above the desi hero');
+const storyVideo = storyHero.match(/<video\b[^>]*>/)?.[0] || '';
+assert(/\bmuted\b/.test(storyVideo) && /\bplaysinline\b/.test(storyVideo) && !/\bautoplay\b/.test(storyVideo) && !/\bcontrols\b/.test(storyVideo), 'Story film is muted, inline and never autoplays');
+assert(/\bposter="[^"]+"/.test(storyVideo), 'Story film shows a poster immediately');
+for (const copy of ['From watching reels', 'to saying hello.', 'Find your favourite.', 'First, we call Arti.', 'Then, we call you.', 'Just the conversation.', 'Not your number.', 'Neither person sees the other’s phone number.', 'Find your person.', 'Say hello.']) assert(plainText(storyHero).includes(copy), 'Story hero copy: ' + copy);
+assert(storyHero.includes('href="/marketplace"') && storyHero.includes('href="/hosts/join"'), 'Story hero links Explore creators and Become a creator to real routes');
+assert(!/<video\b/.test(main.replace(storyHero, '')), 'Illustrative art does not pretend an actual feed exists');
 checkHelloFraandsPages(root, identity);
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
