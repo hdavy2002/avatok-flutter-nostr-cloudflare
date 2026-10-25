@@ -105,9 +105,18 @@ class SearchRepo {
   }
 
   /// Vote to bring [c] in. One vote per person; repeating it is harmless. Returns the new total.
+  /// [HF-REEL-CALL-2] The worker's route is `POST /api/hf/invites/:platform/:handle`; its header comment also names a
+  /// `.../vote` form, so a 404 (route not found, not the flag being off) retries once on that path.
   Future<int> vote(MissingCreator c) => _guard(() async {
         final handle = Uri.encodeComponent(c.handle.replaceFirst('@', ''));
-        final j = await _api.postJson('/api/hf/invites/${Uri.encodeComponent(c.platform)}/$handle');
+        final base = '/api/hf/invites/${Uri.encodeComponent(c.platform)}/$handle';
+        Map<String, dynamic> j;
+        try {
+          j = await _api.postJson(base);
+        } on ApiException catch (e) {
+          if (e.status != 404 || e.isNotEnabled) rethrow;
+          j = await _api.postJson('$base/vote');
+        }
         final v = j['votes'];
         return v is num ? v.toInt() : c.votes + 1;
       });

@@ -1,83 +1,72 @@
 import 'package:flutter/material.dart';
 
 import '../data/models/reel.dart';
-import 'reels_real.dart';
+import 'reel_player.dart';
 import 'theme.dart';
-import 'screens/feed.dart';
 
-/// Full-screen player for the videos on a profile (HF-WIRE-4): swipe up or down, the visible one plays, the next one is readied.
-class ReelViewer extends StatefulWidget {
-  const ReelViewer({super.key, required this.reels, this.start = 0});
+/// [HF-REEL-CALL-2] The light preview a profile's video opens (owner 2026-10-25): the video plays on its own with only a
+/// close X and a mute toggle. No Call / Invite bar, no side rail and no information sheet (those belong to the Reels feed).
+/// Replaces the old full-screen swipe viewer.
+class ReelPreview extends StatefulWidget {
+  const ReelPreview({super.key, required this.reel});
 
-  final List<FeedReel> reels;
-  final int start;
+  final FeedReel reel;
+
+  /// Opens the preview over the current screen.
+  static Future<void> open(BuildContext context, FeedReel reel) =>
+      Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => ReelPreview(reel: reel)));
 
   @override
-  State<ReelViewer> createState() => _ReelViewerState();
+  State<ReelPreview> createState() => _ReelPreviewState();
 }
 
-class _ReelViewerState extends State<ReelViewer> {
-  late final PageController _pager = PageController(initialPage: widget.start);
-  late int _index = widget.start;
+class _ReelPreviewState extends State<ReelPreview> {
+  bool _muted = false;
 
-  @override
-  void dispose() {
-    _pager.dispose();
-    super.dispose();
-  }
+  Widget _round({required Key key, required String label, required IconData icon, required VoidCallback onTap}) => Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          key: key,
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: C.cinema.withValues(alpha: 0.6)),
+            child: Icon(icon, color: C.ivory, size: 26),
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top + 10;
     return Scaffold(
+      key: const ValueKey('reel-preview'),
       backgroundColor: C.cinema,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          PageView.builder(
-            controller: _pager,
-            scrollDirection: Axis.vertical,
-            itemCount: widget.reels.length,
-            onPageChanged: (i) => setState(() => _index = i),
-            itemBuilder: (_, i) {
-              final r = widget.reels[i];
-              return ReelPage(
-                key: ValueKey(r.id),
-                reel: demoReelFrom(r),
-                real: r,
-                active: i == _index,
-                preload: i == _index + 1,
-                keepAlive: (i - _index).abs() <= 1,
-                creatorReels: (reel) => widget.reels
-                    .where(
-                      (candidate) => candidate.invite?.key == reel.invite?.key,
-                    )
-                    .toList(),
-              );
-            },
+          ReelPlayer(key: ValueKey('preview-${widget.reel.id}'), reel: widget.reel, active: true, muted: _muted),
+          Positioned(
+            top: top,
+            left: 16,
+            child: _round(
+              key: const ValueKey('preview-close'),
+              label: 'Close',
+              icon: Icons.close_rounded,
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
           ),
           Positioned(
-            top: MediaQuery.paddingOf(context).top + 10,
-            left: 16,
-            child: Semantics(
-              button: true,
-              label: 'Close',
-              child: InkWell(
-                key: const ValueKey('viewer-close'),
-                borderRadius: BorderRadius.circular(24),
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0x991A0B26),
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    color: C.ivory,
-                    size: 26,
-                  ),
-                ),
-              ),
+            top: top,
+            right: 16,
+            child: _round(
+              key: const ValueKey('preview-mute'),
+              label: _muted ? 'Unmute' : 'Mute',
+              icon: _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              onTap: () => setState(() => _muted = !_muted),
             ),
           ),
         ],

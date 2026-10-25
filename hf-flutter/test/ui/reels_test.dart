@@ -6,6 +6,8 @@ import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/reel.dart';
 import 'package:hf_app/data/repos/reels_repo.dart';
+import 'package:hf_app/data/share.dart';
+import 'package:hf_app/data/telemetry.dart';
 import 'package:hf_app/demo/my_reels_section.dart';
 import 'package:hf_app/demo/presence_bridge.dart';
 import 'package:hf_app/demo/reel_player.dart';
@@ -206,16 +208,10 @@ void main() {
       expect(seen['hfrl_1'], isTrue);
       expect(seen['hfrl_2'], isFalse); // readied, not playing
       expect(find.text('Caption hfrl_1'), findsNothing);
-      await tester.tap(find.byTooltip('Reel information').first);
-      await tester.pumpAndSettle();
-      expect(find.text('Caption hfrl_1'), findsOneWidget);
-      expect(find.text('Call now'), findsOneWidget);
-      expect(seen['hfrl_1'], isFalse); // information sheet pauses playback
-      await tester.pump(const Duration(seconds: 9));
-      await tester.pumpAndSettle();
-      expect(find.text('Caption hfrl_1'), findsNothing);
-      expect(find.text('Call now'), findsNothing);
-      expect(seen['hfrl_1'], isTrue);
+      // [HF-REEL-CALL-2] no information sheet any more: the bar says Call <name>, the photo sits in the rail, nothing else
+      expect(find.byTooltip('Reel information'), findsNothing);
+      expect(find.text('Call Maya'), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-photo')), findsWidgets);
       expect(find.byTooltip('Book a time'), findsWidgets);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
@@ -234,11 +230,80 @@ void main() {
         return {'ok': true, 'items': [_item('hfrl_1'), _item('hfrl_2', name: 'Riya', slug: 'riya')], 'nextCursor': null};
       });
       await _pump(tester, FeedScreen(reelId: 'hfrl_2', repo: ReelsRepo(api), onlineFetch: () async => 2));
+      await tester.pump();
       expect(seen['hfrl_2'], isTrue);
       expect(seen['hfrl_1'], isFalse);
       expect(find.text('Caption hfrl_2'), findsNothing);
       await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Open Riya profile'), findsOneWidget);
+    });
+
+    testWidgets('[HF-REEL-CALL-2] a link while the feed is already open: that reel plays at once, the old first reel never plays again before it', (tester) async {
+      final log = <String>[];
+      ReelPlayer.testPlayer = (reel, active) {
+        log.add('${reel.id}:$active');
+        return Container(key: ValueKey('player-${reel.id}'), color: Colors.black);
+      };
+      final events = <String>[];
+      final old = Telemetry.sink;
+      Telemetry.sink = (e, props) => events.add('$e ${props['reel_id']} ${props['cached']}');
+      addTearDown(() => Telemetry.sink = old);
+      final link = ValueNotifier<String?>(null);
+      final api = FakeApiClient((m, p, q, b) {
+        if (p.endsWith('/view')) return {'ok': true};
+        if (p == '/api/hf/reels/hfrl_9') return {'ok': true, 'item': _item('hfrl_9', name: 'Zara', slug: 'zara')};
+        return {'ok': true, 'items': [_item('hfrl_1'), _item('hfrl_2', name: 'Riya', slug: 'riya')], 'nextCursor': null};
+      });
+      await _pump(tester, ValueListenableBuilder<String?>(
+        valueListenable: link,
+        builder: (_, id, __) => FeedScreen(reelId: id, repo: ReelsRepo(api), onlineFetch: () async => 2),
+      ));
+      expect(log, contains('hfrl_1:true'));
+      log.clear();
+      link.value = 'hfrl_9';
+      for (var i = 0; i < 4; i++) {
+        await tester.pump();
+      }
+      expect(log, contains('hfrl_9:true'));
+      expect(log, isNot(contains('hfrl_1:true')));
+      expect(log, isNot(contains('hfrl_2:true')));
+      expect(find.text('Call Zara'), findsOneWidget);
+      expect(api.calls.where((c) => c == 'GET /api/hf/reels/hfrl_9'), hasLength(1));
+      expect(api.calls.where((c) => c == 'GET /api/hf/reels'), hasLength(2)); // the opening feed + the one attached behind the link
+      expect(events, contains('reel_deeplink_open hfrl_9 false'));
+    });
+
+    testWidgets('[HF-REEL-CALL-2] a link to a reel that is gone falls back to the ordinary feed', (tester) async {
+      final seen = _stubPlayer();
+      final api = FakeApiClient((m, p, q, b) {
+        if (p.endsWith('/view')) return {'ok': true};
+        if (p == '/api/hf/reels/hfrl_gone') return const ApiException(kind: ApiFailure.http, status: 404, code: 'not_found', message: 'x');
+        return {'ok': true, 'items': [_item('hfrl_1')], 'nextCursor': null};
+      });
+      await _pump(tester, FeedScreen(reelId: 'hfrl_gone', repo: ReelsRepo(api), onlineFetch: () async => 1));
+      await tester.pump();
+      expect(seen['hfrl_1'], isTrue);
+    });
+
+    testWidgets('[HF-REEL-CALL-2] Share sends this reel\'s own caption and link, on every page', (tester) async {
+      _stubPlayer();
+      final sent = <String>[];
+      ShareSheet.testSink = (text) async => sent.add(text);
+      addTearDown(() => ShareSheet.testSink = null);
+      final api = FakeApiClient((m, p, q, b) {
+        if (p.endsWith('/view')) return {'ok': true};
+        return {'ok': true, 'items': [_item('hfrl_1'), _item('hfrl_2', name: 'Riya', slug: 'riya')], 'nextCursor': null};
+      });
+      await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 2));
+      Finder share(String id) => find.descendant(of: find.byKey(ValueKey('$id~0')), matching: find.byTooltip('Share this reel'));
+      await tester.tap(share('hfrl_1'));
+      await tester.pump();
+      expect(sent.last, 'Caption hfrl_1\n${reelShareUrl('hfrl_1')}');
+      await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
+      await tester.pumpAndSettle();
+      await tester.tap(share('hfrl_2'));
+      await tester.pump();
+      expect(sent.last, 'Caption hfrl_2\n${reelShareUrl('hfrl_2')}');
     });
   });
 
@@ -295,9 +360,11 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('video-hfrl_2')));
       await tester.pumpAndSettle();
       expect(seen['hfrl_2'], isTrue);
-      await tester.tap(find.byKey(const ValueKey('viewer-close')));
+      expect(find.byKey(const ValueKey('preview-mute')), findsOneWidget); // [HF-REEL-CALL-2] light preview: close X + mute only
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('preview-close')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('viewer-close')), findsNothing);
+      expect(find.byKey(const ValueKey('preview-close')), findsNothing);
     });
 
     testWidgets('unavailable profile shows the error with Try again', (tester) async {

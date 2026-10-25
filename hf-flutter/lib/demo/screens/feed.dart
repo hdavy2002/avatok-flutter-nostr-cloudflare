@@ -11,7 +11,6 @@ import '../../data/reel_bookmarks.dart';
 import '../../data/reel_engage_store.dart'; // [HF-REEL-ENGAGE-APP-1]
 import '../../data/repos/reel_engage_repo.dart';
 import '../../data/api_exception.dart';
-import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/models/reel.dart';
 import '../../data/models/search.dart';
 import '../../data/repos/reels_repo.dart';
@@ -30,8 +29,6 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'creator_page.dart';
 import 'reel_comments_sheet.dart';
-import 'sheets.dart';
-import '../verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
 
 /// Reels feed: full-screen cards, swipe up/down. Presence controls instant calls; offline creators can still be booked.
 /// Demo mode keeps the dummy reels; real mode (HF-WIRE-4) pages `GET /api/hf/reels`. [reelId] opens a shared reel first.
@@ -201,49 +198,125 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
     setState(() => _state = AsyncData(List.of(_items)));
   }
 
+  /// [HF-REEL-CALL-2] Bumped by every [_first]; a slower earlier load that finds a newer one running stops instead of
+  /// overwriting it (a deep link arriving while the cached feed was still loading).
+  int _gen = 0;
+
   Future<void> _first() async {
+    final gen = ++_gen;
+    final sharedId = widget.reelId;
+    if (sharedId != null && await _openShared(sharedId, gen)) return;
+    if (!mounted || gen != _gen) return;
     if (_items.isEmpty) setState(() => _state = const AsyncLoading());
     // [HF-REELS-FAST-START-1] With no shared reel, show the last stored first page at once (shuffled, new first video),
     // then swap in the fresh page in the background without moving the reel on screen.
     if (FeedOrder.enabled && widget.reelId == null && widget.initialReel == null) {
       final cached = await widget.repo.cachedFirstPage();
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       final firstPage = (cached?.items ?? const <FeedReel>[]).where((r) => !UnplayableReels.contains(r.id)).toList();
       if (firstPage.isNotEmpty) {
         await FeedOrder.freshStart<FeedReel>(firstPage, (r) => r.id);
-        if (!mounted) return;
+        if (!mounted || gen != _gen) return;
         _show(cached!, null, firstPage);
-        unawaited(_refreshFirst());
+        unawaited(_refreshFirst(gen));
         return;
       }
     }
     try {
-      final results = await Future.wait<Object?>([
-        widget.repo.feed(),
-        if (widget.reelId != null)
-          widget.repo.one(widget.reelId!)
-        else
-          Future<Object?>.value(null),
-      ]);
-      if (!mounted) return;
-      final page = results[0] as ReelsPage;
-      final shared = results[1] as FeedReel? ?? widget.initialReel;
+      final page = await widget.repo.feed();
+      if (!mounted || gen != _gen) return;
+      final shared = widget.initialReel;
       final firstPage = page.items.where((r) => r.id != shared?.id && !UnplayableReels.contains(r.id)).toList();
       // [HF-REELS-FRESH-OPEN-1] a new first video on every open (a shared reel still plays first).
       if (shared == null) await FeedOrder.freshStart<FeedReel>(firstPage, (r) => r.id);
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       _show(page, shared, firstPage);
     } catch (e) {
-      if (mounted) setState(() => _state = AsyncFailure(e));
+      if (mounted && gen == _gen) setState(() => _state = AsyncFailure(e));
+    }
+  }
+
+  /// [HF-REEL-CALL-2] A shared reel (`/r/<id>`, `/reels?reel=<id>`): THAT reel is item 0 straight away and plays alone; the
+  /// normal feed loads behind it and is attached after it. Nothing from an earlier or cached feed is ever on screen first
+  /// (that was the "another video plays, then it jumps" bug: the old first item kept playing while the link loaded).
+  /// Returns true when it took over the screen (including when a newer load superseded it), false when the reel is gone
+  /// so the caller falls back to the ordinary feed.
+  Future<bool> _openShared(String id, int gen) async {
+    FeedReel? shared = widget.initialReel;
+    if (shared != null && shared.id != id) shared = null;
+    if (shared == null) {
+      for (final r in _items) {
+        if (r.id == id) {
+          shared = r;
+          break;
+        }
+      }
+    }
+    if (shared == null) {
+      // not held yet: stop whatever the old feed was playing and wait on the poster, never on another video
+      setState(() {
+        _items.clear();
+        _loops.clear();
+        _index = 0;
+        _state = const AsyncLoading();
+      });
+      final stored = FeedOrder.enabled ? await widget.repo.cachedFirstPage() : null; // widget tests keep to the fake API
+      if (!mounted || gen != _gen) return true;
+      for (final r in stored?.items ?? const <FeedReel>[]) {
+        if (r.id == id) {
+          shared = r;
+          break;
+        }
+      }
+    }
+    if (widget.initialReel == null) Telemetry.event('reel_deeplink_open', {'reel_id': id, 'cached': shared != null});
+    if (shared == null) {
+      try {
+        shared = await widget.repo.one(id);
+      } catch (_) {
+        shared = null;
+      }
+      if (!mounted || gen != _gen) return true;
+    }
+    final head = shared;
+    if (head == null) return false;
+    _setItems([head]);
+    _cursor = null;
+    _more = true; // the feed behind it is still to come; a swipe near the end asks again if it failed
+    _index = 0;
+    if (!head.isInvite && _counted.add(head.id)) unawaited(widget.repo.view(head.id));
+    setState(() => _state = AsyncData(List.of(_items)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pager.hasClients) return;
+      _ownJump = true;
+      _pager.jumpToPage(0);
+      _ownJump = false;
+    });
+    unawaited(_attachFeed(gen));
+    return true;
+  }
+
+  /// [HF-REEL-CALL-2] The normal feed, added after the shared reel without moving it.
+  Future<void> _attachFeed(int gen) async {
+    try {
+      final page = await widget.repo.feed();
+      if (!mounted || gen != _gen) return;
+      final have = _items.map((r) => r.id).toSet();
+      _append(page.items.where((r) => !have.contains(r.id) && !UnplayableReels.contains(r.id)), 0);
+      _cursor = page.nextCursor;
+      _more = page.nextCursor != null;
+      setState(() => _state = AsyncData(List.of(_items)));
+    } catch (_) {
+      // the shared reel plays on its own; swiping near the end asks for the feed again
     }
   }
 
   /// [HF-REELS-FAST-START-1] The fresh first page after a cached start: keep what is on screen, add reels it did not have,
   /// and continue paging from the fresh cursor.
-  Future<void> _refreshFirst() async {
+  Future<void> _refreshFirst(int gen) async {
     try {
       final page = await widget.repo.feed();
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       final have = _items.map((r) => r.id).toSet();
       _append(page.items.where((r) => !have.contains(r.id) && !UnplayableReels.contains(r.id)), 0);
       _cursor = page.nextCursor;
@@ -755,7 +828,7 @@ class _ReelPageState extends State<ReelPage>
               left: 0,
               right: 0,
               bottom: 0,
-              child: _callBar(context, r, inviteOf != null),
+              child: _callBar(context, r), // [HF-REEL-CALL-2] only "Call <name>", for every reel
             ),
             Positioned(
               right: 8,
@@ -766,7 +839,7 @@ class _ReelPageState extends State<ReelPage>
                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // [HF-REEL-RAIL-3] owner 2026-10-25: Like, Reel information, Book a time, Comments, Share on the video; the rest
+                  // [HF-REEL-RAIL-3] owner 2026-10-25: Like, Book a time, Comments, Share (+ the photo, [HF-REEL-CALL-2]) on the video; the rest
                   // (creator status, profile, save) is under "More" so the column fits any screen.
                   if (eState != null)
                     _countAction(
@@ -777,18 +850,8 @@ class _ReelPageState extends State<ReelPage>
                       color: eState.liked ? C.rani : C.ivory,
                       key: const ValueKey('reel-like'),
                     ),
-                  _action(
-                    'Reel information',
-                    Icons.info_outline_rounded,
-                    () => _whileCovered(() => _info(context)),
-                  ),
-                  if (inviteOf != null)
-                    _action(
-                      'Booking unavailable — invite creator',
-                      Icons.calendar_month_outlined,
-                      () => _whileCovered(() => _info(context)),
-                    )
-                  else
+                  // [HF-REEL-CALL-2] no information button any more; a creator who is not on the app has nothing to book
+                  if (inviteOf == null)
                     _action('Book a time', Icons.calendar_month_outlined, () {
                       Telemetry.event('hf_reel_action', {'action': 'book'});
                       _whileCovered(
@@ -812,6 +875,7 @@ class _ReelPageState extends State<ReelPage>
                         ? toast(context, 'Share link copied (demo)')
                         : _share(context, widget.real!),
                   ),
+                  _photo(context, who), // [HF-REEL-CALL-2] the influencer's round photo, directly under Share
                   _action(
                     'More',
                     Icons.more_horiz_rounded,
@@ -868,10 +932,46 @@ class _ReelPageState extends State<ReelPage>
     });
   }
 
-  /// [HF-REEL-CALLBAR-1] The call button under the video. On the app: Call (or what the creator's state allows: queue,
-  /// book, notify). A creator who is not on the app yet: the reel information with the invite button.
-  Widget _callBar(BuildContext context, Reel r, bool invite) {
-    final label = invite ? 'Invite ${r.who.name.split(' ').first} to ${Brand.name}' : 'Call influencer';
+  /// [HF-REEL-CALL-2] What the bar and the photo call the creator: the name, else the handle, else "influencer".
+  static String _callName(Influencer who) {
+    final n = who.name.trim();
+    if (n.isNotEmpty) return n;
+    final h = who.handle.replaceFirst('@', '').trim();
+    return h.isNotEmpty ? h : 'influencer';
+  }
+
+  /// [HF-REEL-CALL-2] Opens the profile of this reel's creator (a network host's profile, or the vote page of a creator
+  /// who is not on the app yet). [source] is `rail` (the photo) or `callbar`.
+  void _openProfile(BuildContext context, String source) {
+    Telemetry.event('reel_profile_tap', {'source': source, 'kind': widget.real?.invite != null ? 'invite' : 'network'});
+    _openChannel(context);
+  }
+
+  /// [HF-REEL-CALL-2] The round photo under Share: a marigold ring, 50 px, opens the profile.
+  Widget _photo(BuildContext context, Influencer who) => Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 3),
+        child: Tooltip(
+          message: 'View ${_callName(who)}\'s profile',
+          child: GestureDetector(
+            key: const ValueKey('reel-photo'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openProfile(context, 'rail'),
+            child: Container(
+              width: 50,
+              height: 50,
+              padding: const EdgeInsets.all(2.5),
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: C.marigold),
+              child: ClipOval(child: Avatar(who, size: 45, ring: false)),
+            ),
+          ),
+        ),
+      );
+
+  /// [HF-REEL-CALLBAR-1] The call button under the video. [HF-REEL-CALL-2] Owner 2026-10-25: it says "Call <name>" on every
+  /// reel (network or not) and opens that creator's profile, where Call / Book (or the vote) live. Nothing else sits
+  /// above it: no name, handle, caption or "not on the app" line.
+  Widget _callBar(BuildContext context, Reel r) {
+    final label = 'Call ${_callName(r.who)}';
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -884,29 +984,23 @@ class _ReelPageState extends State<ReelPage>
             button: true,
             label: label,
             child: Material(
-              color: invite ? C.marigold : C.rani,
+              color: C.rani,
               borderRadius: BorderRadius.circular(999),
               child: InkWell(
                 key: const ValueKey('reel-call-bar'),
                 borderRadius: BorderRadius.circular(999),
                 onTap: () {
-                  Telemetry.event('hf_reel_action', {'action': invite ? 'invite_bar' : 'call_bar'});
-                  if (invite) {
-                    unawaited(_whileCovered(() => _info(context)));
-                  } else if (_callLabel(r) == 'Call now') {
-                    unawaited(startCall(context, r.who));
-                  } else {
-                    unawaited(_whileCovered(() => showCallStateSheet(context, r.who)));
-                  }
+                  Telemetry.event('hf_reel_action', {'action': 'call_bar'});
+                  _openProfile(context, 'callbar');
                 },
                 child: SizedBox(
                   height: 52,
                   width: double.infinity,
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(invite ? Icons.campaign_rounded : Icons.call_rounded, color: invite ? C.deep : C.white, size: 22),
+                    const Icon(Icons.call_rounded, color: C.white, size: 22),
                     const SizedBox(width: 10),
                     Flexible(
-                      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17, color: invite ? C.deep : C.white, w: FontWeight.w900)),
+                      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17, color: C.white, w: FontWeight.w900)),
                     ),
                   ]),
                 ),
@@ -1034,83 +1128,6 @@ class _ReelPageState extends State<ReelPage>
   }
 
 
-  Future<void> _info(BuildContext context) async {
-    final r = widget.reel;
-    Telemetry.event('hf_reel_action', {'action': 'info'});
-    Timer? timer;
-    await showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        timer ??= Timer(const Duration(seconds: 8), () {
-          if (sheetContext.mounted &&
-              ModalRoute.of(sheetContext)?.isCurrent == true)
-            Navigator.of(sheetContext).pop();
-        });
-        return SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  nameWithTick(r.who.name, style: t(22), videoKyc: r.who.videoKycVerified, channel: r.who.channelVerified, space: r.who.space, surface: 'app_reel_info', size: 20),
-                  Text(
-                    '${r.who.handle} · ${r.who.followers} followers',
-                    style: t(14),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(r.caption, style: t(16)),
-                  const SizedBox(height: 12),
-                  if (widget.real?.invite != null) ...[
-                    Text(
-                      'Not on ${Brand.name} yet',
-                      key: const ValueKey('not-on-pill'),
-                      style: t(14),
-                    ),
-                    Text(
-                      '${compactCount(r.hearts)} likes · ${r.views} views',
-                      key: const ValueKey('invite-stats'),
-                      style: t(14),
-                    ),
-                    InviteButton(
-                      creator: widget.real!.invite!,
-                      repo: widget.searchRepo,
-                    ),
-                  ] else ...[
-                    Text('₹${r.who.rate}/min', style: t(14)),
-                    if (_callLabel(r) != null)
-                      TextButton.icon(
-                        onPressed: () {
-                          Navigator.of(sheetContext).pop();
-                          startCall(context, r.who);
-                        },
-                        icon: const Icon(Icons.call_outlined),
-                        label: Text(_callLabel(r)!),
-                      ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    timer?.cancel();
-  }
-
-  /// [HF-CALL-MODES-E2] The label of the call button in the reel sheet, or null for none. With call modes off (or no callState
-  /// from the server) this is exactly the old rule: "Call now" only while online.
-  String? _callLabel(Reel r) {
-    final cs = CallFlags.modes ? widget.real?.host.callState : null;
-    if (cs != null) return callActionLabel(cs);
-    final presence = widget.real?.host.presence ?? (r.who.online ? 'online' : 'offline');
-    return presence == 'online' ? 'Call now' : null;
-  }
-
   Future<void> _share(BuildContext context, FeedReel r) async {
     // [HF-WIRE-9] the system share sheet, link on the brand domain (Brand.url via reelShareUrl)
     try {
@@ -1185,7 +1202,7 @@ class InviteButtonState extends State<InviteButton> {
                 reason: 'to vote',
               ),
         child: Text(
-          voted ? 'VOTED' : 'INVITE',
+          voted ? 'VOTED' : 'VOTE TO INVITE', // [HF-REEL-CALL-2]
           style: t(18, color: C.deep, ls: 0.06),
         ),
       ),

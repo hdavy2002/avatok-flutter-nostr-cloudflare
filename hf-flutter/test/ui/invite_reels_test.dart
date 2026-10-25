@@ -10,10 +10,12 @@ import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/data/api_client.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/reel.dart';
+import 'package:hf_app/data/models/search.dart';
 import 'package:hf_app/data/repos/reels_repo.dart';
 import 'package:hf_app/data/repos/search_repo.dart';
 import 'package:hf_app/demo/presence_bridge.dart';
 import 'package:hf_app/demo/reel_player.dart';
+import 'package:hf_app/demo/screens/creator_page.dart';
 import 'package:hf_app/demo/screens/feed.dart';
 import 'package:hf_app/demo/screens/search.dart';
 import 'package:hf_app/demo/state.dart';
@@ -128,23 +130,20 @@ void main() {
   });
 
   group('feed with invite reels', () {
-    testWidgets('a feed with only invite reels is not empty: pill, stats and INVITE instead of CALL NOW', (tester) async {
+    testWidgets('[HF-REEL-CALL-2] a feed with only invite reels is not empty: just Call <name>, no invite text, no information button', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
       expect(find.text(kFeedEmptyText), findsNothing);
       expect(find.byKey(const ValueKey('player-hfiv_1')), findsOneWidget);
-      expect(find.text('Not on ${Brand.name} yet'), findsNothing);
-      await tester.tap(find.byTooltip('Reel information').first);
-      await tester.pumpAndSettle();
-      expect(find.text('Not on ${Brand.name} yet'), findsOneWidget);
-      expect(find.text('INVITE'), findsOneWidget);
+      expect(find.text('Call New Star'), findsOneWidget);
+      expect(find.text('INVITE'), findsNothing);
+      expect(find.text('VOTE TO INVITE'), findsNothing);
       expect(find.text('CALL NOW'), findsNothing);
-      expect(find.text('Invite caption hfiv_1'), findsOneWidget);
-      expect(find.byKey(const ValueKey('invite-stats')), findsOneWidget);
-      expect(find.textContaining('@newstar'), findsWidgets);
+      expect(find.text('Not on ${Brand.name} yet'), findsNothing);
+      expect(find.text('Invite caption hfiv_1'), findsNothing);
+      expect(find.byTooltip('Reel information'), findsNothing);
+      expect(find.byKey(const ValueKey('reel-photo')), findsOneWidget);
       expect(api.calls.where((c) => c.endsWith('/view')), isEmpty, reason: 'we do not count views of other people\'s reels');
-      await tester.pump(const Duration(seconds: 9));
-      await tester.pumpAndSettle();
     });
 
     testWidgets('an empty feed still shows the empty state', (tester) async {
@@ -167,44 +166,54 @@ void main() {
       await tester.pumpAndSettle();
       await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Open New Star profile'), findsOneWidget);
-      expect(find.byTooltip('Booking unavailable — invite creator'), findsOneWidget);
+      expect(find.byTooltip('Booking unavailable — invite creator'), findsNothing); // [HF-REEL-CALL-2] nothing to book
+      expect(find.byTooltip('Book a time'), findsNothing);
       expect(find.byTooltip('Call now'), findsNothing);
     });
 
-    testWidgets('INVITE votes, toasts, and the button becomes Voted', (tester) async {
+    testWidgets('[HF-REEL-CALL-2] VOTE TO INVITE on the creator page votes, toasts, and the button becomes VOTED', (tester) async {
       final api = FakeApiClient((m, p, q, b) {
         if (p == '/api/hf/invites/youtube/newstar') return {'ok': true, 'votes': 4, 'voted': true};
-        return {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null};
+        return {'ok': true};
       });
-      await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      await tester.tap(find.byTooltip('Reel information').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('INVITE'));
+      await _pump(tester, InviteProfileScreen(creator: const InviteCreator(platform: 'youtube', handle: '@newstar', name: 'New Star', votes: 3), searchRepo: SearchRepo(api)));
+      expect(find.text('Vote to invite'), findsOneWidget);
+      expect(find.text('New Star isn\'t on ${Brand.name} yet. Your vote tells us to invite them.'), findsOneWidget);
+      await tester.tap(find.text('VOTE TO INVITE'));
       await tester.pump();
       await tester.pump();
       expect(api.calls, contains('POST /api/hf/invites/youtube/newstar'));
       expect(find.text('Voted! We will ask @newstar to join.'), findsOneWidget);
       expect(find.text('VOTED'), findsOneWidget);
-      expect(find.text('INVITE'), findsNothing);
+      expect(find.text('VOTE TO INVITE'), findsNothing);
       await tester.pump(const Duration(seconds: 9));
       await tester.pumpAndSettle();
     });
 
-    testWidgets('a failed vote shows the message and leaves INVITE tappable', (tester) async {
+    testWidgets('a failed vote shows the message and leaves VOTE TO INVITE tappable', (tester) async {
       final api = FakeApiClient((m, p, q, b) {
         if (p.startsWith('/api/hf/invites/')) return const ApiException(kind: ApiFailure.http, status: 503, code: 'unavailable', message: 'Try again in a little while.');
-        return {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null};
+        return {'ok': true};
       });
-      await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      await tester.tap(find.byTooltip('Reel information').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('INVITE'));
+      await _pump(tester, InviteProfileScreen(creator: const InviteCreator(platform: 'youtube', handle: '@newstar', name: 'New Star', votes: 3), searchRepo: SearchRepo(api)));
+      await tester.tap(find.text('VOTE TO INVITE'));
       await tester.pump();
       await tester.pump();
       expect(find.text('VOTED'), findsNothing);
-      expect(find.text('INVITE'), findsOneWidget);
+      expect(find.text('VOTE TO INVITE'), findsOneWidget);
       await tester.pump(const Duration(seconds: 9));
       await tester.pumpAndSettle();
+    });
+
+    test('[HF-REEL-CALL-2] vote retries on the .../vote path when the first route is not found', () async {
+      final api = FakeApiClient((m, p, q, b) {
+        if (p == '/api/hf/invites/youtube/newstar') return const ApiException(kind: ApiFailure.http, status: 404, code: 'not_found', message: 'Not found');
+        if (p == '/api/hf/invites/youtube/newstar/vote') return {'ok': true, 'votes': 9, 'voted': true};
+        return {'ok': true};
+      });
+      final total = await SearchRepo(api).vote(const MissingCreator(handle: '@newstar', platform: 'youtube', votes: 3));
+      expect(total, 9);
+      expect(api.calls, ['POST /api/hf/invites/youtube/newstar', 'POST /api/hf/invites/youtube/newstar/vote']);
     });
   });
 

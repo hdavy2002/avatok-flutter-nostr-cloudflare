@@ -106,8 +106,12 @@ class ReelPlayer extends StatefulWidget {
     required this.active,
     this.preload = false,
     this.sound = true,
+    this.muted = false,
     this.onUnplayable,
   });
+
+  /// [HF-REEL-CALL-2] The profile preview's mute toggle: flipping it silences / restores the playing video in place.
+  final bool muted;
 
   /// [HF-REEL-SKIP-1] Called with the reason when the reel can never play inside the app; the feed then removes it and
   /// reports it to the server ([HF-REEL-SKIP-2]).
@@ -443,6 +447,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       _seenActive = false;
     }
     _sync();
+    if (old.muted != widget.muted && _engine) _run('window.hfMute&&window.hfMute(${widget.muted})'); // [HF-REEL-CALL-2]
     // Leaving the page pauses the video in place (the PageView drops far-away pages, so memory stays at one or two views).
     if (old.active != widget.active && _engine) {
       if (widget.active) {

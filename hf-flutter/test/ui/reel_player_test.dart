@@ -191,7 +191,9 @@ void main() {
       await tester.ensureVisible(find.byKey(const ValueKey('video-r1')));
       await tester.tap(find.byKey(const ValueKey('video-r1')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('viewer-close')), findsOneWidget);
+      expect(find.byKey(const ValueKey('preview-close')), findsOneWidget); // [HF-REEL-CALL-2] light preview
+      expect(find.byKey(const ValueKey('preview-mute')), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsNothing);
       expect(find.byKey(const ValueKey('reel-tap')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('reel-tap')));
       expect(js.where((s) => s.contains('hfToggle')), hasLength(1));

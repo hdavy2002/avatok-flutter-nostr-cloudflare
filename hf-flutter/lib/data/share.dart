@@ -22,8 +22,11 @@ abstract final class ShareSheet {
     return Share.share(text);
   }
 
-  static Future<void> reel(String reelId, {String? caption}) =>
-      text('${caption == null || caption.isEmpty ? 'Watch this on ${Brand.name}' : caption}\n${reelShareUrl(reelId)}');
+  /// [HF-REEL-CALL-2] Text = THIS reel's own caption (else "Watch this on <brand>") + its link, nothing from any other reel.
+  static Future<void> reel(String reelId, {String? caption}) {
+    final own = caption?.trim() ?? '';
+    return text('${own.isEmpty ? 'Watch this on ${Brand.name}' : own}\n${reelShareUrl(reelId)}');
+  }
 
   /// [HF-SHARE-APP-1] Shares an influencer's page. [own] is the influencer sharing his or her own page.
   static Future<void> influencer(String slug, String displayName, {bool own = false}) {

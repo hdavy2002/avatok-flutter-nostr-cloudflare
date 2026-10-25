@@ -171,7 +171,7 @@ class ChannelMerchEmpty extends StatelessWidget {
 }
 
 /// "Now Showing": the first video plays right here (the official YouTube / Instagram embed, never a file we hold), the rest
-/// are a row of tiles that open the full-screen viewer. Not built at all when the influencer has no videos.
+/// are a row of tiles that open a light preview (video, close X, mute). Not built at all when the influencer has no videos.
 class ChannelVideosSection extends StatefulWidget {
   const ChannelVideosSection({super.key, required this.reels});
 
@@ -277,7 +277,7 @@ class _ChannelVideosSectionState extends State<ChannelVideosSection> {
                     label: 'Watch video ${i + 2}',
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => ReelViewer(reels: reels, start: i + 1))),
+                      onTap: () => ReelPreview.open(context, rest[i]), // [HF-REEL-CALL-2] a light preview: video, close and mute only
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(18),
                         child: Stack(fit: StackFit.expand, children: [

@@ -82,6 +82,8 @@ abstract final class Telemetry {
     'hf_app_booking_length_picked', // [HF-CALL-MODES-E2] {minutes}
     'hf_app_call_topup_tapped', // [HF-CALL-MODES-E2] {surface}
     'hf_reel_action',
+    'reel_profile_tap', // [HF-REEL-CALL-2] {source: rail|callbar, kind: network|invite}
+    'reel_deeplink_open', // [HF-REEL-CALL-2] {reel_id, cached}
     'hf_reel_bookmark_sync',
     'hf_intro_decision',
     'hf_auth_entry',

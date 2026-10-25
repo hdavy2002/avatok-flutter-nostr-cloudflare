@@ -261,19 +261,21 @@ void main() {
     expect(repo.likes, isEmpty);
   });
 
-  testWidgets('a short screen fits the five buttons in the column and nothing shrinks', (tester) async {
+  testWidgets('a short screen fits the buttons and the photo in the column and nothing shrinks', (tester) async {
     await _pump(tester, _reel(), _Repo(), size: const Size(400, 560));
     expect(find.byKey(const ValueKey('reel-info-left')), findsNothing); // [HF-REEL-RAIL-2]
-    expect(find.byIcon(Icons.info_outline_rounded), findsWidgets);
+    expect(find.byIcon(Icons.info_outline_rounded), findsNothing); // [HF-REEL-CALL-2] the information button is gone
+    expect(find.byKey(const ValueKey('reel-photo')), findsOneWidget);
     expect(find.byKey(const ValueKey('reel-more')), findsOneWidget);
     expect(find.byType(FittedBox), findsNothing);
     final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));
     expect(count.style!.fontSize, greaterThanOrEqualTo(14));
   });
 
-  testWidgets('a tall screen keeps Reel information in the column', (tester) async {
+  testWidgets('[HF-REEL-CALL-2] a tall screen has no Reel information button either', (tester) async {
     await _pump(tester, _reel(), _Repo());
     expect(find.byKey(const ValueKey('reel-info-left')), findsNothing);
+    expect(find.byTooltip('Reel information'), findsNothing);
   });
 
   test('signing out clears the shared like state', () {
