@@ -3,10 +3,11 @@
 // /dashboard/orders?order=<id>. The old shop-orders screen was retired ([HF-DASHBOARD-SHELL-1]); this replaces its redirect.
 export const prerender = false;
 import Base from '../../layouts/Base.astro';
+import DashboardLoading from '../../components/DashboardLoading.astro'; // [HF-DASH-LOADING-1]
 import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
 import { BRAND } from '../../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 <Base title={`My orders | ${BRAND.name}`} description="Your merch orders and where they are." noindex keywords="">
-  <DashboardApp client:only="react" section="orders" />
+  <DashboardApp client:only="react" section="orders" ><div slot="fallback"><DashboardLoading /></div></DashboardApp>
 </Base>

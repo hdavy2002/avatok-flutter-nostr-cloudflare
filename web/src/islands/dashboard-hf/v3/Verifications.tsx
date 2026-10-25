@@ -22,6 +22,12 @@ const MISSING_TEXT: Record<string, string> = {
   channel_or_video_kyc: 'Connect a channel or finish video KYC',
   space_video_kyc: 'Finish video KYC to open your special space',
 };
+// [HF-VERIF-WORDING-1] Kept word for word in step with the app (my_verifications.dart _liveTitle / _liveLine).
+const liveTitle = (status?: string | null) => (status === 'live' ? 'You are live' : 'You can go live');
+const liveLine = (status?: string | null) =>
+  status === 'live' ? 'Your badges are in place and fans can find you.'
+  : status === 'approved' || status === 'paused' ? 'Your badges are in place and your profile is approved.'
+  : 'Your badges are in place. Our team checks your profile before fans can see it.';
 const track = (e: string, p: Record<string, unknown> = {}) => { try { capture(e, p as never); } catch { /* telemetry must never break the page */ } };
 const Chip = ({ tone, children }: { tone?: 'gold' | 'lav' | 'miss' | 'dec'; children: React.ReactNode }) => <span className={`h3-chip${tone ? ` ${tone}` : ''}`}>{children}</span>;
 
@@ -45,9 +51,9 @@ export default function Verifications({ account }: { account: DashboardAccount }
     <PageHead eyebrow="My verifications" title="Bharosa ke badge" sub="Stack your badges so fans trust you. Add a channel, video KYC, or both." art={<Sticker name="nazar" w={100} rot={5} />} />
     <section className="hv-summary" aria-live="polite">
       <div className="hv-lead">
-        <h2>{canGoLive ? 'You can go live' : 'Not live yet'}</h2>
+        <h2>{canGoLive ? liveTitle(me.hostStatus) : 'Not ready to go live yet'}</h2>
         {canGoLive
-          ? <p>Your badges are in place. Our team still approves your profile before it shows to fans.</p>
+          ? <p>{liveLine(me.hostStatus)}</p>
           : <><p>Here is what is still missing:</p><ul className="hv-missing">{(missing.length ? missing : ['channel_or_video_kyc']).map(m => <li key={m}>{MISSING_TEXT[m] ?? m}</li>)}</ul></>}
       </div>
       <SpaceBadges videoKyc={b.videoKyc} space={b.space} surface="my_verifications" large />

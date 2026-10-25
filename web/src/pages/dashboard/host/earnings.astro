@@ -2,10 +2,11 @@
 // [HF-DASH-SHELL-2] Dashboard screen "earnings": one shell for every account screen (lib/dashboardRoutes.ts).
 export const prerender = false;
 import Base from '../../../layouts/Base.astro';
+import DashboardLoading from '../../../components/DashboardLoading.astro'; // [HF-DASH-LOADING-1]
 import DashboardApp from '../../../islands/dashboard-hf/DashboardApp';
 import { BRAND } from '../../../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 <Base title={`Earnings | ${BRAND.name}`} description="Your profile, wallet, calls and appointments." noindex keywords="">
-  <DashboardApp client:only="react" section="earnings" />
+  <DashboardApp client:only="react" section="earnings" ><div slot="fallback"><DashboardLoading /></div></DashboardApp>
 </Base>

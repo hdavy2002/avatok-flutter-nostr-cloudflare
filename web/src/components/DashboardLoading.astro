@@ -1,0 +1,30 @@
+---
+// [HF-DASH-LOADING-1] Shown inside every dashboard page while the dashboard app loads (client:only fallback),
+// so the page never flashes "header + footer, nothing in between" for a second.
+---
+<div class="hf-dash-loading" role="status" aria-live="polite">
+  <span class="hf-dash-loading-sr">Loading your dashboard…</span>
+  <div class="hf-dash-loading-side" aria-hidden="true"></div>
+  <div class="hf-dash-loading-main" aria-hidden="true">
+    <div class="hf-dash-loading-bar w40"></div>
+    <div class="hf-dash-loading-bar w70 tall"></div>
+    <div class="hf-dash-loading-card"></div>
+    <div class="hf-dash-loading-card"></div>
+    <div class="hf-dash-loading-card short"></div>
+  </div>
+</div>
+<style>
+  .hf-dash-loading { display: flex; gap: 24px; min-height: 100vh; padding: 24px 16px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; }
+  .hf-dash-loading-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .hf-dash-loading-side { width: 56px; flex: none; border-radius: 16px; background: rgba(70, 17, 62, 0.06); }
+  .hf-dash-loading-main { flex: 1; display: grid; gap: 16px; align-content: start; }
+  .hf-dash-loading-bar, .hf-dash-loading-card { border-radius: 16px; background: linear-gradient(90deg, rgba(70,17,62,0.06) 0%, rgba(70,17,62,0.11) 50%, rgba(70,17,62,0.06) 100%); background-size: 200% 100%; animation: hf-dash-shimmer 1.4s ease-in-out infinite; }
+  .hf-dash-loading-bar { height: 16px; }
+  .hf-dash-loading-bar.tall { height: 36px; }
+  .w40 { width: 40%; } .w70 { width: 70%; }
+  .hf-dash-loading-card { height: 140px; border: 1px solid rgba(70, 17, 62, 0.08); }
+  .hf-dash-loading-card.short { height: 90px; }
+  @keyframes hf-dash-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  @media (prefers-reduced-motion: reduce) { .hf-dash-loading-bar, .hf-dash-loading-card { animation: none; } }
+  @media (max-width: 720px) { .hf-dash-loading-side { display: none; } }
+</style>

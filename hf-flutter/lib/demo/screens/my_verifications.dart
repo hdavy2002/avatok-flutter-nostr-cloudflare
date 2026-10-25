@@ -272,6 +272,14 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
         ),
       );
 
+  // [HF-VERIF-WORDING-1] Kept word for word in step with web Verifications.tsx (liveTitle / liveLine).
+  static String _liveTitle(String? status) => status == 'live' ? 'You are live' : 'You can go live';
+  static String _liveLine(String? status) => switch (status) {
+        'live' => 'Your badges are in place and fans can find you.',
+        'approved' || 'paused' => 'Your badges are in place and your profile is approved.',
+        _ => 'Your badges are in place. Our team checks your profile before fans can see it.',
+      };
+
   List<Widget> _body(SpaceStatus st) {
     final b = st.badges;
     final space = b.space;
@@ -280,8 +288,13 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
         Row(children: [
           Icon(st.canGoLive ? Icons.check_circle_rounded : Icons.info_outline_rounded, color: st.canGoLive ? C.maroon : C.muted, size: 30),
           const SizedBox(width: 10),
-          Expanded(child: Text(st.canGoLive ? 'You can go live' : 'Not ready to go live yet', style: t(22, color: C.maroon, w: FontWeight.w900, h: 1.2))),
+          Expanded(child: Text(st.canGoLive ? _liveTitle(st.hostStatus) : 'Not ready to go live yet', style: t(22, color: C.maroon, w: FontWeight.w900, h: 1.2))),
         ]),
+        // [HF-VERIF-WORDING-1] Same words as the website: say whether the team has approved the profile yet.
+        if (st.canGoLive) ...[
+          const SizedBox(height: 6),
+          Text(_liveLine(st.hostStatus), style: t(16, color: C.muted, w: FontWeight.w700, h: 1.35)),
+        ],
         if (!st.canGoLive && st.missing.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text('Still needed:', style: t(16, color: C.muted, w: FontWeight.w800)),

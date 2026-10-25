@@ -262,8 +262,11 @@ class ReelPlayer extends StatefulWidget {
         '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18);opacity:0;transition:opacity .3s}body.c .hfb{opacity:1}'
         '#bt{left:0;right:0;top:0;height:${youtubeHideTop}px;-webkit-mask-image:linear-gradient(#000 65%,transparent);mask-image:linear-gradient(#000 65%,transparent)}'
         '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
+        // [HF-REEL-YT-CENTER-1] YouTube's own previous / pause / next buttons appear in the middle at the same moments as its
+        // top bar; a soft frosted oval covers them while that chrome is showing (owner: "YouTube buttons briefly showed").
+        '#bc{left:50%;top:50%;width:72%;max-width:340px;height:120px;transform:translate(-50%,-50%);border-radius:60px;-webkit-mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%);mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%)}'
         '</style></head>'
-        '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bb"></div><script>'
+        '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bc"></div><div class="hfb" id="bb"></div><script>'
         // [HF-REEL-FILL-1] a 9:16 reel on a taller phone screen leaves black bands above and below it; scale the player
         // (centred) just enough that the video reaches the top and the bottom, as Instagram reels do
         'function fit(){var e=document.getElementById("p");if(!e)return;var W=window.innerWidth,H=window.innerHeight,v=W*16/9;'

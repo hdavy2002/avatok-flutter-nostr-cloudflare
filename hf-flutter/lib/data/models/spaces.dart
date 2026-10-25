@@ -79,6 +79,7 @@ class SpaceStatus {
     this.missing = const <String>[],
     this.callerLevel = 'everyone',
     this.callerLevelLocked = false,
+    this.hostStatus,
   });
 
   final bool whatsappVerified;
@@ -116,6 +117,9 @@ class SpaceStatus {
   /// `everyone` or `video_kyc`; the setting is locked for space creators.
   final String callerLevel;
   final bool callerLevelLocked;
+
+  /// [HF-VERIF-WORDING-1] Creator side: the profile status (`live`, `approved`, `pending_review`, ...) or null.
+  final String? hostStatus;
 
   bool grantedFor(SpaceLane lane) => lane == SpaceLane.women ? womenGranted : lgbtqGranted;
 
@@ -189,6 +193,7 @@ class SpaceStatus {
       missing: [for (final m in (j['missing'] is List ? j['missing'] as List : const [])) if (_s(m) != null) _s(m)!],
       callerLevel: level == 'video_kyc' ? 'video_kyc' : 'everyone',
       callerLevelLocked: j['callerLevelLocked'] == true,
+      hostStatus: j['hostStatus'] is String ? j['hostStatus'] as String : null,
     );
   }
 }

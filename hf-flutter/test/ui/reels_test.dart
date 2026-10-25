@@ -151,6 +151,7 @@ void main() {
       // [HF-REEL-ZOOM-1] zoomed in so YouTube's own header, side buttons and title strip sit off screen
       expect(html, contains('backdrop-filter:blur('));
       expect(html, contains('id="bb"'));
+      expect(html, contains('id="bc"')); // [HF-REEL-YT-CENTER-1]
       expect(html, contains('id="bt"'));
       expect(html, contains('chrome(4000)'));
       expect(html, contains('function fit()'));

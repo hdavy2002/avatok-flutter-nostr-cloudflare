@@ -2,10 +2,11 @@
 // [HF-CREATOR-BADGES-1] Dashboard screen "verifications": one shell for every account screen (lib/dashboardRoutes.ts).
 export const prerender = false;
 import Base from '../../layouts/Base.astro';
+import DashboardLoading from '../../components/DashboardLoading.astro'; // [HF-DASH-LOADING-1]
 import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
 import { BRAND } from '../../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 <Base title={`My verifications | ${BRAND.name}`} description="Your trust badges: phone, channel, video KYC and special space." noindex keywords="">
-  <DashboardApp client:only="react" section="verifications" />
+  <DashboardApp client:only="react" section="verifications" ><div slot="fallback"><DashboardLoading /></div></DashboardApp>
 </Base>
