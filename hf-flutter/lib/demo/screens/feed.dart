@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -28,7 +29,6 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'creator_page.dart';
-import 'original_post_page.dart';
 import 'reel_comments_sheet.dart';
 import 'sheets.dart';
 import '../verified_tick.dart'; // [HF-VERIFIED-BLIP-1]
@@ -473,6 +473,9 @@ class _FeedScreenState extends State<_DemoFeed> {
 }
 
 class ReelPage extends StatefulWidget {
+  /// [HF-REEL-CALLBAR-1] Height of the call strip at the bottom of every reel (the right-hand buttons sit above it).
+  static const double callBarHeight = 72;
+
   const ReelPage({
     super.key,
     required this.reel,
@@ -746,17 +749,34 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
+            // [HF-REEL-CALLBAR-1] owner: a wide "Call influencer" button just above the tab bar, on every screen size, with
+            // a softly blurred strip behind it (it also covers any channel name / caption YouTube shows at the bottom).
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _callBar(context, r, inviteOf != null),
+            ),
             Positioned(
               right: 8,
-              bottom: 12,
+              bottom: ReelPage.callBarHeight + 8,
               top: MediaQuery.paddingOf(context).top + 8,
               child: Align(
                alignment: Alignment.bottomRight,
                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // [HF-REEL-RAIL-2] owner 2026-10-25: only info, booking, like, comments on the video; everything else is
-                  // under "More" so the column fits any screen.
+                  // [HF-REEL-RAIL-3] owner 2026-10-25: Like, Reel information, Book a time, Comments, Share on the video; the rest
+                  // (creator status, profile, save) is under "More" so the column fits any screen.
+                  if (eState != null)
+                    _countAction(
+                      eState.liked ? 'Unlike' : 'Like',
+                      eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      eState.likes.total,
+                      _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
+                      color: eState.liked ? C.rani : C.ivory,
+                      key: const ValueKey('reel-like'),
+                    ),
                   _action(
                     'Reel information',
                     Icons.info_outline_rounded,
@@ -777,15 +797,7 @@ class _ReelPageState extends State<ReelPage>
                         ),
                       );
                     }),
-                  if (eState != null) ...[
-                    _countAction(
-                      eState.liked ? 'Unlike' : 'Like',
-                      eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      eState.likes.total,
-                      _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
-                      color: eState.liked ? C.rani : C.ivory,
-                      key: const ValueKey('reel-like'),
-                    ),
+                  if (eState != null)
                     _countAction(
                       'Comments',
                       Icons.chat_bubble_outline_rounded,
@@ -793,7 +805,13 @@ class _ReelPageState extends State<ReelPage>
                       () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
                       key: const ValueKey('reel-comment'),
                     ),
-                  ],
+                  _action(
+                    'Share this reel',
+                    Icons.share_outlined,
+                    () => widget.real == null
+                        ? toast(context, 'Share link copied (demo)')
+                        : _share(context, widget.real!),
+                  ),
                   _action(
                     'More',
                     Icons.more_horiz_rounded,
@@ -806,15 +824,6 @@ class _ReelPageState extends State<ReelPage>
                               stateDot?.$3 ?? (presence == 'online' ? C.onlineDot : presence == 'busy' ? C.marigold : C.ruby),
                             ),
                       items: [
-                        if (_originalUrl != null)
-                          (
-                            _originalUrl!.host.contains('instagram') ? 'See this post on Instagram' : 'See this video on YouTube',
-                            Icons.open_in_new_rounded,
-                            const ValueKey('reel-original'),
-                            () async {
-                              await OriginalPostPage.open(context, _originalUrl!);
-                            },
-                          ),
                         ('Open ${who.name} profile', Icons.person_outline_rounded, null, () async {
                           _openChannel(context);
                         }),
@@ -835,18 +844,6 @@ class _ReelPageState extends State<ReelPage>
                               if (context.mounted) toast(context, e is ApiException ? e.userMessage : 'Could not save that. Please try again.');
                             }
                           }, reason: 'to save videos'),
-                        ),
-                        (
-                          'Share this reel',
-                          Icons.share_outlined,
-                          null,
-                          () async {
-                            if (widget.real == null) {
-                              toast(context, 'Share link copied (demo)');
-                            } else {
-                              await _share(context, widget.real!);
-                            }
-                          },
                         ),
                       ],
                     )),
@@ -869,6 +866,56 @@ class _ReelPageState extends State<ReelPage>
     _flashTimer = Timer(const Duration(seconds: 1), () {
       if (mounted) setState(() => _flashText = null);
     });
+  }
+
+  /// [HF-REEL-CALLBAR-1] The call button under the video. On the app: Call (or what the creator's state allows: queue,
+  /// book, notify). A creator who is not on the app yet: the reel information with the invite button.
+  Widget _callBar(BuildContext context, Reel r, bool invite) {
+    final label = invite ? 'Invite ${r.who.name.split(' ').first} to ${Brand.name}' : 'Call influencer';
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          height: ReelPage.callBarHeight,
+          color: C.cinema.withValues(alpha: 0.35),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          alignment: Alignment.center,
+          child: Semantics(
+            button: true,
+            label: label,
+            child: Material(
+              color: invite ? C.marigold : C.rani,
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                key: const ValueKey('reel-call-bar'),
+                borderRadius: BorderRadius.circular(999),
+                onTap: () {
+                  Telemetry.event('hf_reel_action', {'action': invite ? 'invite_bar' : 'call_bar'});
+                  if (invite) {
+                    unawaited(_whileCovered(() => _info(context)));
+                  } else if (_callLabel(r) == 'Call now') {
+                    unawaited(startCall(context, r.who));
+                  } else {
+                    unawaited(_whileCovered(() => showCallStateSheet(context, r.who)));
+                  }
+                },
+                child: SizedBox(
+                  height: 52,
+                  width: double.infinity,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(invite ? Icons.campaign_rounded : Icons.call_rounded, color: invite ? C.deep : C.white, size: 22),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17, color: invite ? C.deep : C.white, w: FontWeight.w900)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// [HF-REEL-RAIL-2] The "More" sheet: creator status, original post, profile, save and share.
@@ -975,24 +1022,17 @@ class _ReelPageState extends State<ReelPage>
   }
 
   Future<void> _openComments(BuildContext context, String id, ReelEngageApi repo) async {
-    final openOriginal = await showReelComments(
+    // [HF-REEL-OWN-1] owner: viewers are never sent to Instagram / YouTube, so the comments sheet has no "open original" link
+    await showReelComments(
       context,
       reelId: id,
       platform: widget.real?.platform ?? 'youtube',
       repo: repo,
       store: ReelEngageStore.instance,
-      canOpenOriginal: _originalUrl != null,
+      canOpenOriginal: false,
     );
-    if (openOriginal == true && _originalUrl != null && context.mounted) {
-      await OriginalPostPage.open(context, _originalUrl!);
-    }
   }
 
-  /// The reel's original post on Instagram / YouTube, when it is a real reel with a link.
-  Uri? get _originalUrl {
-    final u = Uri.tryParse(widget.real?.url ?? widget.real?.embedUrl ?? '');
-    return u != null && u.scheme == 'https' ? u : null;
-  }
 
   Future<void> _info(BuildContext context) async {
     final r = widget.reel;
@@ -1024,25 +1064,6 @@ class _ReelPageState extends State<ReelPage>
                   ),
                   const SizedBox(height: 12),
                   Text(r.caption, style: t(16)),
-                  // [HF-REEL-NOIG-1] the link to the original post lives here, not on the video
-                  if (_originalUrl != null)
-                    TextButton.icon(
-                      key: const ValueKey('reel-open-original'),
-                      onPressed: () {
-                        Navigator.of(sheetContext).pop();
-                        unawaited(
-                          _whileCovered(
-                            () => OriginalPostPage.open(context, _originalUrl!),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.open_in_new_rounded),
-                      label: Text(
-                        _originalUrl!.host.contains('instagram')
-                            ? 'Open in Instagram'
-                            : 'Watch on YouTube',
-                      ),
-                    ),
                   const SizedBox(height: 12),
                   if (widget.real?.invite != null) ...[
                     Text(

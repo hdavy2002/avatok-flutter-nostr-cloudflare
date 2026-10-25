@@ -138,39 +138,33 @@ void main() {
   });
 
   testWidgets(
-    'an embed error shows the poster card with Watch on ... and reports it',
+    'an embed error shows the poster with a plain note (no link out) and reports it',
     (tester) async {
       await pumpPlayer(tester, _reel('y', platform: 'youtube'));
       msgs.add('error:101');
       await tester.pump();
       expect(find.byKey(const ValueKey('reel-fallback')), findsOneWidget);
-      expect(find.text('Watch on YouTube'), findsOneWidget);
+      expect(find.text('Watch on YouTube'), findsNothing); // [HF-REEL-OWN-1] never sent to YouTube
+      expect(find.text('This video cannot play here. Swipe up for the next one.'), findsOneWidget);
       expect(find.byKey(const ValueKey('reel-tap')), findsNothing);
       expect(events.where((e) => e.$1 == 'hf_reel_play_fail').single.$2, {
         'platform': 'youtube',
         'reason': '101',
       });
-      await tester.tap(find.byKey(const ValueKey('reel-fallback-open')));
-      expect(
-        launched.single.toString(),
-        'https://www.youtube.com/shorts/abc12345',
-      );
+      expect(find.byKey(const ValueKey('reel-fallback-open')), findsNothing);
+      expect(launched, isEmpty);
     },
   );
 
   testWidgets(
-    'Instagram: no video found shows Watch on Instagram, which opens the reel',
+    'Instagram: no video found shows the poster note, never a link to Instagram',
     (tester) async {
       await pumpPlayer(tester, _reel('a'));
       msgs.add('error:novideo');
       await tester.pump();
-      expect(find.text('Watch on Instagram'), findsOneWidget);
+      expect(find.text('Watch on Instagram'), findsNothing); // [HF-REEL-OWN-1]
       expect(events.single.$2, {'platform': 'instagram', 'reason': 'novideo'});
-      await tester.tap(find.byKey(const ValueKey('reel-fallback-open')));
-      expect(
-        launched.single.toString(),
-        'https://www.instagram.com/reel/Cx12345/',
-      );
+      expect(launched, isEmpty);
     },
   );
 

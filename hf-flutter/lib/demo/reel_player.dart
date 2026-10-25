@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert' show HtmlEscape, HtmlEscapeMode;
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
@@ -238,10 +237,10 @@ class ReelPlayer extends StatefulWidget {
   @visibleForTesting
   static const int youtubeChromeMs = 4000;
 
-  /// [HF-REEL-YT-ZOOM-2] owner: zoom a little further on every side so YouTube's own channel name, caption line and
-  /// side buttons (Shorts overlay) sit off screen.
+  /// [HF-REEL-YT-ZOOM-2] extra zoom on YouTube reels. Back to 1 (owner 2026-10-25): the video is not cropped; the call
+  /// strip at the bottom of the reel covers YouTube's channel name / caption line instead, on every screen size.
   @visibleForTesting
-  static const double youtubeZoom = 1.2;
+  static const double youtubeZoom = 1.0;
   @visibleForTesting
   static const int youtubeHideBottom = 84;
 
@@ -636,25 +635,6 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     });
   }
 
-  Uri? get _reelUri =>
-      Uri.tryParse(widget.reel.url ?? widget.reel.embedUrl ?? '');
-
-  void _openExternal() {
-    final u = _reelUri;
-    if (u == null) return;
-    final t = ReelPlayer.testLaunch;
-    if (t != null) {
-      t(u);
-      return;
-    }
-    unawaited(
-      launchUrl(
-        u,
-        mode: LaunchMode.externalApplication,
-      ).catchError((Object _) => false),
-    );
-  }
-
   Widget _thumb() {
     final t = widget.reel.thumbUrl;
     if (t == null) return const ColoredBox(color: C.cinema);
@@ -665,8 +645,9 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     );
   }
 
+  /// [HF-REEL-OWN-1] owner: viewers are never sent to YouTube / Instagram. A reel that cannot play here shows its poster
+  /// with a plain note; the feed drops it and moves on.
   Widget _fallback() {
-    final name = _isIg ? 'Instagram' : 'YouTube';
     return Stack(
       key: const ValueKey('reel-fallback'),
       fit: StackFit.expand,
@@ -674,35 +655,12 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         _thumb(),
         ColoredBox(color: C.cinema.withValues(alpha: 0.55)),
         Center(
-          child: Semantics(
-            button: true,
-            label: 'Watch on $name',
-            child: GestureDetector(
-              key: const ValueKey('reel-fallback-open'),
-              onTap: _openExternal,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: C.marigold,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.play_arrow_rounded,
-                      color: C.deep,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 6),
-                    Text('Watch on $name', style: t(16, color: C.deep)),
-                  ],
-                ),
-              ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'This video cannot play here. Swipe up for the next one.',
+              textAlign: TextAlign.center,
+              style: t(17, color: C.ivory, w: FontWeight.w800, h: 1.35),
             ),
           ),
         ),
