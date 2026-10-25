@@ -263,6 +263,9 @@ class ReelPlayer extends StatefulWidget {
       HtmlEscapeMode.attribute,
     ).convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
+        // [HF-REEL-INSTANT-1] warm the YouTube hosts before the player script asks for them
+        '<link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com">'
+        '<link rel="preconnect" href="https://www.google.com"><link rel="dns-prefetch" href="https://googlevideo.com">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
         '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0;transform-origin:50% 50%}'
         // [HF-REEL-BLUR-2] frosted strips over YouTube's own top bar (channel / title) and bottom strip, shown only while
@@ -291,7 +294,7 @@ class ReelPlayer extends StatefulWidget {
         'window.hfToggle=function(){if(!ready)return;try{want=pl.getPlayerState()!==1;apply()}catch(e){}};'
         'function mute(){try{if(MUTED||!SOUND)pl.mute();else pl.unMute()}catch(e){}}'
         'window.hfMute=function(m){MUTED=!!m;if(ready)mute()};'
-        'window.hfRestart=function(){want=true;if(!ready)return;try{pl.seekTo(0,true)}catch(e){}apply()};'
+        'window.hfRestart=function(){want=true;if(!ready)return;try{if(pl.getCurrentTime()>1)pl.seekTo(0,true)}catch(e){}apply()};'
         'function onYouTubeIframeAPIReady(){pl=new YT.Player("p",{videoId:"$id",width:"100%",height:"100%",host:"https://www.youtube.com",'
         'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
         'events:{onReady:function(){fit();ready=true;mute();post("ready");apply()},'
@@ -381,7 +384,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
 
   /// [HF-REEL-YT-POSTER-1] owner: on YouTube the poster stays on top until YouTube's own buttons (previous / pause /
   /// next, channel bar) have faded, the first time a reel plays on screen after it is shown.
-  static const Duration youtubeChromeCover = Duration(milliseconds: 3600);
+  /// [HF-REEL-INSTANT-1] owner 2026-10-25: Duration.zero. The 3.6 s cover hid a video that was already playing, so the
+  /// viewer saw a still photo with the sound running ("photo and audio, then the video a few seconds later"). The frosted
+  /// strips in the page still cover YouTube's top / bottom bars while they show. Put 3600 back to restore the old cover.
+  static const Duration youtubeChromeCover = Duration.zero;
   bool _chromeCover = false;
   bool _coverArmed = true;
   Timer? _coverTimer;
@@ -393,6 +399,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   bool _seenActive = false;
   bool _isPlaying = true;
   Timer? _watchdog;
+
+  /// [HF-REEL-INSTANT-1] When this reel came on screen, for the `hf_reel_start` time-to-play event.
+  DateTime? _shownAt;
+  bool _shownWarm = false;
   StreamSubscription<String>? _testSub;
 
   String? get _source => ReelPlayer.sourceFor(widget.reel);
@@ -452,6 +462,8 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     if (old.active != widget.active && _engine) {
       if (widget.active) {
         _coverArmed = true; // [HF-REEL-YT-POSTER-1]
+        _shownAt = DateTime.now(); // [HF-REEL-INSTANT-1]
+        _shownWarm = _warmed;
         _run('window.hfMute&&window.hfMute(false)');
         // a warmed reel starts from the top the first time it is shown; after that it carries on where it was
         _run(
@@ -567,6 +579,8 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     _webFor = embed;
     if (widget.active) {
       _seenActive = true;
+      _shownAt = DateTime.now(); // [HF-REEL-INSTANT-1] cold start: the player is only being created now
+      _shownWarm = false;
       _armWatchdog();
     }
   }
@@ -597,8 +611,17 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         _warmed = true;
       }
       _watchdog?.cancel();
+      final shown = _shownAt;
+      if (shown != null && widget.active && _fg) {
+        _shownAt = null;
+        Telemetry.event('hf_reel_start', {
+          'platform': _platform,
+          'ms': DateTime.now().difference(shown).inMilliseconds,
+          'warmed': _shownWarm,
+        });
+      }
       // [HF-REEL-YT-POSTER-1] first on-screen play of a YouTube reel: keep the poster up while YouTube shows its buttons
-      if (!_isIg && widget.active && _fg && _coverArmed) {
+      if (!_isIg && widget.active && _fg && _coverArmed && youtubeChromeCover > Duration.zero) {
         _coverArmed = false;
         _coverTimer?.cancel();
         setState(() => _chromeCover = true);
