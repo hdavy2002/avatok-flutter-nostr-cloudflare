@@ -160,3 +160,12 @@
   .hfsh-static .hfsh-actions{flex-direction:column}
 }
 @media (prefers-reduced-motion:reduce){.hfsh-cue svg,.hfsh-loading span{animation:none}.hfsh .hfsh-btn{transition:none}}
+
+/* [HF-SCROLL-HERO-3] Font exception (owner, 2026-10-25). callvaal-chrome.css forces Comfortaa/Nunito on every element
+   with !important (HF-FONTS-1). This hero is the owner-approved exception, so it re-asserts its own faces at a higher
+   specificity: (0,2,0) beats the site rule's (0,1,2). Scoped to .hfsh only; nothing else on the site changes. */
+.hfsh :is(.hfsh-h,.hfsh-ph,.hfsh-vt,.hfsh-steps h3),
+.hfsh :is(.hfsh-h,.hfsh-ph,.hfsh-vt,.hfsh-steps h3) *:not(svg,svg *){font-family:var(--display)!important}
+.hfsh :is(.hfsh-h,.hfsh-steps h3){font-weight:800!important}
+.hfsh :is(.hfsh-kick,.hfsh-sub,.hfsh-ex,.hfsh-ps,.hfsh-btn,.hfsh-link,.hfsh-cue,.hfsh-tab,.hfsh-loading,.hfsh-steps p),
+.hfsh :is(.hfsh-kick,.hfsh-sub,.hfsh-ex,.hfsh-ps,.hfsh-btn,.hfsh-link,.hfsh-cue,.hfsh-tab,.hfsh-loading,.hfsh-steps p) *:not(svg,svg *){font-family:var(--sans)!important}
