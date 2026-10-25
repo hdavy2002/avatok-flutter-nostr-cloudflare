@@ -160,7 +160,7 @@ Future<void> showMerchProduct(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: C.ivory,
+    backgroundColor: C.page,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _ProductSheet(host: host, summary: product, checkoutEnabled: checkoutEnabled, repo: repo),
   );
@@ -611,7 +611,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: C.ivory,
+        backgroundColor: C.paper,
         title: Text('Not enough in your wallet', style: t(20, color: C.maroon)),
         content: Text(
           text,
@@ -649,7 +649,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
     final total = _a.totalPaise;
     final walletLow = _balance != null && _balance! < total;
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -934,7 +934,7 @@ class _MerchMyOrdersScreenState extends State<MerchMyOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -1108,7 +1108,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => _ProblemSheet(repo: _repo, orderId: o.id),
     );
@@ -1135,7 +1135,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

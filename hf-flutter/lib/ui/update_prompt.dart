@@ -17,7 +17,7 @@ Future<void> showUpdatePrompt(BuildContext context, UpdateStatus status) async {
     builder: (ctx) => PopScope(
       canPop: !forced,
       child: AlertDialog(
-        backgroundColor: C.ivory,
+        backgroundColor: C.paper,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: C.turquoise, width: 3)),
         title: Text(forced ? 'Please update' : 'A new version is ready', style: t(22, color: C.maroon)),
         content: Text(

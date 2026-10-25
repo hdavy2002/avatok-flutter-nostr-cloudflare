@@ -157,7 +157,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     final slug = (me?.hostSlug ?? '').isEmpty ? null : me!.hostSlug; // [HF-SHARE-APP-1]
     // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

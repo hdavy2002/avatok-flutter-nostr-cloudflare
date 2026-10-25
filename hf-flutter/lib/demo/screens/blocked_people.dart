@@ -79,7 +79,7 @@ class _BlockedPeopleScreenState extends State<BlockedPeopleScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: C.ivory,
+        backgroundColor: C.page,
         body: SafeArea(
           child: Column(children: [
             const BookHeader('Blocked people'),

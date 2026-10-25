@@ -157,7 +157,7 @@ class _RealFavouritesState extends State<RealFavourites> {
         ]),
       );
     }
-    return Scaffold(backgroundColor: C.ivory, body: SafeArea(child: body));
+    return Scaffold(backgroundColor: C.page, body: SafeArea(child: body));
   }
 
   Widget _thumb(FeedReel reel) {

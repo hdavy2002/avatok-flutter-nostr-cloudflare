@@ -58,7 +58,7 @@ class _MerchStudioScreenState extends State<MerchStudioScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

@@ -618,7 +618,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         if (!didPop) unawaited(_back());
       },
       child: Scaffold(
-        backgroundColor: C.ivory,
+        backgroundColor: C.page,
         body: SafeArea(
           child: Column(children: [
             MerchHeader('New product', onBack: () => unawaited(_back())),

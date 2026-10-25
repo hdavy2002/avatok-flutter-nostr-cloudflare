@@ -161,7 +161,7 @@ class _RealBookScreenState extends State<RealBookScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -461,7 +461,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
     final firstName = _name.isEmpty ? 'the influencer' : _name.split(' ').first;
     // [HF-APP-DESI-5] approved "Confirm booking" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -561,7 +561,7 @@ class RealBookedScreen extends StatelessWidget {
     final first = name.isEmpty ? '' : name.split(' ').first;
     // [HF-APP-DESI-5] approved "Booked!" layout; an approval booking says "Request sent!"
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -694,7 +694,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
   Widget build(BuildContext context) {
     // [HF-APP-DESI-7] approved My bookings layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -1022,7 +1022,7 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
   Widget build(BuildContext context) {
     // [HF-APP-DESI-12] approved "Booked with me" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: AsyncView<List<AppBooking>>(
           state: _state,

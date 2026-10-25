@@ -288,7 +288,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     final addButton = DashedAddButton(label: '+ ADD A CHANNEL', onTap: _add);
     // [HF-APP-DESI-13] approved Channels list
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -350,7 +350,7 @@ class ChannelPlatformScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -590,7 +590,7 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   Widget build(BuildContext context) {
     // [HF-APP-DESI-13] approved "Connect + code" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -872,7 +872,7 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -1035,7 +1035,7 @@ class _InstagramSwitchGuideScreenState extends State<InstagramSwitchGuideScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

@@ -12,10 +12,12 @@ abstract final class C {
   static const gold = Color(0xFFFFF1D6); // light text on indigo / ink panels
   static const brass = Color(0xFFD9C3D4); // soft indigo borders and knobs
   static const brassDark = Color(0xFF6B2468); // deep indigo (icons and ink on pale fills)
-  static const ivory = Color(0xFFFFF8F0); // page
+  static const ivory = Color(0xFFFFF8F0); // pale ivory: light text on dark, sheets (no longer the page)
+  // [HF-APP-CALM-BG-1 2026-10-25] Owner chose "C · Deep parchment": the page sits behind white cards so they stand out and the app stops glaring.
+  static const page = Color(0xFFE9DCC9); // PAGE background on every screen (white cards on top)
   static const paper = Color(0xFFFFFFFF);
   static const sand = Color(0xFFF8EEE6); // chip / light fills
-  static const sandLine = Color(0xFFF1E3D6); // borders
+  static const sandLine = Color(0xFFD8C5A9); // borders ([HF-APP-CALM-BG-1] deeper so card edges show on the parchment page)
   static const rani = Color(0xFFD81B72); // rose accent (hearts, ring). Not for text with white on top
   static const ruby = Color(0xFFC0262D); // error / destructive (text passes 4.5:1 on white)
   static const muted = Color(0xFF6F5B6F); // muted text (passes 4.5:1 on the page)
@@ -35,7 +37,7 @@ abstract final class C {
   static const lavtint = Color(0xFFF1EBFF);
   static const goldtint = Color(0xFFFFF1D6);
   static const teatint = Color(0xFFE3F6F6);
-  static const line = Color(0xFFF1E3D6);
+  static const line = Color(0xFFD8C5A9); // [HF-APP-CALM-BG-1] was F1E3D6
   static const white = Color(0xFFFFFFFF);
   static const clear = Color(0x00000000);
 
@@ -55,12 +57,12 @@ abstract final class C {
 /// [HF-CHANNEL-APP-1] "Galli Pop" tokens (owner mock 2026-10-23, Specs: .agent-wt/mock/gp.css): the colours of the influencer
 /// channel page, product page, bag and checkout. Truck-art red / marigold / blue / rani on ivory and ink. No green.
 abstract final class GP {
-  static const bg = Color(0xFFFFF9F0); // page
+  static const bg = Color(0xFFE9DCC9); // page ([HF-APP-CALM-BG-1] deep parchment, same as C.page)
   static const paper = Color(0xFFFFFFFF);
   static const ink = Color(0xFF1F1630); // text, dark sections, dark buttons
   static const black = Color(0xFF000000); // under-edge of the dark button
   static const muted = Color(0xFF625872);
-  static const line = Color(0xFFECE3D6);
+  static const line = Color(0xFFD8C5A9); // [HF-APP-CALM-BG-1] was ECE3D6
   static const tile = Color(0xFFF5EEE4); // plain soft product tile (D3: no arch, no shelf)
   static const red = Color(0xFFE2231A);
   static const redDeep = Color(0xFFB3170F);
@@ -120,12 +122,12 @@ ThemeData buildTheme() {
   return ThemeData(
     useMaterial3: true,
     fontFamily: 'Nunito',
-    scaffoldBackgroundColor: C.ivory,
+    scaffoldBackgroundColor: C.page, // [HF-APP-CALM-BG-1]
     colorScheme: ColorScheme.fromSeed(
       seedColor: C.maroon,
       primary: C.maroon,
       secondary: C.marigold,
-      surface: C.ivory,
+      surface: C.paper, // [HF-APP-CALM-BG-1] cards, menus and pickers stay white on the parchment page
       onPrimary: C.white,
       onSecondary: C.deep,
       onSurface: C.deep,

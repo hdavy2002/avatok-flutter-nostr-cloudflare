@@ -116,7 +116,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     if (!_real) {
       return Scaffold(
-        backgroundColor: C.ivory,
+        backgroundColor: C.page,
         body: SafeArea(
           child: Column(children: [
             const BookHeader('My wallet'),
@@ -141,7 +141,7 @@ class _WalletScreenState extends State<WalletScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(children: [
           const BookHeader('My wallet'),
@@ -262,7 +262,7 @@ class ReceiptScreen extends StatelessWidget {
       total = ('Amount', inr(r.amountPaise / 100));
     }
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(children: [
           const BookHeader('Receipt'),
@@ -406,7 +406,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
     final gst = v - credit;
     // [HF-APP-DESI-8] approved "Top up" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -577,7 +577,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return PopScope(
       canPop: done || failed || notDone,
       child: Scaffold(
-        backgroundColor: C.ivory,
+        backgroundColor: C.page,
         body: SafeArea(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
@@ -880,7 +880,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
     VoidCallback? onChangeUpi,
   }) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -1044,7 +1044,7 @@ class PayoutKycScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

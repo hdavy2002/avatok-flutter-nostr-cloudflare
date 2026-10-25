@@ -370,7 +370,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
   Widget build(BuildContext context) {
     // [HF-APP-DESI-12] approved "Availability" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: AsyncView<HostAvailability>(
           state: _state,

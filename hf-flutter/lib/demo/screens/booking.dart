@@ -49,7 +49,7 @@ class _BookScreenState extends State<BookScreen> {
     final slots = _day == null ? const <String>[] : slotsFor(who, _day!);
     // [HF-APP-DESI-5] approved "Book a time" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -125,7 +125,7 @@ class BookConfirmScreen extends StatelessWidget {
     final first = who.name.split(' ').first;
     // [HF-APP-DESI-5] approved "Confirm booking" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -183,7 +183,7 @@ class BookedScreen extends StatelessWidget {
     final d = _parseKey(day) ?? dayOnly(DateTime.now());
     // [HF-APP-DESI-5] approved "Booked!" layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),

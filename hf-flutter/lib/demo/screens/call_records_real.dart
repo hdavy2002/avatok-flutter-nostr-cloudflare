@@ -107,7 +107,7 @@ class _RealCallRecordsScreenState extends State<RealCallRecordsScreen> {
   Widget build(BuildContext context) {
     // [HF-APP-DESI-7] approved Call records layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

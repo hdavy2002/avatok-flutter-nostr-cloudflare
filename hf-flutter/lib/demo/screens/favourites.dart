@@ -46,7 +46,7 @@ class _DemoFavouritesState extends State<_DemoFavourites> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: C.ivory,
+        backgroundColor: C.page,
         body: SafeArea(
           child: ListenableBuilder(
             listenable: demo,

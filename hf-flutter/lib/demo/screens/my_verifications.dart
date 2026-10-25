@@ -303,7 +303,7 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(children: [
           const ChannelHeader('My verifications'),

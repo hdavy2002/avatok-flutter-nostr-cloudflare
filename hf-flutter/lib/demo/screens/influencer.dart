@@ -331,7 +331,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     ];
     const tones = [DesiTone.rani, DesiTone.lav, DesiTone.tea];
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -669,7 +669,7 @@ class InfluencerHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: presenceListenable,
@@ -900,7 +900,7 @@ class _InfluencerBookingsScreenState extends State<InfluencerBookingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: demo,
@@ -959,7 +959,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: demo,

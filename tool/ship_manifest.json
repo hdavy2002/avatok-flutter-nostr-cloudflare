@@ -12392,5 +12392,12 @@
         "note": "A tick was drawn beside a verified creator's name."
       }
     ]
+  },
+  "HF-APP-CALM-BG-1": {
+    "description": "App-wide calmer page background: owner chose 'C · Deep parchment' (#E9DCC9) behind white cards; card borders deepened to #D8C5A9; Material surface stays white. Every Scaffold page + GP pages.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Colour-only change; no new event. Verified by eye on the phone after the Play internal update."
   }
 }

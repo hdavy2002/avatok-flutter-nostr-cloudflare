@@ -343,7 +343,7 @@ class CallRecordsScreen extends StatelessWidget {
     if (CallsBridge.real) return const RealCallRecordsScreen(); // [HF-WIRE-7]
     // [HF-APP-DESI-7] approved Call records layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -386,7 +386,7 @@ class BookingsScreen extends StatelessWidget {
     if (BookingsBridge.real) return const RealBookingsScreen(); // [HF-WIRE-8]
     // [HF-APP-DESI-7] approved My bookings layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: demo,
@@ -457,7 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final host = demo.influencerJoined || Services.instance.me?.hostStatus != null;
     // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -522,7 +522,7 @@ class HelpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

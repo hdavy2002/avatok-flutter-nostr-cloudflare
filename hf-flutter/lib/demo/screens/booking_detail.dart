@@ -185,7 +185,7 @@ class _RealBookingDetailScreenState extends State<RealBookingDetailScreen> {
     final s = _state;
     final b = s is AsyncData<AppBooking> ? s.value : null;
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [

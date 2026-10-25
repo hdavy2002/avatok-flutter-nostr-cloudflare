@@ -457,7 +457,7 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: C.ivory,
+      backgroundColor: C.page,
       body: SafeArea(
         child: Column(children: [
           ChannelHeader(widget.creator ? (widget.lane == null ? 'Video KYC' : 'Verify your channel') : 'Verify to call'),
