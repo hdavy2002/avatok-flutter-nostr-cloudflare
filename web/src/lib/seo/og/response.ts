@@ -3,6 +3,7 @@ import { fetchPublicArt, type AssetFetcher } from './public-art';
 import { decodeBase64, renderOgPng } from './renderer';
 import { ogImagePath, ogRevision, sha256 } from './revision';
 import type { OgResolver } from './types';
+import { reelOgResponse } from './reel'; // [HF-EXPLORE-PUBLIC-1]
 
 const kinds = new Set(['home', 'page', 'collection', 'article', 'help', 'listing', 'creator', 'agent']);
 const safetyHeaders = { 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' };
@@ -19,6 +20,8 @@ export async function ogResponse(request: Request, kind: string, key: string, re
   const keys = [...url.searchParams.keys()];
   const version = url.searchParams.get('v');
   if (keys.some(param => param !== 'v') || keys.length > 1 || (version !== null && !/^[a-f0-9]{64}$/.test(version))) return errorResponse(400);
+  // [HF-EXPLORE-PUBLIC-1] The vertical 720x1280 share image of one public reel. Own record source (the public reels API), own renderer.
+  if (kind === 'reel') return reelOgResponse(request, key);
   if (!kinds.has(kind) || !key || key.length > 300 || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(key) || key.includes('//') || key.endsWith('/') || key.split('/').some(part => part === '.' || part === '..')) return errorResponse(404);
 
   let resolved: Awaited<ReturnType<OgResolver>>;

@@ -103,7 +103,7 @@ export async function resolveSeo(args: {
       alt: plainText(content?.image?.alt ?? legacy.imageAlt ?? title),
       width,
       height,
-      mime: !photo && imagePathname.endsWith('.png') ? 'image/png' : 'image/jpeg',
+      mime: !photo && imagePathname.endsWith('.png') && !imagePathname.includes('format=jpeg') ? 'image/png' : 'image/jpeg', // [HF-EXPLORE-PUBLIC-1] /cdn-cgi/image/format=jpeg,…/x.png is a JPEG
       revision,
     },
     jsonLd: {},

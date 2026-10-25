@@ -1,9 +1,14 @@
 ---
-// `/explore` is the OLD marketplace path. The marketplace now lives at
-// `/marketplace` (mobile-parity IA). Permanent-redirect, preserving any query
-// (?category=, ?kind=) so existing shared links keep working.
+// [HF-EXPLORE-PUBLIC-1] /explore = the public reels page (was a 301 to /marketplace; the old explore UI still lives at /marketplace).
+// SSR first page from GET /api/hf/reels (public feed, invite reels included); the island pages on with nextCursor in the browser.
 export const prerender = false;
-
-const qs = Astro.url.search; // includes leading "?" or ""
-return Astro.redirect(`/marketplace${qs}`, 301);
+import Base from '../layouts/Base.astro';
+import ReelsView from '../components/explore/ReelsView.astro';
+import { loadReels } from '../lib/hfExploreServer';
+import { BRAND } from '../lib/brand';
+const { items, nextCursor } = await loadReels();
+Astro.response.headers.set('cache-control', 'public, max-age=30, stale-while-revalidate=120');
 ---
+<Base chrome={false} title={`Explore reels · ${BRAND.name}`} description={`Watch reels from your favourite influencers, then call them privately on ${BRAND.name}.`}>
+  <ReelsView items={items} nextCursor={nextCursor} path="/explore" />
+</Base>

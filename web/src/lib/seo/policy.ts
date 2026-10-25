@@ -29,7 +29,8 @@ const PRIVATE_EXACT = new Set([
 
 const PUBLIC_EXACT = new Set([
   '/', '/marketplace', '/help', '/how-it-works', '/temples', '/privacy',
-  '/terms', '/cookies', '/refunds', '/contact', '/blog', '/disclaimer', '/grievance',
+  // [HF-EXPLORE-PUBLIC-1] '/explore' is the public reels page.
+  '/explore', '/terms', '/cookies', '/refunds', '/contact', '/blog', '/disclaimer', '/grievance',
   // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Shop home and the all-T-shirts listing. Collection and product pages
   // (/shop/c/<slug>, /shop/p/<slug>) provide PublicContent from the live catalogue, so they are not listed here.
   '/shop', '/shop/all',

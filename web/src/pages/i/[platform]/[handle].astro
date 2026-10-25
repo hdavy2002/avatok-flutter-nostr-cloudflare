@@ -1,0 +1,29 @@
+---
+// [HF-EXPLORE-PUBLIC-1] /i/<platform>/<handle>: public page of a creator who is NOT on the app yet (web version of the app's InviteProfileScreen).
+// SSR from GET /api/hf/invites/:platform/:handle. If the creator has since joined, the API answers joinedSlug and we redirect to /h/<slug>.
+// Light site theme (like the /h pages): the shared header + footer stay.
+export const prerender = false;
+import Base from '../../../layouts/Base.astro';
+import InviteProfile from '../../../islands/explore/InviteProfile';
+import { loadInvite } from '../../../lib/hfExploreServer';
+import { BRAND } from '../../../lib/brand';
+import '../../../styles/hf-explore.css';
+const { platform = '', handle = '' } = Astro.params;
+const okPlatform = platform === 'youtube' || platform === 'instagram';
+const page = okPlatform && /^[A-Za-z0-9._@-]{2,61}$/.test(handle) ? await loadInvite(platform, handle.replace(/^@/, '').toLowerCase()) : null;
+if (page?.creator.joinedSlug) return Astro.redirect(`/h/${page.creator.joinedSlug}`, 302);
+if (!page) Astro.response.status = 404;
+else Astro.response.headers.set('cache-control', 'public, max-age=60');
+const name = page ? (page.creator.name || page.creator.handle) : '';
+---
+<Base
+  noindex
+  title={page ? `${name} on ${BRAND.name}` : `Creator not found · ${BRAND.name}`}
+  description={page ? `${name} is not on ${BRAND.name} yet. Vote to invite them and watch their videos.` : 'This creator page is not available.'}
+>
+  <main class="xi">
+    {page
+      ? <InviteProfile client:load creator={page.creator} reels={page.reels} />
+      : <div class="xi-wrap"><section class="xi-hero"><h1>We could not find that creator</h1><p class="xi-sub">The link may be old. Watch reels from creators on {BRAND.name} instead.</p><a class="xi-vote" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="/explore">Watch reels</a></section></div>}
+  </main>
+</Base>

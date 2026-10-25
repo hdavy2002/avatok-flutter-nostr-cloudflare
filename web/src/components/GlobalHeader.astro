@@ -6,7 +6,7 @@ import { BRAND } from '../lib/brand';
 interface Props { sticky?: boolean; design?: 'original' | 'disco'; homePath?: string; }
 const { sticky = true, design = 'original', homePath = '/' } = Astro.props;
 const links = [
-  { href: '/marketplace', label: 'Explore' },
+  { href: '/explore', label: 'Explore' }, // [HF-EXPLORE-PUBLIC-1] public reels; the old explore UI stays at /marketplace
   { href: `${homePath}#formats`, label: 'For creators' },
   { href: `${homePath}#how-it-works`, label: 'How it works' },
   { href: `${homePath}#payouts`, label: 'Withdrawals' },

@@ -6,6 +6,8 @@
 //        notOnNetwork appears only when q is an exact @handle that is not an approved channel on our network. Provider look-ups
 //        (YouTube Data API / treg Instagram) are cached 24 h in KV and skipped silently when the provider is not configured.
 //   POST /api/hf/invites/:platform/:handle/vote   signed in, idempotent, flag hfInvitesEnabled -> { ok, votes, voted:true }
+//   GET  /api/hf/invites/:platform/:handle   [HF-EXPLORE-PUBLIC-1] public, flag hfInvitesEnabled, cache 60 s -> { ok, creator:{platform,handle,name,avatar,followers,votes,joinedSlug?}, reels:[invite reel] }
+//        Backs the public web page /i/<platform>/<handle>. joinedSlug is set when the creator has since joined (the page redirects to /h/<slug>). Never a uid.
 //   GET  /api/hf/invites/top           public, flag hfInvitesEnabled -> { ok, items:[{ handle, platform, votes, followers? }] }
 //   GET  /api/admin/hf/invites         ADMIN_UIDS only -> { ok, items:[{ handle, platform, votes, lastVoteAt, onNetwork }] }
 // Never returns a uid, phone or email. handle is returned with a leading "@".
@@ -24,7 +26,8 @@ import { TOPICS, TOPIC_SLUGS } from "../lib/hf_options";
 import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup } from "../lib/hf_channel_providers";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
-import { noteInviteCreator } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
+import { noteInviteCreator, hasJoined, inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
+import { unplayableHideAt, unplayableWhere } from "./hf_reels"; // [HF-EXPLORE-PUBLIC-1]
 import { videoKycSql, channelVerifiedSql, effectiveCallerLevel, spaceOfRow, parseSpace, type SpaceName } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -166,7 +169,7 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
   const isAdmin = p === "/api/admin/hf/invites";
   if (!isSearch && !isTop && !isAdmin && !vote) return null;
   const m = req.method;
-  if (vote ? m !== "POST" : m !== "GET") return err(405, "method_not_allowed");
+  if (vote ? m !== "POST" && m !== "GET" : m !== "GET") return err(405, "method_not_allowed");
   try {
     const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
     const ip = req.headers.get("cf-connecting-ip") ?? "0";
@@ -239,6 +242,42 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
         if (items.length >= 20) break;
       }
       return json({ ok: true, items }, 200, { "cache-control": "public, max-age=60" });
+    }
+
+    // [HF-EXPLORE-PUBLIC-1] GET one not-yet-on-network creator + their invite reels (public)
+    if (m === "GET") {
+      const gPlatform = vote![1];
+      let gRaw = vote![2];
+      try { gRaw = decodeURIComponent(gRaw); } catch { return err(400, "bad_handle", "That handle doesn't look right."); }
+      const gHandle = normHandle(gRaw);
+      if (!gHandle) return err(400, "bad_handle", "That handle doesn't look right.");
+      const limited = await rateLimit(env, `hfinvget:${ip}`, 120, 60);
+      if (limited) return limited;
+      const pub = { "cache-control": "public, max-age=60" };
+      const crow = await env.DB_META.prepare("SELECT platform, handle, display_name, avatar_url, followers, hidden, platform_user_id FROM hf_invite_creators WHERE platform=?1 AND handle=?2")
+        .bind(gPlatform, gHandle).first<{ platform: string; handle: string; display_name: string | null; avatar_url: string | null; followers: number; hidden: number; platform_user_id: string | null }>().catch(() => null);
+      if (!crow || crow.hidden === 1) return json({ ok: false, error: "not_found", message: "We could not find that creator." }, 404, pub);
+      const votes = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_invite_votes WHERE handle=?1 AND platform=?2").bind(gHandle, gPlatform).first<{ c: number }>())?.c ?? 0);
+      const creator: Record<string, unknown> = { platform: gPlatform, handle: at(gHandle), name: crow.display_name ?? "", avatar: crow.avatar_url ?? null, followers: Number(crow.followers ?? 0), votes };
+      if (await hasJoined(env, gPlatform, gHandle, crow.platform_user_id)) {
+        const hs = await env.DB_META.prepare(
+          "SELECT h.slug AS slug FROM hf_channels c JOIN hf_hosts h ON h.uid=c.host_uid WHERE c.platform=?1 AND c.status='approved' AND LOWER(REPLACE(c.handle,'@',''))=?2 AND h.status IN ('approved','live') AND h.slug IS NOT NULL LIMIT 1",
+        ).bind(gPlatform, gHandle).first<{ slug: string }>().catch(() => null);
+        if (hs?.slug) creator.joinedSlug = hs.slug;
+        return json({ ok: true, creator, reels: [] }, 200, pub);
+      }
+      let reels: unknown[] = [];
+      if (inviteReelsOn(cfg)) {
+        try {
+          const rr = (await env.DB_META.prepare(
+            `SELECT r.id, r.platform, r.url, r.embed_url, r.thumb_url, r.caption, r.likes, r.comments, r.views, r.published_at FROM hf_invite_reels r
+             WHERE r.platform=?1 AND r.handle=?2 AND r.embed_url IS NOT NULL${unplayableWhere("r.id", unplayableHideAt(cfg))}
+             ORDER BY COALESCE(r.published_at,0) DESC, r.id DESC LIMIT 30`,
+          ).bind(gPlatform, gHandle).all<any>()).results ?? [];
+          reels = rr.map((r) => ({ id: r.id, kind: "invite", creator, platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url, title: r.caption ?? "", caption: r.caption ?? "", likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null }));
+        } catch { /* tables not applied yet: no reels */ }
+      }
+      return json({ ok: true, creator, reels }, 200, pub);
     }
 
     // POST vote

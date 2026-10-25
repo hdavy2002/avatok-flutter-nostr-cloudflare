@@ -64,7 +64,7 @@ export function unplayableHideAt(cfg: Record<string, unknown>): number {
 }
 
 /** SQL fragment (numbers inlined, both whole numbers we computed): leave out reels enough phones reported unplayable. */
-function unplayableWhere(col: string, hideAt: number): string {
+export function unplayableWhere(col: string, hideAt: number): string {
   if (!hideAt) return "";
   const since = Date.now() - UNPLAYABLE_HIDE_MS;
   return ` AND NOT EXISTS (SELECT 1 FROM hf_reel_unplayable up WHERE up.reel_id=${col} AND up.reports>=${hideAt} AND up.last_at>${since})`;

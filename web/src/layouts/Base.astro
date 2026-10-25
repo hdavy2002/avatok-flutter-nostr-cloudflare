@@ -23,7 +23,7 @@ export interface Props {
   imageAlt?: string;
   imageWidth?: number;
   imageHeight?: number;
-  ogType?: "website" | "article" | "profile";
+  ogType?: "website" | "article" | "profile" | "video.other"; // [HF-EXPLORE-PUBLIC-1] video.other for /r/<id>
   /** Normal content fields used to derive all search/share metadata. */
   content?: PublicContent;
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */

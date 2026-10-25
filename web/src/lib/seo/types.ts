@@ -89,7 +89,7 @@ export interface ResolvedSeo {
   robots: string;
   indexable: boolean;
   locale: string;
-  ogType: 'website' | 'article' | 'profile';
+  ogType: 'website' | 'article' | 'profile' | 'video.other'; // [HF-EXPLORE-PUBLIC-1]
   /** [WEB-OG-SHARE-1] What WhatsApp/Facebook/X print under the preview image. */
   ogTitle: string;
   ogDescription: string;
@@ -104,6 +104,6 @@ export interface LegacySeoInput {
   imageAlt?: string;
   imageWidth?: number;
   imageHeight?: number;
-  ogType?: 'website' | 'article' | 'profile';
+  ogType?: 'website' | 'article' | 'profile' | 'video.other'; // [HF-EXPLORE-PUBLIC-1]
   noindex?: boolean;
 }

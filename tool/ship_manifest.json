@@ -12399,5 +12399,56 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Colour-only change; no new event. Verified by eye on the phone after the Play internal update."
+  },
+  "HF-EXPLORE-PUBLIC-1": {
+    "description": "Public dark reels page at /explore and /r/<id> (one vertical video, wheel/swipe, Call bar + photo rail, sign-in card with WhatsApp/Google), vertical 720x1280 share image /og/reel/<id>.png, public creator page /i/<platform>/<handle> + GET /api/hf/invites/:platform/:handle.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelsEnabled",
+      "hfInviteReelsEnabled",
+      "hfInvitesEnabled"
+    ],
+    "success": [
+      {
+        "event": "explore_reel_view",
+        "property": "surface",
+        "exists": true,
+        "min_events": 1,
+        "note": "Web: a visitor opened /explore or /r/<id> and a reel became active."
+      }
+    ]
+  },
+  "HF-AUTH-GOOGLE-BACK-1": {
+    "description": "Continue with Google is back on web /sign-in and /sign-up (owner 2026-10-25); /sign-in?google=1 starts it at once; Google users still pass the WhatsApp gate.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "login_method_chosen",
+        "property": "method",
+        "equals": "google",
+        "min_events": 1,
+        "note": "A visitor chose Google on /sign-in, /sign-up or the Explore card."
+      }
+    ]
+  },
+  "HF-REEL-CALL-2": {
+    "description": "App reels: no info icon, photo under Share, Call bar only (opens profile for network + invite creators); invite profile says Vote to invite; profile video tap = light preview; /r/<id> deep link opens that reel first; share text uses the reel's own caption.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelsEnabled"
+    ],
+    "success": [
+      {
+        "event": "reel_profile_tap",
+        "property": "source",
+        "exists": true,
+        "min_events": 1,
+        "note": "A viewer opened a profile from the reel rail photo or Call bar on the new build."
+      }
+    ]
   }
 }

@@ -192,3 +192,40 @@ describe("invite votes", () => {
     expect(j.items[0]).toMatchObject({ handle: "@big", platform: "instagram", votes: 1, onNetwork: false });
   });
 });
+
+// [HF-EXPLORE-PUBLIC-1] GET /api/hf/invites/:platform/:handle - public creator page data
+describe("GET /api/hf/invites/:platform/:handle", () => {
+  beforeEach(() => { db.exec(mig("2026-10-20-hf-invite-creators.sql")); }); // only here: the search tests must not see invite-creator side effects
+  const seedCreator = (handle: string, o: any = {}) => db.prepare("INSERT INTO hf_invite_creators (platform, handle, display_name, avatar_url, followers, last_lookup_at, source, hidden, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+    .run(o.platform ?? "youtube", handle, o.name ?? "New Star", "https://img.test/a.jpg", 4200, 1, "search", o.hidden ?? 0, 1);
+  const seedReel = (id: string, handle: string, at_: number, embed: string | null = "https://www.youtube.com/embed/aaaaaaaaaaa") => db.prepare("INSERT INTO hf_invite_reels (id, platform, handle, platform_video_id, url, embed_url, thumb_url, caption, published_at, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .run(id, "youtube", handle, "v" + id, "https://youtu.be/x", embed, "https://img.test/t.jpg", "cap " + id, at_, 1);
+  it("is 404 when hfInvitesEnabled is off", async () => {
+    cfg = { hfReelsEnabled: true, hfInvitesEnabled: false };
+    expect((await body(await call("GET", "/api/hf/invites/youtube/newstar", ""))).status).toBe(404);
+  });
+  it("returns creator, votes and reels newest first, public-cached, no uid", async () => {
+    seedCreator("newstar"); seedReel("hfiv_aaaaaaaa1", "newstar", 10); seedReel("hfiv_aaaaaaaa2", "newstar", 20); seedReel("hfiv_aaaaaaaa3", "newstar", 30, null);
+    await call("POST", "/api/hf/invites/youtube/newstar", "u1");
+    const r = await call("GET", "/api/hf/invites/youtube/NewStar", "");
+    expect(r.headers.get("cache-control")).toBe("public, max-age=60");
+    const j = await body(r);
+    expect(j.creator).toMatchObject({ platform: "youtube", handle: "@newstar", name: "New Star", followers: 4200, votes: 1 });
+    expect(j.creator.joinedSlug).toBeUndefined();
+    expect(j.reels.map((x: any) => x.id)).toEqual(["hfiv_aaaaaaaa2", "hfiv_aaaaaaaa1"]);
+    expect(JSON.stringify(j)).not.toMatch(/"uid"|u1/);
+  });
+  it("404 for unknown or hidden creators, 400 for a bad handle", async () => {
+    seedCreator("hid", { hidden: 1 });
+    expect((await body(await call("GET", "/api/hf/invites/youtube/nobody", ""))).status).toBe(404);
+    expect((await body(await call("GET", "/api/hf/invites/youtube/hid", ""))).status).toBe(404);
+    expect((await body(await call("GET", "/api/hf/invites/youtube/a%20b!", ""))).status).toBe(400);
+  });
+  it("answers joinedSlug and no reels once the creator has joined", async () => {
+    seedCreator("joined", { platform: "instagram" });
+    host("h1", { handle: "@joined", platform: "instagram" });
+    const j = await body(await call("GET", "/api/hf/invites/instagram/joined", ""));
+    expect(j.creator.joinedSlug).toBe("slug-h1");
+    expect(j.reels).toEqual([]);
+  });
+});

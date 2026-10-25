@@ -89,7 +89,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 export interface AssetFetcher { fetch(input: Request | URL | string, init?: RequestInit): Promise<Response> }
 
 /** Bounded read of one image response; returns a data: URI or null. */
-async function readBoundedImage(response: Response): Promise<string | null> {
+export async function readBoundedImage(response: Response): Promise<string | null> {
   const type = (response.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
   const size = response.headers.get('Content-Length');
   if (!response.ok || !response.body || !['image/png','image/jpeg'].includes(type) ||

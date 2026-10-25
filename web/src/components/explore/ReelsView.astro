@@ -1,0 +1,39 @@
+---
+// [HF-EXPLORE-PUBLIC-1] Shared body of /explore and /r/<id>: dark header (hidden on phones), then the reels island. No footer.
+import ExploreReels from '../../islands/explore/ExploreReels';
+import { BRAND } from '../../lib/brand';
+import { publicImage } from '../../lib/config';
+import { signInHref, type ReelItem } from '../../lib/hfExplore';
+import '../../styles/hf-explore.css';
+interface Props { items: ReelItem[]; nextCursor: string | null; path: string }
+const { items, nextCursor, path } = Astro.props;
+const logo = publicImage('/assets/branding/hf-logo.png', { width: 320, fit: 'scale-down' });
+---
+<style is:global>
+  html, body { background: #0E0A12 !important; }
+  body { margin: 0; overflow: hidden; }
+</style>
+{/* Session hint before paint (same cookie logic as the shared header): chooses Log in / Sign up or search + wallet. */}
+<script is:inline>
+  (function () {
+    try {
+      var m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+      document.documentElement.setAttribute('data-site-auth', m && m[1] && m[1] !== '0' ? 'in' : 'out');
+    } catch (e) { document.documentElement.setAttribute('data-site-auth', 'out'); }
+  })();
+</script>
+<div class="ex">
+  <header class="ex-head">
+    <a class="ex-logo" href="/" aria-label={`${BRAND.name} home`}><img src={logo} alt="" width="82" height="34" /></a>
+    <nav aria-label="Account">
+      <a class="ex-login ex-out" href={signInHref(path)}>Log in</a>
+      <a class="ex-signup ex-out" href={`/sign-up?redirect_url=${encodeURIComponent(path)}`}>Sign up</a>
+      <a class="ex-ico ex-in" href="/marketplace" aria-label="Search"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg></a>
+      <a class="ex-ico ex-in" href="/dashboard/wallet" aria-label="Wallet"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2zM3.5 7.5l11-3.5v3.5" /><circle cx="16.5" cy="13.5" r="1.2" fill="currentColor" /></svg></a>
+      <a class="ex-ico ex-in" href="/dashboard" aria-label="My account"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20c1.4-3.6 4.3-5.4 7.5-5.4s6.1 1.8 7.5 5.4" /></svg></a>
+    </nav>
+  </header>
+  {items.length > 0
+    ? <ExploreReels client:load initial={items} nextCursor={nextCursor} />
+    : <p class="ex-empty">No reels to show yet. Please check back soon.</p>}
+</div>
