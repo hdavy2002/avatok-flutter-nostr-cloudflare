@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/unplayable_reels.dart';
+import '../../data/feed_order.dart'; // [HF-REELS-FRESH-OPEN-1]
 import '../../data/reel_bookmarks.dart';
 import '../../data/reel_engage_store.dart'; // [HF-REEL-ENGAGE-APP-1]
 import '../../data/repos/reel_engage_repo.dart';
@@ -89,8 +90,30 @@ class RealFeed extends StatefulWidget {
   State<RealFeed> createState() => _RealFeedState();
 }
 
-class _RealFeedState extends State<RealFeed> {
+class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
   final _pager = PageController();
+  DateTime? _backgroundAt; // [HF-REELS-FRESH-OPEN-1]
+
+  /// [HF-REELS-FRESH-OPEN-1] Opening the app again after a while (it was only in the background) also starts on a new video.
+  static const Duration freshAfter = Duration(minutes: 10);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.paused) {
+      _backgroundAt = DateTime.now();
+    } else if (s == AppLifecycleState.resumed) {
+      final away = _backgroundAt;
+      _backgroundAt = null;
+      if (away != null && widget.reelId == null && DateTime.now().difference(away) >= freshAfter && mounted) {
+        if (_pager.hasClients) {
+          _ownJump = true;
+          _pager.jumpToPage(0);
+          _ownJump = false;
+        }
+        unawaited(_first());
+      }
+    }
+  }
   final List<FeedReel> _items = [];
   final Set<String> _counted = {};
   AsyncState<List<FeedReel>> _state = const AsyncLoading();
@@ -106,6 +129,7 @@ class _RealFeedState extends State<RealFeed> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // [HF-REELS-FRESH-OPEN-1]
     ReelGate.visible.addListener(
       _onGate,
     ); // [HF-BOOK-APPROVE-POLISH] pause when the feed is not on screen
@@ -138,6 +162,7 @@ class _RealFeedState extends State<RealFeed> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // [HF-REELS-FRESH-OPEN-1]
     ReelGate.visible.removeListener(_onGate);
     _pager.dispose();
     super.dispose();
@@ -156,13 +181,15 @@ class _RealFeedState extends State<RealFeed> {
       if (!mounted) return;
       final page = results[0] as ReelsPage;
       final shared = results[1] as FeedReel? ?? widget.initialReel;
+      final firstPage = page.items.where((r) => r.id != shared?.id && !UnplayableReels.contains(r.id)).toList();
+      // [HF-REELS-FRESH-OPEN-1] a new first video on every open (a shared reel still plays first).
+      if (shared == null) await FeedOrder.freshStart<FeedReel>(firstPage, (r) => r.id);
+      if (!mounted) return;
       _items
         ..clear()
         ..addAll([
           if (shared != null) shared,
-          ...page.items.where(
-            (r) => r.id != shared?.id && !UnplayableReels.contains(r.id),
-          ),
+          ...firstPage,
         ]);
       _cursor = page.nextCursor;
       _more = page.nextCursor != null;
