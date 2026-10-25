@@ -30,7 +30,8 @@
 /* ---------- ornaments ---------- */
 .xp .toran{height:clamp(64px,8.5vw,140px);background:var(--xp-toran-top) repeat-x center top/auto 100%;position:relative;z-index:3;pointer-events:none;margin-bottom:calc(clamp(64px,8.5vw,140px) * -.45)}
 .xp .bp-strip{height:clamp(24px,2.2vw,34px);background:var(--xp-divider) repeat-x center/auto 100%;border-block:3px solid var(--ink)}
-.xp .foot-fringe{height:clamp(54px,6.5vw,110px);background:var(--xp-toran-bottom) repeat-x center bottom/auto 100%;transform:scaleY(-1);margin-top:-3px;position:relative;z-index:2}
+/* [HF-XP-FOOTER-TORAN-1] Owner 2026-10-25: one border above the footer, the same toran as the header area. */
+.xp .cv-footer .cv-footer-toran{height:clamp(64px,8.5vw,140px);background:var(--xp-toran-top) repeat-x center top/auto 100%}
 .xp .bunting{height:clamp(64px,7.5vw,118px);background:var(--xp-bunting) repeat-x center top/auto 100%}
 .xp .dotstrip{height:16px;background:var(--xp-dots) repeat-x center/auto 100%}
 
