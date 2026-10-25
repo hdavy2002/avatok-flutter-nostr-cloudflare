@@ -97,7 +97,7 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/creator/:platform/:handle',
-      builder: (_, s) => inviteProfileFromRoute(s),
+      builder: (_, s) => inviteProfileFromRoute(s, searchRepo: Services.instance.searchRepo), // [HF-VOTE-COUNT-1] live vote count
     ), // [HF-REELS-FAV-1] creator not on the app yet
     GoRoute(
       parentNavigatorKey: rootKey,

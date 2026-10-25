@@ -1142,6 +1142,20 @@ class _ReelPageState extends State<ReelPage>
 /// Votes remembered for this session so a card keeps saying VOTED when it is scrolled away and back.
 class InviteVotes {
   static final Set<String> voted = {};
+
+  /// [HF-VOTE-COUNT-1] The newest vote total the server gave us, per creator key, so every page shows the real count.
+  static final Map<String, int> totals = {};
+  static final ValueNotifier<int> changed = ValueNotifier<int>(0);
+
+  static void note(String key, int total) {
+    totals[key] = total;
+    changed.value++;
+  }
+
+  static void clear() {
+    voted.clear();
+    totals.clear();
+  }
 }
 
 /// [HF-WIRE-22] HF-REEL-40: the INVITE button of an invite reel. One tap = one vote (HF-REEL-9), needs an account, then reads VOTED.
@@ -1162,7 +1176,7 @@ class InviteButtonState extends State<InviteButton> {
     final c = widget.creator;
     setState(() => _busy = true);
     try {
-      await (widget.repo ?? Services.instance.searchRepo).vote(
+      final total = await (widget.repo ?? Services.instance.searchRepo).vote(
         MissingCreator(
           handle: c.handle,
           platform: c.platform,
@@ -1171,6 +1185,7 @@ class InviteButtonState extends State<InviteButton> {
         ),
       );
       InviteVotes.voted.add(c.key);
+      InviteVotes.note(c.key, total); // [HF-VOTE-COUNT-1] the page's Votes number follows the server's total
       if (mounted) toast(context, 'Voted! We will ask ${c.handle} to join.');
     } on ApiException catch (e) {
       if (mounted) toast(context, e.userMessage);

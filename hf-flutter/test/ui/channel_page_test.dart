@@ -88,7 +88,7 @@ void main() {
     Services.instance.user = const ClerkUser(id: 'test_fan');
     ReelBookmarks.override = WidgetBookmarks(FakeApiClient((m,p,q,b) => {'items': []}), () => Services.instance.user?.id);
     PresenceBridge.forceReal = true;
-    InviteVotes.voted.clear();
+    InviteVotes.clear();
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
     ReelPlayer.testPlayer = (r, active) => Container(key: ValueKey('player-${r.id}'), color: Colors.black);
   });

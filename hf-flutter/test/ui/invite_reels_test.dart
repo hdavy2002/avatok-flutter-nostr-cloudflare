@@ -86,7 +86,7 @@ void main() {
     ReelBookmarks.override = WidgetBookmarks(FakeApiClient((m,p,q,b) => {'items': []}), () => Services.instance.user?.id);
     PresenceBridge.forceReal = true;
     Services.instance.user = const ClerkUser(id: 'test_fan');
-    InviteVotes.voted.clear();
+    InviteVotes.clear();
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
     ReelPlayer.testPlayer = (r, active) => Container(key: ValueKey('player-${r.id}'), color: Colors.black);
   });
@@ -186,6 +186,7 @@ void main() {
       expect(find.text('Voted! We will ask @newstar to join.'), findsOneWidget);
       expect(find.text('VOTED'), findsOneWidget);
       expect(find.text('VOTE TO INVITE'), findsNothing);
+      expect(find.text('4'), findsOneWidget); // [HF-VOTE-COUNT-1] the Votes number follows the server total (3 -> 4)
       await tester.pump(const Duration(seconds: 9));
       await tester.pumpAndSettle();
     });

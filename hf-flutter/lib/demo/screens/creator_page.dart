@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -92,7 +94,7 @@ class InviteProfileScreen extends StatelessWidget {
                         const VerticalDivider(color: C.brass, width: 2, thickness: 2),
                         _stat('Videos', '${reels.length}'),
                         const VerticalDivider(color: C.brass, width: 2, thickness: 2),
-                        _stat('Votes', '${creator.votes}'),
+                        Expanded(child: _VotesStat(creator: creator, searchRepo: searchRepo)), // [HF-VOTE-COUNT-1]
                       ],
                     ),
                   ),
@@ -153,18 +155,64 @@ class InviteProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _stat(String label, String value) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          children: [
-            Text(label, style: t(14, color: C.tan)),
-            const SizedBox(height: 2),
-            FittedBox(child: Text(value, style: t(22, color: C.maroon))),
-          ],
-        ),
-      ),
+  Widget _stat(String label, String value) => Expanded(child: _statBody(label, value));
+}
+
+Widget _statBody(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Column(
+      children: [
+        Text(label, style: t(14, color: C.tan)),
+        const SizedBox(height: 2),
+        FittedBox(child: Text(value, style: t(22, color: C.maroon))),
+      ],
+    ),
+  );
+}
+
+/// [HF-VOTE-COUNT-1] The Votes number on a not-yet-here creator's page. It used to show the count carried in from the
+/// (cached) reels feed and never changed, so a signed-in vote stayed at 0 on screen although the server counted it.
+/// Now it reads the live total when the page opens and follows the total the server returns after a vote.
+class _VotesStat extends StatefulWidget {
+  const _VotesStat({required this.creator, this.searchRepo});
+
+  final InviteCreator creator;
+  final SearchRepo? searchRepo;
+
+  @override
+  State<_VotesStat> createState() => _VotesStatState();
+}
+
+class _VotesStatState extends State<_VotesStat> {
+  int? _live;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final repo = widget.searchRepo;
+    if (repo == null) return; // no repo (previews / tests): keep the count we were given
+    final v = await repo.voteCount(widget.creator.platform, widget.creator.handle);
+    if (v != null && mounted) setState(() => _live = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = widget.creator.key;
+    return ValueListenableBuilder<int>(
+      valueListenable: InviteVotes.changed,
+      builder: (_, __, ___) {
+        var n = widget.creator.votes;
+        if (_live != null && _live! > n) n = _live!;
+        final after = InviteVotes.totals[key];
+        if (after != null && after > n) n = after;
+        if (n == 0 && InviteVotes.voted.contains(key)) n = 1; // our own vote always counts
+        return _statBody('Votes', '$n');
+      },
     );
   }
 }

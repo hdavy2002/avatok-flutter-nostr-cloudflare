@@ -104,6 +104,20 @@ class SearchRepo {
     }
   }
 
+  /// [HF-VOTE-COUNT-1] The live vote total of one creator who is not here yet (`GET /api/hf/invites/:platform/:handle`).
+  /// Null when it cannot be read; the caller keeps what it already shows.
+  Future<int?> voteCount(String platform, String handle) async {
+    try {
+      final h = Uri.encodeComponent(handle.replaceFirst('@', ''));
+      final j = await _api.getJson('/api/hf/invites/${Uri.encodeComponent(platform)}/$h', auth: false);
+      final c = j['creator'];
+      final v = c is Map ? c['votes'] : null;
+      return v is num ? v.toInt() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Vote to bring [c] in. One vote per person; repeating it is harmless. Returns the new total.
   /// [HF-REEL-CALL-2] The worker's route is `POST /api/hf/invites/:platform/:handle`; its header comment also names a
   /// `.../vote` form, so a 404 (route not found, not the flag being off) retries once on that path.
