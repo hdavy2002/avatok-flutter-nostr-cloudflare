@@ -21,6 +21,7 @@ import 'package:hf_app/demo/screens/creator_page.dart';
 import 'package:hf_app/demo/screens/feed.dart';
 import 'package:hf_app/demo/screens/page_moved.dart';
 import 'package:hf_app/demo/state.dart';
+import 'reel_more_helper.dart';
 
 // [HF-REELS-FAV-1] Channel name / avatar on a reel opens the right page, the heart on a reel reaches the Favourites tab,
 // and an unknown route shows the friendly page.
@@ -108,6 +109,7 @@ void main() {
       });
       final search = SearchRepo(api);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: search, onlineFetch: () async => 0), searchRepo: search);
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
@@ -136,6 +138,7 @@ void main() {
     testWidgets('the avatar of an invite reel opens the same page', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
@@ -158,6 +161,7 @@ void main() {
       final api = FakeApiClient((m, p, q, b) => p.endsWith('/view') ? {'ok': true} : {'ok': true, 'items': [_network('hfrl_1')], 'nextCursor': null});
       FavouritesStore.override = FavouritesStore(FavouritesRepo(api));
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1));
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byTooltip('Open Maya profile').first);
       await tester.pump();
       await tester.pump();
@@ -169,6 +173,7 @@ void main() {
     testWidgets('an invite card can save this video without offering call or book', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Save video'), findsOneWidget);
       expect(find.byTooltip('Call now'), findsNothing);
       expect(find.byTooltip('Book a time'), findsNothing);
@@ -193,6 +198,7 @@ void main() {
       for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       await tester.pump();
       expect(find.text('Caption hfrl_1'), findsNothing);
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byTooltip('Save video'));
       for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       await tester.pump();
@@ -212,10 +218,12 @@ void main() {
       await tester.pump();
       await store.load();
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 1));
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byTooltip('Save video'));
       for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       await tester.pump();
       expect(store.isSaved('hfrl_1'), isTrue);
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Remove saved video'), findsOneWidget);
     });
   });

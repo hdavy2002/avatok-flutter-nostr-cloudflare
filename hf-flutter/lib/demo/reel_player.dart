@@ -237,6 +237,11 @@ class ReelPlayer extends StatefulWidget {
   /// How long YouTube keeps its top / bottom bars after it starts playing (they fade on their own; our blur follows).
   @visibleForTesting
   static const int youtubeChromeMs = 4000;
+
+  /// [HF-REEL-YT-ZOOM-2] owner: zoom a little further on every side so YouTube's own channel name, caption line and
+  /// side buttons (Shorts overlay) sit off screen.
+  @visibleForTesting
+  static const double youtubeZoom = 1.2;
   @visibleForTesting
   static const int youtubeHideBottom = 84;
 
@@ -273,7 +278,7 @@ class ReelPlayer extends StatefulWidget {
         // [HF-REEL-FILL-1] a 9:16 reel on a taller phone screen leaves black bands above and below it; scale the player
         // (centred) just enough that the video reaches the top and the bottom, as Instagram reels do
         'function fit(){var e=document.getElementById("p");if(!e)return;var W=window.innerWidth,H=window.innerHeight,v=W*16/9;'
-        'e.style.transform="scale("+(H>v?H/v:1)+")"}window.addEventListener("resize",fit);'
+        'e.style.transform="scale("+((H>v?H/v:1)*$youtubeZoom)+")"}window.addEventListener("resize",fit);'
         'var ht=null;function chrome(ms){document.body.classList.add("c");clearTimeout(ht);if(ms)ht=setTimeout(function(){document.body.classList.remove("c")},ms)}'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
         'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
@@ -371,6 +376,13 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   String? _failReason;
   bool _played = false;
 
+  /// [HF-REEL-YT-POSTER-1] owner: on YouTube the poster stays on top until YouTube's own buttons (previous / pause /
+  /// next, channel bar) have faded, the first time a reel plays on screen after it is shown.
+  static const Duration youtubeChromeCover = Duration(milliseconds: 3600);
+  bool _chromeCover = false;
+  bool _coverArmed = true;
+  Timer? _coverTimer;
+
   /// [HF-REEL-WARM-1] Started early, muted, and paused at its first frame so it plays the instant it comes on screen.
   bool _warmed = false;
 
@@ -403,6 +415,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _watchdog?.cancel();
+    _coverTimer?.cancel();
     _testSub?.cancel();
     _drop();
     super.dispose();
@@ -434,6 +447,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     // Leaving the page pauses the video in place (the PageView drops far-away pages, so memory stays at one or two views).
     if (old.active != widget.active && _engine) {
       if (widget.active) {
+        _coverArmed = true; // [HF-REEL-YT-POSTER-1]
         _run('window.hfMute&&window.hfMute(false)');
         // a warmed reel starts from the top the first time it is shown; after that it carries on where it was
         _run(
@@ -579,6 +593,15 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         _warmed = true;
       }
       _watchdog?.cancel();
+      // [HF-REEL-YT-POSTER-1] first on-screen play of a YouTube reel: keep the poster up while YouTube shows its buttons
+      if (!_isIg && widget.active && _fg && _coverArmed) {
+        _coverArmed = false;
+        _coverTimer?.cancel();
+        setState(() => _chromeCover = true);
+        _coverTimer = Timer(youtubeChromeCover, () {
+          if (mounted) setState(() => _chromeCover = false);
+        });
+      }
       if (!_played) setState(() => _played = true);
       if (!_isPlaying) setState(() => _isPlaying = true);
     } else if (m == 'paused') {
@@ -707,7 +730,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           ),
         // [HF-REEL-WARM-1] the poster stays on top until the video has really started, so the viewer never sees the
         // embed page loading (Instagram's header / likes / comments, YouTube's spinner) or a black flash while scrolling
-        if (_web != null && _fg && !_played)
+        if (_web != null && _fg && (!_played || _chromeCover))
           Positioned.fill(child: IgnorePointer(child: _thumb())),
         // The transparent layer with our control: a tap goes to the video underneath as play / pause. Only taps are taken,
         // so a vertical swipe still reaches the PageView.

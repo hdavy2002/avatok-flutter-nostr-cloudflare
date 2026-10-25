@@ -17,6 +17,7 @@ import 'package:hf_app/demo/reel_player.dart';
 import 'package:hf_app/demo/screens/feed.dart';
 import 'package:hf_app/demo/screens/search.dart';
 import 'package:hf_app/demo/state.dart';
+import 'reel_more_helper.dart';
 
 // [HF-WIRE-22] Invite reels in the feed (HF-REEL-40) and the search platform filter (HF-REEL-41).
 
@@ -164,6 +165,7 @@ void main() {
       expect(find.text('Not on ${Brand.name} yet'), findsNothing);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Open New Star profile'), findsOneWidget);
       expect(find.byTooltip('Booking unavailable — invite creator'), findsOneWidget);
       expect(find.byTooltip('Call now'), findsNothing);

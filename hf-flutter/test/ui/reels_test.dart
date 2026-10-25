@@ -11,6 +11,7 @@ import 'package:hf_app/demo/presence_bridge.dart';
 import 'package:hf_app/demo/reel_player.dart';
 import 'package:hf_app/demo/screens/feed.dart';
 import 'package:hf_app/demo/screens/profile.dart';
+import 'reel_more_helper.dart';
 
 typedef Handler = Object? Function(String method, String path, Map<String, Object?>? query, Object? body);
 
@@ -155,6 +156,7 @@ void main() {
       expect(html, contains('id="bt"'));
       expect(html, contains('chrome(4000)'));
       expect(html, contains('function fit()'));
+      expect(html, contains('*1.2)')); // [HF-REEL-YT-ZOOM-2]
       expect(html, isNot(contains('id="br"')));
       expect(html, isNot(contains('hfZoom')));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
@@ -219,6 +221,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(seen['hfrl_1'], isFalse);
       expect(seen['hfrl_2'], isTrue);
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Open Riya profile'), findsOneWidget);
       expect(api.calls.where((c) => c.endsWith('/view')).toSet(), {'POST /api/hf/reels/hfrl_1/view', 'POST /api/hf/reels/hfrl_2/view'});
     });
@@ -234,6 +237,7 @@ void main() {
       expect(seen['hfrl_2'], isTrue);
       expect(seen['hfrl_1'], isFalse);
       expect(find.text('Caption hfrl_2'), findsNothing);
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       expect(find.byTooltip('Open Riya profile'), findsOneWidget);
     });
   });

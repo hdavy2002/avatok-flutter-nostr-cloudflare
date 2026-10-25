@@ -22,6 +22,7 @@ import 'package:hf_app/demo/screens/favourites.dart';
 import 'package:hf_app/demo/screens/feed.dart';
 import 'package:hf_app/demo/screens/search.dart';
 import 'package:hf_app/demo/state.dart';
+import 'reel_more_helper.dart';
 
 typedef Handler = Object? Function(String method, String path, Map<String, Object?>? query, Object? body);
 
@@ -233,6 +234,7 @@ void main() {
       ShareSheet.testSink = (text) async => shared = text;
       final r = reel();
       await _pump(tester, Scaffold(body: ReelPage(reel: demoReelFrom(r), active: true, real: r)));
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
       await tester.pump();
       for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
@@ -240,6 +242,7 @@ void main() {
       await tester.pump();
       expect(api.calls, contains('PUT /api/hf/reel-bookmarks/hfrl_abc12345'));
 
+      await openReelMore(tester); // [HF-REEL-RAIL-2]
       await tester.tap(find.byIcon(Icons.share_outlined));
       await tester.pump();
       expect(shared, contains(Brand.url('/r/hfrl_abc12345')));

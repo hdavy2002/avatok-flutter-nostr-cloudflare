@@ -22,6 +22,7 @@ import 'package:hf_app/demo/state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_reel_bookmarks.dart';
+import 'reel_more_helper.dart';
 
 // [HF-REEL-ENGAGE-APP-1] The Like and Comment buttons and the slide-up comment sheet.
 
@@ -117,17 +118,20 @@ void main() {
     demo.signOut();
   });
 
-  testWidgets('buttons show the totals, Like above Comment above Save, and Save is a bookmark', (tester) async {
+  testWidgets('buttons show the totals, Like above Comment above More (save and share live under More)', (tester) async {
     await _pump(tester, _reel(), _Repo());
     expect(find.byKey(const ValueKey('reel-like')), findsOneWidget);
     expect(find.byKey(const ValueKey('reel-comment')), findsOneWidget);
     expect(find.text(compactCount(2000)), findsOneWidget);
     expect(find.text('34'), findsOneWidget);
-    expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark_border_rounded), findsNothing); // [HF-REEL-RAIL-2]
     final like = tester.getTopLeft(find.byKey(const ValueKey('reel-like'))).dy;
     final comment = tester.getTopLeft(find.byKey(const ValueKey('reel-comment'))).dy;
-    final save = tester.getTopLeft(find.byIcon(Icons.bookmark_border_rounded)).dy;
-    expect(like < comment && comment < save, isTrue);
+    final more = tester.getTopLeft(find.byKey(const ValueKey('reel-more'))).dy;
+    expect(like < comment && comment < more, isTrue);
+    await openReelMore(tester);
+    expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.share_outlined), findsOneWidget);
     final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));
     expect(count.style!.fontSize, greaterThanOrEqualTo(14));
   });
@@ -136,7 +140,7 @@ void main() {
     await _pump(tester, _reel(on: false), _Repo());
     expect(find.byKey(const ValueKey('reel-like')), findsNothing);
     expect(find.byKey(const ValueKey('reel-comment')), findsNothing);
-    expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
+    expect(find.byKey(const ValueKey('reel-more')), findsOneWidget);
   });
 
   testWidgets('Like is instant and turns pink; the server count then replaces it', (tester) async {
@@ -257,10 +261,11 @@ void main() {
     expect(repo.likes, isEmpty);
   });
 
-  testWidgets('a short screen moves Reel information to the bottom-left and nothing shrinks', (tester) async {
+  testWidgets('a short screen fits the five buttons in the column and nothing shrinks', (tester) async {
     await _pump(tester, _reel(), _Repo(), size: const Size(400, 560));
-    expect(find.byKey(const ValueKey('reel-info-left')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reel-info-left')), findsNothing); // [HF-REEL-RAIL-2]
     expect(find.byIcon(Icons.info_outline_rounded), findsWidgets);
+    expect(find.byKey(const ValueKey('reel-more')), findsOneWidget);
     expect(find.byType(FittedBox), findsNothing);
     final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));
     expect(count.style!.fontSize, greaterThanOrEqualTo(14));

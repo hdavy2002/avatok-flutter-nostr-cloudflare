@@ -630,10 +630,6 @@ class _ReelPageState extends State<ReelPage>
         // [HF-REEL-ENGAGE-APP-1] On a short screen the "Reel information" button leaves the column (it moves to the bottom-left)
         // so nothing has to shrink: text never renders under 14 sp.
         return LayoutBuilder(builder: (context, box) {
-        final buttons = 5 + (eState != null ? 2 : 0) + 1 + (_originalUrl != null ? 1 : 0); // [HF-REEL-ICONS-1] original-post button
-        final natural = buttons * 64.0 + (eState != null ? 40.0 : 0.0);
-        final avail = box.maxHeight - MediaQuery.paddingOf(context).top - 8 - 12;
-        final short = avail < natural;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -750,30 +746,6 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
-            if (short)
-              Positioned(
-                left: 8,
-                bottom: 15,
-                child: _action(
-                  'Reel information',
-                  Icons.info_outline_rounded,
-                  () => _whileCovered(() => _info(context)),
-                  key: const ValueKey('reel-info-left'),
-                ),
-              ),
-            // [HF-REEL-ICONS-1] a screen too short for the whole column keeps the original-post button bottom-left,
-            // above Reel information, with its own icon.
-            if (short && _originalUrl != null)
-              Positioned(
-                left: 8,
-                bottom: 15 + 64,
-                child: _action(
-                  _originalUrl!.host.contains('instagram') ? 'See this post on Instagram' : 'See this video on YouTube',
-                  Icons.open_in_new_rounded,
-                  () => _whileCovered(() => OriginalPostPage.open(context, _originalUrl!)),
-                  key: const ValueKey('reel-original'),
-                ),
-              ),
             Positioned(
               right: 8,
               bottom: 12,
@@ -783,63 +755,20 @@ class _ReelPageState extends State<ReelPage>
                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // [HF-REEL-ICONS-1] owner: the original-post button moves from the bottom left to the top of this
-                  // list, with its own icon (it used to share the info icon with Reel information below).
-                  if (_originalUrl != null && !short)
-                    _action(
-                      _originalUrl!.host.contains('instagram')
-                          ? 'See this post on Instagram'
-                          : 'See this video on YouTube',
-                      Icons.open_in_new_rounded,
-                      () => _whileCovered(
-                        () => OriginalPostPage.open(context, _originalUrl!),
-                      ),
-                      key: const ValueKey('reel-original'),
-                    ),
-                  if (!short)
-                    _action(
-                      'Reel information',
-                      Icons.info_outline_rounded,
-                      () => _whileCovered(() => _info(context)),
-                    ),
+                  // [HF-REEL-RAIL-2] owner 2026-10-25: only info, booking, like, comments on the video; everything else is
+                  // under "More" so the column fits any screen.
                   _action(
-                    'Open ${who.name} profile',
-                    Icons.person_outline_rounded,
-                    () => _openChannel(context),
+                    'Reel information',
+                    Icons.info_outline_rounded,
+                    () => _whileCovered(() => _info(context)),
                   ),
-                  if (inviteOf != null) ...[
-                    _statusDot(
-                      'Influencer is not on ${Brand.name} yet',
-                      'Not available',
-                      C.ruby,
-                    ),
+                  if (inviteOf != null)
                     _action(
                       'Booking unavailable — invite creator',
                       Icons.calendar_month_outlined,
                       () => _whileCovered(() => _info(context)),
-                    ),
-                  ],
-                  if (inviteOf == null) ...[
-                    _statusDot(
-                      stateDot?.$1 ??
-                          (presence == 'online'
-                              ? 'Influencer is online'
-                              : presence == 'busy'
-                              ? 'Influencer is on a call'
-                              : 'Influencer is offline'),
-                      stateDot?.$2 ??
-                          (presence == 'online'
-                              ? 'Available'
-                              : presence == 'busy'
-                              ? 'On call'
-                              : 'Offline'),
-                      stateDot?.$3 ??
-                          (presence == 'online'
-                              ? C.onlineDot
-                              : presence == 'busy'
-                              ? C.marigold
-                              : C.ruby),
-                    ),
+                    )
+                  else
                     _action('Book a time', Icons.calendar_month_outlined, () {
                       Telemetry.event('hf_reel_action', {'action': 'book'});
                       _whileCovered(
@@ -848,7 +777,6 @@ class _ReelPageState extends State<ReelPage>
                         ),
                       );
                     }),
-                  ],
                   if (eState != null) ...[
                     _countAction(
                       eState.liked ? 'Unlike' : 'Like',
@@ -867,37 +795,62 @@ class _ReelPageState extends State<ReelPage>
                     ),
                   ],
                   _action(
-                    faved ? 'Remove saved video' : 'Save video',
-                    faved
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_border_rounded,
-                    bookmarks?.busy(widget.real!.id) == true
-                        ? null
-                        : () => requireAccount(context, () async {
+                    'More',
+                    Icons.more_horiz_rounded,
+                    () => _whileCovered(() => _openMore(
+                      context,
+                      status: inviteOf != null
+                          ? ('Not on ${Brand.name} yet', C.ruby)
+                          : (
+                              stateDot?.$2 ?? (presence == 'online' ? 'Available now' : presence == 'busy' ? 'On a call' : 'Offline'),
+                              stateDot?.$3 ?? (presence == 'online' ? C.onlineDot : presence == 'busy' ? C.marigold : C.ruby),
+                            ),
+                      items: [
+                        if (_originalUrl != null)
+                          (
+                            _originalUrl!.host.contains('instagram') ? 'See this post on Instagram' : 'See this video on YouTube',
+                            Icons.open_in_new_rounded,
+                            const ValueKey('reel-original'),
+                            () async {
+                              await OriginalPostPage.open(context, _originalUrl!);
+                            },
+                          ),
+                        ('Open ${who.name} profile', Icons.person_outline_rounded, null, () async {
+                          _openChannel(context);
+                        }),
+                        (
+                          faved ? 'Remove saved video' : 'Save video',
+                          faved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                          null,
+                          () => requireAccount(context, () async {
                             if (widget.real == null) {
                               demo.toggleFav(r.id);
+                              if (mounted) _flash(faved ? 'Removed from saved' : 'Saved');
                               return;
                             }
                             try {
                               await bookmarks!.toggle(widget.real!);
+                              if (mounted) _flash(faved ? 'Removed from saved' : 'Saved'); // [HF-REEL-RAIL-2] the save icon is in More now
                             } catch (e) {
-                              if (context.mounted)
-                                toast(
-                                  context,
-                                  e is ApiException
-                                      ? e.userMessage
-                                      : 'Could not save that. Please try again.',
-                                );
+                              if (context.mounted) toast(context, e is ApiException ? e.userMessage : 'Could not save that. Please try again.');
                             }
                           }, reason: 'to save videos'),
-                    color: faved ? C.marigold : C.ivory,
-                  ),
-                  _action(
-                    'Share this reel',
-                    Icons.share_outlined,
-                    () => widget.real == null
-                        ? toast(context, 'Share link copied (demo)')
-                        : _share(context, widget.real!),
+                        ),
+                        (
+                          'Share this reel',
+                          Icons.share_outlined,
+                          null,
+                          () async {
+                            if (widget.real == null) {
+                              toast(context, 'Share link copied (demo)');
+                            } else {
+                              await _share(context, widget.real!);
+                            }
+                          },
+                        ),
+                      ],
+                    )),
+                    key: const ValueKey('reel-more'),
                   ),
                 ],
               ),
@@ -910,40 +863,55 @@ class _ReelPageState extends State<ReelPage>
     );
   }
 
-  /// [HF-REEL-DOT-1] The creator's status as a solid circle the same size as the other buttons (owner 2026-10-22): green =
-  /// online, red = offline / not on the app yet, marigold = on a call. A tap shows [message] in the middle of the screen
-  /// for a second.
-  Widget _statusDot(String message, String label, Color color) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        key: const ValueKey('reel-status-dot'),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _flash(message),
-        child: Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            border: Border.all(color: C.ivory, width: 3),
-            boxShadow: const [
-              BoxShadow(color: Color(0x66000000), blurRadius: 6),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
   void _flash(String message) {
     _flashTimer?.cancel();
     setState(() => _flashText = message);
     _flashTimer = Timer(const Duration(seconds: 1), () {
       if (mounted) setState(() => _flashText = null);
     });
+  }
+
+  /// [HF-REEL-RAIL-2] The "More" sheet: creator status, original post, profile, save and share.
+  Future<void> _openMore(
+    BuildContext context, {
+    required (String, Color) status,
+    required List<(String, IconData, Key?, Future<void> Function())> items,
+  }) async {
+    Telemetry.event('hf_reel_action', {'action': 'more'});
+    final pick = await showModalBottomSheet<Future<void> Function()>(
+      context: context,
+      backgroundColor: C.cream,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Row(children: [
+              Container(
+                key: const ValueKey('reel-status-dot'),
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: status.$2, border: Border.all(color: C.ivory, width: 2)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(status.$1, style: t(17, color: C.maroon, w: FontWeight.w900))),
+            ]),
+          ),
+          for (final it in items)
+            Tooltip(
+              message: it.$1,
+              child: ListTile(
+                key: it.$3,
+                leading: Icon(it.$2, color: C.maroon),
+                title: Text(it.$1, style: t(17, color: C.deep, w: FontWeight.w800)),
+                onTap: () => Navigator.of(sheet).pop(it.$4),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (pick != null && context.mounted) await pick();
   }
 
   Widget _action(
