@@ -186,10 +186,10 @@ const navItems = [
               {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
               {socials.length > 0 && (
                 <section class="socials" aria-labelledby="soch">
-                  <p class="eyebrow" id="soch">Find me on</p>
+                  <p class="eyebrow" id="soch">My channels</p>{/* [HF-WEB-NOOUT-1] owner: fans stay on Hello Fraands — channel cards show numbers only, no link out */}
                   <ul>
                     {socials.map(c => (
-                      <li><a class="soc" href={c.url ?? undefined} target="_blank" rel="noopener noreferrer nofollow" data-platform={c.platform} aria-label={`${SOCIAL_NAME[c.platform]} @${c.handle}, ${compact(c.followers)} ${c.platform === 'youtube' ? 'subscribers' : 'followers'}${c.views > 0 ? `, ${compact(c.views)} views` : ''}`}>
+                      <li><div class="soc" role="group" data-platform={c.platform} aria-label={`${SOCIAL_NAME[c.platform]} @${c.handle}, ${compact(c.followers)} ${c.platform === 'youtube' ? 'subscribers' : 'followers'}${c.views > 0 ? `, ${compact(c.views)} views` : ''}`}>
                         <span class={`pi pi-${c.platform}`} aria-hidden="true">
                           {c.platform === 'instagram' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/></svg>}
                           {c.platform === 'youtube' && <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7.5v9l8-4.5z"/></svg>}
@@ -201,7 +201,7 @@ const navItems = [
                           <span><b>{compact(c.followers)}</b><small>{c.platform === 'youtube' ? 'subscribers' : 'followers'}</small></span>
                           {c.views > 0 && <span><b>{compact(c.views)}</b><small>views</small></span>}
                         </span>
-                      </a></li>
+                      </div></li>
                     ))}
                   </ul>
                   {socialUpdatedLabel && <p class="upd">Updated {socialUpdatedLabel}. Numbers refresh every day.</p>}
@@ -357,7 +357,7 @@ const navItems = [
     void document.fonts?.ready.then(hdr);
     capture('channel_viewed', { host_slug: gp.dataset.hostSlug, merch_count: Number(gp.dataset.merch) || 0, reels_count: Number(gp.dataset.reels) || 0, call_eligible: gp.dataset.call === '1', status: gp.dataset.status, socials_count: Number(gp.dataset.socials) || 0, utm_medium: new URLSearchParams(location.search).get('utm_medium') ?? undefined });
     // [HF-CHANNEL-MOBILE-1] which social card a fan opened
-    gp.querySelectorAll<HTMLAnchorElement>('.soc[data-platform]').forEach(a => a.addEventListener('click', () => capture('channel_social_tap', { host_slug: gp.dataset.hostSlug, platform: a.dataset.platform })));
+    gp.querySelectorAll<HTMLElement>('.soc[data-platform]').forEach(a => a.addEventListener('click', () => capture('channel_social_tap', { host_slug: gp.dataset.hostSlug, platform: a.dataset.platform })));
     // Highlight the section being read.
     const links = [...gp.querySelectorAll<HTMLAnchorElement>('.snav a[href^="#"]')];
     const map = new Map<Element, HTMLAnchorElement>();
