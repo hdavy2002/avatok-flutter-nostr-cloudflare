@@ -1,7 +1,7 @@
 ---
 // [HF-EXPLORE-PUBLIC-1] /r/<id>: the Explore reels page opened on THAT reel first; the feed continues after it. SSR.
 // Unknown / hidden id -> Explore from the top (200, noindex). Head: og:title "<Creator> on <brand>", og:description = the reel's own caption,
-// og:type video.other, og:image = the vertical 720x1280 share image (/og/reel/<id>.png, see lib/seo/og/reel.ts), served as a ~100 KB JPEG through
+// og:type video.other, og:image = the vertical 540x960 share image (/og/reel/<id>.png, see lib/seo/og/reel.ts), served as a ~100 KB JPEG through
 // Cloudflare image resizing because WhatsApp drops previews whose image is too big (the raw PNG is ~1 MB).
 export const prerender = false;
 import Base from '../../layouts/Base.astro';
@@ -22,9 +22,9 @@ Astro.response.headers.set('cache-control', start ? 'public, max-age=60, stale-w
   title={start ? `${who!.name} on ${BRAND.name}` : `Explore reels · ${BRAND.name}`}
   description={start ? description : `Watch reels from your favourite influencers, then call them privately on ${BRAND.name}.`}
   ogType="video.other"
-  image={start ? brandUrl(`/cdn-cgi/image/format=jpeg,quality=80,width=720/og/reel/${start.id}.png`) : undefined}
-  imageWidth={720}
-  imageHeight={1280}
+  image={start ? brandUrl(`/cdn-cgi/image/format=jpeg,quality=80,width=540/og/reel/${start.id}.png`) : undefined}
+  imageWidth={540}
+  imageHeight={960}
   imageAlt={start ? `${who!.name} on ${BRAND.name}` : undefined}
 >
   <ReelsView items={items} nextCursor={nextCursor} path={start ? `/r/${start.id}` : '/explore'} />

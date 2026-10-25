@@ -1,6 +1,6 @@
-/* [HF-EXPLORE-PUBLIC-1] Share image of one public reel: /og/reel/<hfrl_… | hfiv_…>.png, 720x1280 (vertical, like the reel itself).
+/* [HF-EXPLORE-PUBLIC-1] Share image of one public reel: /og/reel/<hfrl_… | hfiv_…>.png, 540x960 (vertical, like the reel itself).
  * The reel's thumbnail full-bleed (object-fit cover), a soft dark gradient at the bottom, and the marigold "Call <Creator>" pill
- * (40px from the sides, 56px from the bottom, 112px tall, 40px heavy text). No icons, no other text.
+ * (30px from the sides, 42px from the bottom, 84px tall, 30px text). No icons, no other text.
  * The record comes from the PUBLIC reels API only (GET /api/hf/reels/:id), so a hidden / unknown reel is a 404. The thumbnail is fetched
  * only from a short allow-list of image CDNs over https, with a size cap and a timeout; if it cannot be read the card is the dark
  * background with the pill alone. */
@@ -13,8 +13,9 @@ import { readBoundedImage } from './public-art';
 import { decodeBase64 } from './renderer';
 import { sha256 } from './revision';
 
-const W = 720;
-const H = 1280;
+// [HF-EXPLORE-PUBLIC-1] 540x960 (not 720x1280): the full-size render hit the Pages CPU limit (error 1102) on busy thumbnails.
+const W = 540;
+const H = 960;
 const safetyHeaders = { 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' };
 const ID = /^(?:hfrl|hfiv)_[a-z0-9]{8,40}$/;
 /** Hosts a reel thumbnail may come from (YouTube, Instagram / Facebook CDNs, and our own media host). */
@@ -51,8 +52,8 @@ export function reelTemplate(name: string, thumb: string | null) {
   const label = `Call ${clip(name, 22)}`;
   return h('div', { style: { width: W, height: H, display: 'flex', position: 'relative', overflow: 'hidden', backgroundColor: '#0E0A12', fontFamily: 'Comfortaa', fontWeight: 700 } },
     thumb ? h('img', { src: thumb, width: W, height: H, style: { position: 'absolute', left: 0, top: 0, width: W, height: H, objectFit: 'cover' } }) : null,
-    h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 520, display: 'flex', backgroundImage: 'linear-gradient(to top, rgba(14,10,18,0.88), rgba(14,10,18,0))' } }),
-    h('div', { style: { position: 'absolute', left: 40, right: 40, bottom: 56, height: 112, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 56, backgroundColor: '#FFB000', color: '#2B1530', fontSize: 40, fontWeight: 700 } }, label),
+    h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 390, display: 'flex', backgroundImage: 'linear-gradient(to top, rgba(14,10,18,0.88), rgba(14,10,18,0))' } }),
+    h('div', { style: { position: 'absolute', left: 30, right: 30, bottom: 42, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 42, backgroundColor: '#FFB000', color: '#2B1530', fontSize: 30, fontWeight: 700 } }, label),
   );
 }
 
@@ -77,7 +78,9 @@ export async function reelOgResponse(request: Request, key: string): Promise<Res
   } catch { return plain(503, 'Temporarily unavailable', { 'Retry-After': '60' }); }
   if (!item || item.id !== key) return plain(404, 'Not found');
 
-  const thumb = await thumbData(item.thumbUrl);
+  // a 640px YouTube thumbnail is plenty for a 540px card and far cheaper to decode than maxres (1280px); fall back if it is missing
+  const sd = item.thumbUrl?.includes('/maxresdefault.jpg') ? item.thumbUrl.replace('/maxresdefault.jpg', '/sddefault.jpg') : null;
+  const thumb = (sd ? await thumbData(sd) : null) ?? await thumbData(item.thumbUrl);
   let bytes: Uint8Array;
   try {
     const { ImageResponse } = await import('cf-workers-og/workerd');
@@ -90,7 +93,7 @@ export async function reelOgResponse(request: Request, key: string): Promise<Res
   } catch { return plain(503, 'Temporarily unavailable', { 'Retry-After': '60' }); }
 
   const etag = `"${await sha256(bytes)}"`;
-  const headers = new Headers({ ...safetyHeaders, 'Content-Type': 'image/png', ETag: etag, 'Cache-Control': 'public, max-age=300, s-maxage=300, must-revalidate', 'Content-Length': String(bytes.byteLength) });
+  const headers = new Headers({ ...safetyHeaders, 'Content-Type': 'image/png', ETag: etag, 'Cache-Control': 'public, max-age=86400, s-maxage=86400', 'Content-Length': String(bytes.byteLength) });
   if (request.headers.get('If-None-Match')?.split(',').some(v => v.trim().replace(/^W\//, '') === etag || v.trim() === '*')) {
     headers.delete('Content-Length');
     return new Response(null, { status: 304, headers });
