@@ -1,5 +1,7 @@
 ---
 // [HF-SCROLL-HERO-1 2026-10-25] Edge-to-edge, scroll-controlled film hero above the desi hero (owner request).
+// [HF-SCROLL-HERO-2 2026-10-25] Owner-picked look: "B Poster" structure (marigold kicker, ticket buttons, vertical
+// word) with the "A Cover Story" serif; bigger reading text; phones get a full-screen film with their own short lines.
 // The film lives in R2 behind the media host (Cloudflare cache rule with Origin Range Requests on /web/hf-story/*);
 // every word on it is real HTML. Logic: src/lib/scrollStoryHero.ts. Styles: src/styles/scroll-story-hero.css.
 import brandConfig from '../../../../Specs/brand.json';
@@ -8,8 +10,8 @@ import { publicImage, publicImageSrcSet } from '../../lib/config';
 import '../../styles/scroll-story-hero.css';
 
 const name = brandConfig.homepageIdentity.name;
-const EXPLORE = '/marketplace';   // header "Explore"
-const JOIN = '/hosts/join';       // header "Join us" (creator onboarding)
+const EXPLORE = '/marketplace';   // the marketplace (owner: "Explore creators" points to the marketplace)
+const JOIN = '/hosts/join';       // creator onboarding
 const film = (w: number) => `${BRAND.mediaOrigin}/web/hf-story/hf-story-v1-${w}.mp4`;
 const art = (file: string) => `/assets/hf-scroll-hero/${file}.webp`;
 const opts = { quality: 70, fit: 'scale-down' };
@@ -18,15 +20,25 @@ const still = (file: string, widths: number[], sizes: string, alt: string) => ({
   src: publicImage(art(file), { ...opts, width: widths[widths.length - 1] }),
   srcset: publicImageSrcSet(art(file), widths, opts), sizes, alt,
 });
+const stepSizes = '(min-width: 900px) 25vw, (min-width: 560px) 50vw, 100vw';
 const steps = [
-  { img: still('story-request', [420, 640], '(min-width: 900px) 25vw, (min-width: 560px) 50vw, 100vw', 'A fan holds her phone showing a creator profile with a Call now button.'), h: 'Find your favourite. Make the first move.', p: 'Watch their reels. Tap Call now.' },
-  { img: still('story-creator', [420, 640], '(min-width: 900px) 25vw, (min-width: 560px) 50vw, 100vw', 'Arti, a creator, sees an incoming call on her phone.'), h: 'First, we call Arti.', p: 'Your number stays private.' },
-  { img: still('story-callback', [420, 640], '(min-width: 900px) 25vw, (min-width: 560px) 50vw, 100vw', 'The fan smiles as her phone rings.'), h: 'Then, we call you.', p: 'Arti has accepted. Your conversation is ready.' },
-  { img: still('story-talking', [420, 640], '(min-width: 900px) 25vw, (min-width: 560px) 50vw, 100vw', 'The fan and Arti laughing on the same call.'), h: 'Just the conversation. Not your number.', p: 'Neither person sees the other’s phone number.' },
+  { img: still('story-request', [420, 640], stepSizes, 'A fan holds her phone showing a creator profile with a Call now button.'), k: 'Step 1 · Find', h: 'Find your favourite. Make the first move.', p: 'Watch their reels. Tap Call now. Every creator sets their own per-minute rate, and you see it before you tap.' },
+  { img: still('story-creator', [420, 640], stepSizes, 'Arti, a creator, sees an incoming call on her phone.'), k: 'Step 2 · We call the creator', h: 'First, we call Arti.', p: `Your number stays private. Arti’s phone rings from a ${name} number, and she chooses to take the call.` },
+  { img: still('story-callback', [420, 640], stepSizes, 'The fan smiles as her phone rings.'), k: 'Step 3 · We call you', h: 'Then, we call you.', p: `Arti has accepted. Your phone rings from a ${name} number too, and we join the two calls.` },
+  { img: still('story-talking', [420, 640], stepSizes, 'The fan and Arti laughing on the same call.'), k: 'Step 4 · Talk', h: 'Just the conversation. Not your number.', p: 'Neither person sees the other’s phone number.' },
 ];
 const opening = still('story-opening', [640, 900, 1280], '(min-width: 900px) 55vw, 100vw', 'A young woman on a sofa scrolling reels on her phone in a sunny living room.');
 const collage = still('story-collage', [640, 900, 1280], '(min-width: 1100px) 1100px, 100vw', 'A collage of people of all ages smiling on phone calls.');
 const arrow = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const down = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
+const lock = '<span class="hfsh-lock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>';
+// Ticket button: marigold, notched at both ends, dashed tear line before the arrow, hard ink shadow.
+const ticket = (href: string, label: string, cta: string) =>
+  `<span class="hfsh-tk"><a class="hfsh-btn" href="${href}" data-home-cta="${cta}"><span class="hfsh-btn-l">${label}</span><span class="hfsh-btn-a">${arrow}</span></a></span>`;
+const exploreTop = ticket(EXPLORE, 'Explore creators', 'story-explore-top');
+const exploreEnd = ticket(EXPLORE, 'Explore creators', 'story-explore-end');
+const becomeLink = `<a class="hfsh-link" href="${JOIN}" data-home-cta="story-become-creator">Become a creator</a>`;
+const cue = `<p class="hfsh-cue">Scroll to see how it works ${down}</p>`;
 ---
 <section class="hfsh" data-story-hero data-mode="static" data-layout="cover" aria-label={`How ${name} works`}>
   <script is:inline>
@@ -37,8 +49,7 @@ const arrow = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="c
         if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
         // Mirrors pickLayout() in src/lib/scrollStoryHero.ts (header height estimated; JS corrects it at once).
         var w = window.innerWidth, h = Math.max(1, window.innerHeight - (w < 900 ? 82 : 92));
-        var fits = h >= w * 9 / 16 + 200;
-        s.setAttribute('data-layout', (w < 560 || (fits && (w < 700 || w / h < 1.3))) ? 'stacked' : (h < 560 || w < 900) ? 'split' : 'cover');
+        s.setAttribute('data-layout', (w / h < 1.1) ? 'phone' : (h < 560 || w < 900) ? 'split' : 'cover');
         s.setAttribute('data-mode', 'live');
       } catch (e) {}
     })();
@@ -52,37 +63,104 @@ const arrow = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="c
       </div>
 
       <div class="hfsh-copy" data-hfsh-copy>
-        <div class="hfsh-scene hfsh-scene--opening" data-scene="opening">
-          <h2 class="hfsh-h"><span class="l">From watching reels</span> <span class="l">to saying hello.</span></h2>
-          <p class="hfsh-sub">Private calls with your favourite creators.</p>
-          <div class="hfsh-actions"><a class="hfsh-btn" href={EXPLORE} data-home-cta="story-explore-top">Explore creators <Fragment set:html={arrow} /></a></div>
-          <p class="hfsh-cue">Scroll to see how it works <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></p>
+        <div class="hfsh-scene hfsh-scene--opening" data-scene="opening" data-tab="How it works">
+          <span class="hfsh-vt" aria-hidden="true">Hello</span>
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <p class="hfsh-kick">Private calls with creators</p>
+            <h2 class="hfsh-h"><span class="l">From watching reels</span> <span class="l">to <em>saying hello.</em></span></h2>
+            <Fragment set:html={cue} />
+          </div>
+          <div class="hfsh-blk hfsh-d hfsh-b2">
+            <p class="hfsh-sub">Private calls with your favourite creators.</p>
+            <p class="hfsh-ex">Your favourite YouTube, Instagram and Facebook creators are one phone call away. Here is how a call happens.</p>
+            <div class="hfsh-actions"><Fragment set:html={exploreTop} /></div>
+          </div>
+          <div class="hfsh-blk hfsh-p">
+            <p class="hfsh-kick">{name}</p>
+            <p class="hfsh-ph"><span>From reels</span><br><span>to <em>hello.</em></span></p>
+            <p class="hfsh-ps">Private calls with your favourite creators.</p>
+            <div class="hfsh-actions"><Fragment set:html={exploreTop} /></div>
+            <Fragment set:html={cue} />
+          </div>
         </div>
-        <div class="hfsh-scene hfsh-scene--request hfsh-scene--wash" data-scene="request">
-          <h2 class="hfsh-h"><span class="l">Find your favourite.</span> <span class="l">Make the first move.</span></h2>
-          <p class="hfsh-sub">Watch their reels. Tap Call now.</p>
+
+        <div class="hfsh-scene hfsh-scene--request" data-scene="request" data-tab="Step 1 · Find">
+          <div class="hfsh-panel" aria-hidden="true"></div>
+          <span class="hfsh-vt" aria-hidden="true">Find</span>
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <p class="hfsh-kick">Step 1 · Find</p>
+            <h2 class="hfsh-h"><span class="l">Find your favourite.</span> <span class="l"><em>Make the first move.</em></span></h2>
+            <p class="hfsh-sub">Watch their reels. Tap Call now.</p>
+            <p class="hfsh-ex">Every creator sets their own per-minute rate, and you see it before you tap.</p>
+          </div>
+          <div class="hfsh-blk hfsh-p hfsh-p-top">
+            <p class="hfsh-kick">Step 1</p>
+            <p class="hfsh-ph"><span>Watch reels.</span><br><span><em>Tap Call now.</em></span></p>
+            <p class="hfsh-ps">You see the price per minute first.</p>
+          </div>
         </div>
-        <div class="hfsh-scene hfsh-scene--creator" data-scene="creator">
-          <h2 class="hfsh-h">First, we call Arti.</h2>
-          <p class="hfsh-sub">Your number stays private.</p>
+
+        <div class="hfsh-scene hfsh-scene--creator" data-scene="creator" data-tab="Step 2 · We call them">
+          <span class="hfsh-vt" aria-hidden="true">Ring ring</span>
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <p class="hfsh-kick">Step 2 · We call the creator</p>
+            <h2 class="hfsh-h">First, we call <em>Arti.</em></h2>
+            <p class="hfsh-sub">Your number stays private.</p>
+            <p class="hfsh-ex">Arti’s phone rings from a {name} number. She sees who is asking, never your number, and chooses to take the call.</p>
+          </div>
+          <div class="hfsh-blk hfsh-p">
+            <p class="hfsh-kick">Step 2</p>
+            <p class="hfsh-ph"><span>We call</span><br><span><em>Arti first.</em></span></p>
+            <p class="hfsh-ps">She never sees your number.</p>
+          </div>
         </div>
-        <div class="hfsh-scene hfsh-scene--callback" data-scene="callback">
-          <h2 class="hfsh-h">Then, we call you.</h2>
-          <p class="hfsh-sub">Arti has accepted. Your conversation is ready.</p>
+
+        <div class="hfsh-scene hfsh-scene--callback" data-scene="callback" data-tab="Step 3 · We call you">
+          <span class="hfsh-vt" aria-hidden="true">Pick up</span>
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <p class="hfsh-kick">Step 3 · We call you</p>
+            <h2 class="hfsh-h">Then, we call <em>you.</em></h2>
+            <p class="hfsh-sub">Arti has accepted. Your conversation is ready.</p>
+            <p class="hfsh-ex">As soon as she says yes, your phone rings from a {name} number too. Pick up and we join the two calls.</p>
+          </div>
+          <div class="hfsh-blk hfsh-p">
+            <p class="hfsh-kick">Step 3</p>
+            <p class="hfsh-ph"><span>She says yes.</span><br><span><em>We call you.</em></span></p>
+            <p class="hfsh-ps">Pick up and you are connected.</p>
+          </div>
         </div>
-        <div class="hfsh-scene hfsh-scene--private hfsh-scene--wash" data-scene="private">
-          <span class="hfsh-lock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
-          <h2 class="hfsh-h"><span class="l">Just the conversation.</span> <span class="l">Not your number.</span></h2>
-          <p class="hfsh-sub">Neither person sees the other’s phone number.</p>
+
+        <div class="hfsh-scene hfsh-scene--private" data-scene="private" data-tab="Step 4 · Talk">
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <Fragment set:html={lock} />
+            <p class="hfsh-kick">Step 4 · Talk</p>
+            <h2 class="hfsh-h"><span class="l">Just the conversation.</span> <span class="l"><em>Not your number.</em></span></h2>
+            <p class="hfsh-sub">Neither person sees the other’s phone number.</p>
+            <p class="hfsh-ex">Before, during and after the call, you both only ever see a {name} number.</p>
+          </div>
+          <div class="hfsh-blk hfsh-p">
+            <Fragment set:html={lock} />
+            <p class="hfsh-kick">Step 4</p>
+            <p class="hfsh-ph"><span>Just talk.</span><br><span><em>Numbers stay hidden.</em></span></p>
+            <p class="hfsh-ps">Neither of you sees the other’s number.</p>
+          </div>
         </div>
-        <div class="hfsh-scene hfsh-scene--together" data-scene="together">
-          <h2 class="hfsh-h"><span class="l">Find your person.</span> <span class="l">Say hello.</span></h2>
-          <div class="hfsh-actions">
-            <a class="hfsh-btn" href={EXPLORE} data-home-cta="story-explore-end">Explore creators <Fragment set:html={arrow} /></a>
-            <a class="hfsh-link" href={JOIN} data-home-cta="story-become-creator">Become a creator</a>
+
+        <div class="hfsh-scene hfsh-scene--together" data-scene="together" data-tab="Your turn">
+          <div class="hfsh-blk hfsh-d hfsh-b1">
+            <p class="hfsh-kick">Your turn</p>
+            <h2 class="hfsh-h"><span class="l">Find your person.</span> <span class="l"><em>Say hello.</em></span></h2>
+            <p class="hfsh-ex">Call a creator you love, or join as a creator and get paid for your calls.</p>
+            <div class="hfsh-actions"><Fragment set:html={exploreEnd} /><Fragment set:html={becomeLink} /></div>
+          </div>
+          <div class="hfsh-blk hfsh-p">
+            <p class="hfsh-kick">Your turn</p>
+            <p class="hfsh-ph"><span>Find your person.</span><br><span><em>Say hello.</em></span></p>
+            <div class="hfsh-actions"><Fragment set:html={exploreEnd} /><Fragment set:html={becomeLink} /></div>
           </div>
         </div>
       </div>
+      <div class="hfsh-tab" data-hfsh-tab aria-hidden="true"><span>How it works</span></div>
       <div class="hfsh-loading" role="status" aria-live="polite"><span aria-hidden="true"></span>Loading the story…</div>
     </div>
   </div>
@@ -91,15 +169,18 @@ const arrow = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="c
     <div class="hfsh-static-top">
       <img src={opening.src} srcset={opening.srcset} sizes={opening.sizes} alt={opening.alt} width="1280" height="720" loading="lazy" decoding="async" />
       <div>
-        <h2 class="hfsh-h"><span class="l">From watching reels</span> <span class="l">to saying hello.</span></h2>
+        <p class="hfsh-kick">Private calls with creators</p>
+        <h2 class="hfsh-h"><span class="l">From watching reels</span> <span class="l">to <em>saying hello.</em></span></h2>
         <p class="hfsh-sub">Private calls with your favourite creators.</p>
-        <div class="hfsh-actions"><a class="hfsh-btn" href={EXPLORE} data-home-cta="story-explore-top">Explore creators <Fragment set:html={arrow} /></a></div>
+        <p class="hfsh-ex">Your favourite YouTube, Instagram and Facebook creators are one phone call away. Here is how a call happens.</p>
+        <div class="hfsh-actions"><Fragment set:html={exploreTop} /></div>
       </div>
     </div>
     <ol class="hfsh-steps">
       {steps.map(step => (
         <li>
           <img src={step.img.src} srcset={step.img.srcset} sizes={step.img.sizes} alt={step.img.alt} width="640" height="360" loading="lazy" decoding="async" />
+          <p class="hfsh-kick">{step.k}</p>
           <h3>{step.h}</h3>
           <p>{step.p}</p>
         </li>
@@ -107,11 +188,8 @@ const arrow = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="c
     </ol>
     <div class="hfsh-static-end">
       <img src={collage.src} srcset={collage.srcset} sizes={collage.sizes} alt={collage.alt} width="1280" height="720" loading="lazy" decoding="async" />
-      <h2 class="hfsh-h"><span class="l">Find your person.</span> <span class="l">Say hello.</span></h2>
-      <div class="hfsh-actions">
-        <a class="hfsh-btn" href={EXPLORE} data-home-cta="story-explore-end">Explore creators <Fragment set:html={arrow} /></a>
-        <a class="hfsh-link" href={JOIN} data-home-cta="story-become-creator">Become a creator</a>
-      </div>
+      <h2 class="hfsh-h"><span class="l">Find your person.</span> <span class="l"><em>Say hello.</em></span></h2>
+      <div class="hfsh-actions"><Fragment set:html={exploreEnd} /><Fragment set:html={becomeLink} /></div>
     </div>
   </div>
 </section>

@@ -23,15 +23,29 @@ const FALLBACK_DURATION = 37.333;
 const END_GUARD = 0.06;          // never seek onto the empty frame past the last picture
 const STORY_SHARE = 0.9;         // last 10% of the scroll run holds the closing collage
 const TAU = 0.085;               // smoothing time constant (s): gentle, no long lag
-const STACK_ASPECT = 1.3;        // below this frame aspect the film sits under a cream text area
+const PHONE_ASPECT = 1.1;        // [HF-SCROLL-HERO-2] at or below this frame aspect the film fills a portrait screen
 
-/** cover: edge to edge with copy on the film; stacked: copy above the whole film; split: copy beside it.
- *  Mirrored (approximately) by the inline script in ScrollStoryHero.astro so the first paint is right. */
-export function pickLayout(w: number, h: number): 'cover' | 'stacked' | 'split' {
-  const stackFits = h >= w * 9 / 16 + 200;          // room for the whole film plus the text above it
-  if (w < 560 || (stackFits && (w < 700 || w / Math.max(1, h) < STACK_ASPECT))) return 'stacked';
+/** cover: desktop, film edge to edge with copy on it; phone: full-screen film that follows the person, short copy;
+ *  split: short landscape windows, short copy beside the whole film.
+ *  Mirrored by the inline script in ScrollStoryHero.astro so the first paint is right. */
+export function pickLayout(w: number, h: number): 'cover' | 'phone' | 'split' {
+  if (w / Math.max(1, h) < PHONE_ASPECT) return 'phone';
   if (h < 560 || w < 900) return 'split';
   return 'cover';
+}
+
+// [HF-SCROLL-HERO-2] Phone: centre of the visible slice (0..1 of the film's width) through the story, so the person
+// stays in view. Jumps happen exactly at the cuts; the two-women shot pans from the fan to Arti; the collage pans
+// across and settles on its cream middle, where the buttons sit.
+const FOCUS: Array<[number, number]> = [[0, .44], [2.2, .44], [3.0, .36], [4.4, .55], [5.4, .73], [10.77, .73], [10.79, .7],
+  [16.75, .68], [16.77, .73], [23.21, .73], [23.23, .19], [24.6, .19], [27.8, .79], [29.35, .79], [29.37, .16], [33.2, .84],
+  [35.6, .5], [40, .5]];
+function focusAt(t: number): number {
+  for (let i = 1; i < FOCUS.length; i++) {
+    const [t1, x1] = FOCUS[i], [t0, x0] = FOCUS[i - 1];
+    if (t <= t1) return x0 + (x1 - x0) * ease((t - t0) / Math.max(1e-3, t1 - t0));
+  }
+  return .5;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -72,6 +86,7 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
   const scenes = SCENES.map(s => ({ s, el: root.querySelector<HTMLElement>(`[data-scene="${s.id}"]`), o: -1, y: NaN }))
     .filter((x): x is { s: Scene; el: HTMLElement; o: number; y: number } => !!x.el);
   const header = document.querySelector<HTMLElement>('.cv-header');
+  const tab = root.querySelector<HTMLElement>('[data-hfsh-tab] span');
   const started = performance.now();
 
   // ---- geometry (measured on resize only, never inside the scroll handler) ----
@@ -111,11 +126,16 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
   const render = () => {
     // Closing collage: ease from edge-to-edge cover to the whole frame (cream letterbox matches the film).
     let sw = W, sh = H, sx = 0, sy = 0;
-    if (layout === 'cover') {
+    if (layout === 'cover' || layout === 'phone') {
       const cover = Math.max(W, H * ratio), contain = Math.min(W, H * ratio);
-      const e = ease((shown - COLLAGE_A) / (COLLAGE_B - COLLAGE_A));
-      sw = cover + (contain - cover) * e; sh = sw / ratio; sx = (W - sw) / 2; sy = (H - sh) / 2;
-      const key = `${sw.toFixed(1)}|${sh.toFixed(1)}`;
+      if (layout === 'cover') {
+        const e = ease((shown - COLLAGE_A) / (COLLAGE_B - COLLAGE_A));
+        sw = cover + (contain - cover) * e; sh = sw / ratio; sx = (W - sw) / 2; sy = (H - sh) / 2;
+      } else {
+        sw = cover; sh = sw / ratio; sy = (H - sh) / 2;
+        sx = clamp(W / 2 - focusAt(shown) * sw, W - sw, 0);
+      }
+      const key = `${sx.toFixed(1)}|${sw.toFixed(1)}|${sh.toFixed(1)}`;
       if (key !== geo) {
         geo = key;
         const st = pin.style;
@@ -138,6 +158,7 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
         x.el.dataset.hidden = hidden ? '1' : '0';
         x.el.querySelectorAll<HTMLAnchorElement>('a').forEach(a => { if (hidden) a.setAttribute('tabindex', '-1'); else a.removeAttribute('tabindex'); });
       }
+      if (o > 0.5 && tab && x.el.dataset.tab && tab.textContent !== x.el.dataset.tab) tab.textContent = x.el.dataset.tab;
       if (o > 0.9 && !reached.has(x.s.id)) { reached.add(x.s.id); capture('home_scroll_hero_scene', { scene: x.s.id, index: SCENES.indexOf(x.s) + 1, layout }); }
     }
   };
@@ -189,7 +210,8 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
   const uiReady = () => capture('home_scroll_hero_ready', { ms: Math.round(performance.now() - started), layout, variant });
 
   // ---- source: phone-size film for narrow screens, chosen once (no swapping on resize) ----
-  const small = layout !== 'cover' || innerWidth < 1100;
+  // Phones zoom into the film to fill a portrait screen, so they need the sharper file; only split uses the small one.
+  const small = layout === 'split' || (layout === 'cover' && innerWidth < 1100);
   const variant = small ? 'small' : 'large';
   const src = (small ? video.dataset.srcSmall : video.dataset.srcLarge) || video.dataset.srcLarge || '';
   // Start with metadata only; ranges stream from the Cloudflare edge if the visitor scrolls early.
