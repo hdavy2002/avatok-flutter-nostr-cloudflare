@@ -130,7 +130,10 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
       const cover = Math.max(W, H * ratio), contain = Math.min(W, H * ratio);
       if (layout === 'cover') {
         const e = ease((shown - COLLAGE_A) / (COLLAGE_B - COLLAGE_A));
-        sw = cover + (contain - cover) * e; sh = sw / ratio; sx = (W - sw) / 2; sy = (H - sh) / 2;
+        sw = cover + (contain - cover) * e; sh = sw / ratio; sx = (W - sw) / 2;
+        // [HF-SCROLL-HERO-4] On very wide screens crop mostly from the bottom (floor, legs) so the wall above the
+        // people, where the words sit, stays in view.
+        sy = (H - sh) * (sh > H ? 0.2 : 0.5);
       } else {
         sw = cover; sh = sw / ratio; sy = (H - sh) / 2;
         sx = clamp(W / 2 - focusAt(shown) * sw, W - sw, 0);
@@ -141,7 +144,7 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
         const st = pin.style;
         st.setProperty('--sx', sx.toFixed(1) + 'px'); st.setProperty('--sy', sy.toFixed(1) + 'px');
         st.setProperty('--sw', sw.toFixed(1) + 'px'); st.setProperty('--sh', sh.toFixed(1) + 'px');
-        st.setProperty('--cl', Math.max(0, -sx).toFixed(1) + 'px'); st.setProperty('--ct', Math.max(0, -sy).toFixed(1) + 'px');
+        st.setProperty('--cl', Math.max(0, -sx).toFixed(1) + 'px'); st.setProperty('--ct', Math.max(0, -sy).toFixed(1) + 'px'); st.setProperty('--cb', Math.max(0, sy + sh - H).toFixed(1) + 'px');
       }
     }
     for (const x of scenes) {
