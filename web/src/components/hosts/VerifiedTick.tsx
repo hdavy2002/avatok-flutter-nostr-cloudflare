@@ -49,7 +49,7 @@ export default function VerifiedTick({ name, videoKyc, channel, platform, phone,
       <dialog ref={dlg} className="hf-vt-sheet" onClose={() => setOpen(false)} onClick={e => { if (e.target === dlg.current) setOpen(false); }} aria-labelledby={`hfvt-${surface}`}>
         <div className="hf-vt-in">
           <p className="hf-vt-h" id={`hfvt-${surface}`}>{first} is verified <span className={`hf-vt hf-vt-${level} hf-vt-sm`} aria-hidden="true"><Check /></span></p>
-          <p className="hf-vt-sub">What Hello Fraands checked before {first} could take calls.</p>
+          <p className="hf-vt-sub">What we checked before {first} could take calls.</p>
           <ul>{rows.map(r => <li key={r.t}><span className={`hf-vt-ic${r.ok ? (r.kyc ? ' ok kyc' : ' ok') : ''}`} aria-hidden="true">{r.ok ? <Check /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M7 12h10" /></svg>}</span><span><b>{r.t}</b>{r.d}</span></li>)}</ul>
           <button type="button" className="hf-vt-close" onClick={() => setOpen(false)}>Close</button>
         </div>
