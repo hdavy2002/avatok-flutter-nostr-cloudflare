@@ -186,7 +186,7 @@ const navItems = [
               {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
               {socials.length > 0 && (
                 <section class="socials" aria-labelledby="soch">
-                  <p class="eyebrow" id="soch">My channels</p>{/* [HF-WEB-NOOUT-1] owner: fans stay on Hello Fraands — channel cards show numbers only, no link out */}
+                  <p class="eyebrow" id="soch">My channels</p>{/* [HF-WEB-NOOUT-1] owner: fans stay on our site — channel cards show numbers only, no link out */}
                   <ul>
                     {socials.map(c => (
                       <li><div class="soc" role="group" data-platform={c.platform} aria-label={`${SOCIAL_NAME[c.platform]} @${c.handle}, ${compact(c.followers)} ${c.platform === 'youtube' ? 'subscribers' : 'followers'}${c.views > 0 ? `, ${compact(c.views)} views` : ''}`}>
