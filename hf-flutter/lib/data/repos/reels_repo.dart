@@ -40,6 +40,16 @@ class ReelsRepo {
     ),
   );
 
+  /// [HF-REELS-FAST-START-1] The first page [feed] stored last time (up to a day old), or null. Never touches the network.
+  Future<ReelsPage?> cachedFirstPage({int limit = 10}) async {
+    try {
+      final j = await _api.peekJson('/api/hf/reels', query: {'cursor': null, 'limit': limit}, auth: false, maxAge: const Duration(days: 1));
+      return j == null ? null : ReelsPage.fromJson(j);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// [HF-APP-CACHE-1] The first page of the feed, cached-first (not wired into the feed screen yet; see the speed plan).
   Stream<ReelsPage> watchFirstPage({int limit = 10}) => _guard2(
     _api

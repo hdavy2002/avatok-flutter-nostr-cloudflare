@@ -7,7 +7,7 @@ import { instagramRecent, toReel, isoSeconds, type ImportedReel } from "./hf_ree
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-export const INVITE_REELS_PER_CREATOR = 6;
+export const INVITE_REELS_PER_CREATOR = 30; // [HF-REELS-MORE-1] owner: show many videos per creator (was 6)
 export const REELS_REFETCH_MS = 6 * 3600 * 1000; // one fetch attempt per creator per 6 h
 export const PRUNE_AFTER_MS = 30 * 24 * 3600 * 1000;
 export const SHORT_MAX_S = 60;
@@ -58,14 +58,15 @@ export async function youtubeInviteReels(env: Pick<Env, "YOUTUBE_API_KEY">, chan
     if (!res.ok) throw new ProviderError("provider_unavailable");
     return res.json().catch(() => { throw new ProviderError("provider_unavailable"); }) as Promise<any>;
   };
-  const pq = new URLSearchParams({ part: "contentDetails", playlistId: "UU" + channelId.slice(2), maxResults: "25", key });
+  const pq = new URLSearchParams({ part: "contentDetails", playlistId: "UU" + channelId.slice(2), maxResults: "50", key });
   const pl = await get(`https://www.googleapis.com/youtube/v3/playlistItems?${pq}`);
   const ids = (Array.isArray(pl?.items) ? pl.items : []).map((i: any) => String(i?.contentDetails?.videoId ?? "")).filter((x: string) => /^[A-Za-z0-9_-]{6,20}$/.test(x));
   if (!ids.length) return [];
-  const vq = new URLSearchParams({ part: "snippet,statistics,contentDetails", id: ids.join(","), key });
+  const vq = new URLSearchParams({ part: "snippet,statistics,contentDetails,status", id: ids.join(","), key });
   const vs = await get(`https://www.googleapis.com/youtube/v3/videos?${vq}`);
   const byId = new Map<string, any>((Array.isArray(vs?.items) ? vs.items : []).filter((v: any) => v?.id).map((v: any) => [String(v.id), v]));
-  const ordered = ids.map((i: string) => byId.get(i)).filter(Boolean);
+  // [HF-REELS-MORE-1] skip videos whose owner turned off embedding (they can never play in the app)
+  const ordered = ids.map((i: string) => byId.get(i)).filter((v: any) => v && v.status?.embeddable !== false);
   const isShort = (v: any) => { const s = isoSeconds(v.contentDetails?.duration); return s > 0 && s <= SHORT_MAX_S; };
   const pick = [...ordered.filter(isShort), ...ordered.filter((v: any) => !isShort(v))].slice(0, n);
   return pick.map(toReel);

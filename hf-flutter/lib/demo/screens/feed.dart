@@ -168,8 +168,55 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// [HF-REELS-LOOP-1] Loop round of each item in [_items] (0 = first pass). The same reel can come back in a later round,
+  /// so a page's key is id + round.
+  final List<int> _loops = [];
+  int _round = 0;
+  int _loopOf(int i) => i < _loops.length ? _loops[i] : 0;
+  static String _creatorOf(FeedReel r) => r.invite?.key ?? 'hf:${r.host.slug}';
+
+  void _setItems(List<FeedReel> list) {
+    _items
+      ..clear()
+      ..addAll(list);
+    _loops
+      ..clear()
+      ..addAll(List.filled(list.length, 0));
+    _round = 0;
+  }
+
+  void _append(Iterable<FeedReel> list, int round) {
+    for (final r in list) {
+      _items.add(r);
+      _loops.add(round);
+    }
+  }
+
+  void _show(ReelsPage page, FeedReel? shared, List<FeedReel> firstPage) {
+    _setItems([if (shared != null) shared, ...firstPage]);
+    _cursor = page.nextCursor;
+    _more = page.nextCursor != null;
+    _index = 0;
+    if (_items.isNotEmpty && !_items.first.isInvite && _counted.add(_items.first.id)) unawaited(widget.repo.view(_items.first.id));
+    setState(() => _state = AsyncData(List.of(_items)));
+  }
+
   Future<void> _first() async {
-    setState(() => _state = const AsyncLoading());
+    if (_items.isEmpty) setState(() => _state = const AsyncLoading());
+    // [HF-REELS-FAST-START-1] With no shared reel, show the last stored first page at once (shuffled, new first video),
+    // then swap in the fresh page in the background without moving the reel on screen.
+    if (FeedOrder.enabled && widget.reelId == null && widget.initialReel == null) {
+      final cached = await widget.repo.cachedFirstPage();
+      if (!mounted) return;
+      final firstPage = (cached?.items ?? const <FeedReel>[]).where((r) => !UnplayableReels.contains(r.id)).toList();
+      if (firstPage.isNotEmpty) {
+        await FeedOrder.freshStart<FeedReel>(firstPage, (r) => r.id);
+        if (!mounted) return;
+        _show(cached!, null, firstPage);
+        unawaited(_refreshFirst());
+        return;
+      }
+    }
     try {
       final results = await Future.wait<Object?>([
         widget.repo.feed(),
@@ -185,40 +232,44 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
       // [HF-REELS-FRESH-OPEN-1] a new first video on every open (a shared reel still plays first).
       if (shared == null) await FeedOrder.freshStart<FeedReel>(firstPage, (r) => r.id);
       if (!mounted) return;
-      _items
-        ..clear()
-        ..addAll([
-          if (shared != null) shared,
-          ...firstPage,
-        ]);
-      _cursor = page.nextCursor;
-      _more = page.nextCursor != null;
-      _index = 0;
-      if (_items.isNotEmpty &&
-          !_items.first.isInvite &&
-          _counted.add(_items.first.id))
-        unawaited(widget.repo.view(_items.first.id));
-      setState(() => _state = AsyncData(List.of(_items)));
+      _show(page, shared, firstPage);
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }
   }
 
+  /// [HF-REELS-FAST-START-1] The fresh first page after a cached start: keep what is on screen, add reels it did not have,
+  /// and continue paging from the fresh cursor.
+  Future<void> _refreshFirst() async {
+    try {
+      final page = await widget.repo.feed();
+      if (!mounted) return;
+      final have = _items.map((r) => r.id).toSet();
+      _append(page.items.where((r) => !have.contains(r.id) && !UnplayableReels.contains(r.id)), 0);
+      _cursor = page.nextCursor;
+      _more = page.nextCursor != null;
+      setState(() => _state = AsyncData(List.of(_items)));
+    } catch (_) {
+      // offline: keep the stored reels; the end of the list loops them
+    }
+  }
+
   Future<void> _loadMore() async {
-    if (_loadingMore || !_more) return;
+    if (_loadingMore) return;
+    if (!_more) {
+      _loopAgain();
+      return;
+    }
     _loadingMore = true;
     try {
       final page = await widget.repo.feed(cursor: _cursor);
       if (!mounted) return;
       final have = _items.map((r) => r.id).toSet();
-      _items.addAll(
-        page.items.where(
-          (r) => !have.contains(r.id) && !UnplayableReels.contains(r.id),
-        ),
-      );
+      _append(page.items.where((r) => !have.contains(r.id) && !UnplayableReels.contains(r.id)), _round);
       _cursor = page.nextCursor;
       _more = page.nextCursor != null;
       setState(() => _state = AsyncData(List.of(_items)));
+      if (!_more && _items.length - _index < 4) _loopAgain();
     } catch (_) {
       // keep what is on screen; the next swipe tries again
     } finally {
@@ -226,11 +277,39 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
     }
   }
 
+  /// [HF-REELS-LOOP-1] Owner: at the end, play them again, one video per creator at a time, shuffled. Every reel seen so
+  /// far is dealt round-robin across creators (each creator's reels shuffled, creator order shuffled) and added again.
+  void _loopAgain() {
+    if (!FeedOrder.enabled || !mounted || _items.length < 2) return; // widget tests keep a fixed-length feed
+    if (_index < _items.length - 4) return;
+    final seen = <String>{};
+    final byCreator = <String, List<FeedReel>>{};
+    for (final r in _items) {
+      if (UnplayableReels.contains(r.id) || !seen.add(r.id)) continue;
+      byCreator.putIfAbsent(_creatorOf(r), () => []).add(r);
+    }
+    if (seen.length < 2) return;
+    final groups = byCreator.values.map((g) => g..shuffle()).toList()..shuffle();
+    final next = <FeedReel>[];
+    for (var k = 0; groups.any((g) => k < g.length); k++) {
+      for (final g in groups) {
+        if (k < g.length) next.add(g[k]);
+      }
+    }
+    if (next.length > 1 && next.first.id == _items[_index].id) next.add(next.removeAt(0));
+    _round++;
+    _append(next, _round);
+    setState(() => _state = AsyncData(List.of(_items)));
+  }
+
   /// [HF-REELS-FAV-1] The reels of an invite creator that this feed already holds (for the creator page).
-  List<FeedReel> _reelsOfCreator(FeedReel r) => [
-    for (final x in _items)
-      if (x.invite != null && x.invite!.key == r.invite?.key) x,
-  ];
+  List<FeedReel> _reelsOfCreator(FeedReel r) {
+    final seen = <String>{};
+    return [
+      for (final x in _items)
+        if (x.invite != null && x.invite!.key == r.invite?.key && seen.add(x.id)) x,
+    ];
+  }
 
   /// [HF-REEL-CLEAN-1] The feed only moves when a finger moves it (owner 2026-10-22: "no auto scroll"). A page change
   /// that no drag started (e.g. a player grabbing focus and the list scrolling to it) is undone. Screen-reader users
@@ -250,17 +329,23 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
   /// [HF-REEL-SKIP-1] A reel that turned out not to play inside the app leaves the feed (usually while it is still the
   /// warmed next reel, so the viewer never sees it). The reel on screen stays on screen.
   void _dropUnplayable(String id) {
-    final i = _items.indexWhere((r) => r.id == id);
-    if (i < 0 || !mounted) return;
-    final shift = i < _index;
+    if (!mounted) return;
+    var shift = 0;
+    var removed = false;
     setState(() {
-      _items.removeAt(i);
-      if (shift) _index--;
-      if (_index >= _items.length)
-        _index = _items.isEmpty ? 0 : _items.length - 1;
+      for (var i = _items.length - 1; i >= 0; i--) {
+        if (_items[i].id != id || i == _index) continue;
+        _items.removeAt(i);
+        if (i < _loops.length) _loops.removeAt(i);
+        removed = true;
+        if (i < _index) shift++;
+      }
+      _index -= shift;
+      if (_index >= _items.length) _index = _items.isEmpty ? 0 : _items.length - 1;
       _state = AsyncData(List.of(_items));
     });
-    if (shift) {
+    if (!removed) return;
+    if (shift > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_pager.hasClients) return;
         _ownJump = true;
@@ -326,7 +411,7 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
               allowImplicitScrolling:
                   true, // builds the next page early so its video is ready
               itemBuilder: (_, i) => ReelPage(
-                key: ValueKey(items[i].id),
+                key: ValueKey('${items[i].id}~${_loopOf(i)}'), // [HF-REELS-LOOP-1]
                 reel: demoReelFrom(items[i]),
                 real: items[i],
                 active: i == _index && ReelGate.visible.value,
@@ -545,7 +630,7 @@ class _ReelPageState extends State<ReelPage>
         // [HF-REEL-ENGAGE-APP-1] On a short screen the "Reel information" button leaves the column (it moves to the bottom-left)
         // so nothing has to shrink: text never renders under 14 sp.
         return LayoutBuilder(builder: (context, box) {
-        final buttons = 5 + (eState != null ? 2 : 0) + 1;
+        final buttons = 5 + (eState != null ? 2 : 0) + 1 + (_originalUrl != null ? 1 : 0); // [HF-REEL-ICONS-1] original-post button
         final natural = buttons * 64.0 + (eState != null ? 40.0 : 0.0);
         final avail = box.maxHeight - MediaQuery.paddingOf(context).top - 8 - 12;
         final short = avail < natural;
@@ -668,28 +753,12 @@ class _ReelPageState extends State<ReelPage>
             if (short)
               Positioned(
                 left: 8,
-                bottom: _originalUrl != null ? 15 + 64 : 15,
+                bottom: 15,
                 child: _action(
                   'Reel information',
                   Icons.info_outline_rounded,
                   () => _whileCovered(() => _info(context)),
                   key: const ValueKey('reel-info-left'),
-                ),
-              ),
-            // [HF-REEL-ORIGINAL-1] bottom-left: the original post (Instagram / YouTube) in an in-app page with an X back
-            if (_originalUrl != null)
-              Positioned(
-                left: 8,
-                bottom: 15,
-                child: _action(
-                  _originalUrl!.host.contains('instagram')
-                      ? 'See this post on Instagram'
-                      : 'See this video on YouTube',
-                  Icons.info_outline_rounded,
-                  () => _whileCovered(
-                    () => OriginalPostPage.open(context, _originalUrl!),
-                  ),
-                  key: const ValueKey('reel-original'),
                 ),
               ),
             Positioned(
@@ -701,6 +770,19 @@ class _ReelPageState extends State<ReelPage>
                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // [HF-REEL-ICONS-1] owner: the original-post button moves from the bottom left to the top of this
+                  // list, with its own icon (it used to share the info icon with Reel information below).
+                  if (_originalUrl != null)
+                    _action(
+                      _originalUrl!.host.contains('instagram')
+                          ? 'See this post on Instagram'
+                          : 'See this video on YouTube',
+                      Icons.open_in_new_rounded,
+                      () => _whileCovered(
+                        () => OriginalPostPage.open(context, _originalUrl!),
+                      ),
+                      key: const ValueKey('reel-original'),
+                    ),
                   if (!short)
                     _action(
                       'Reel information',

@@ -145,7 +145,7 @@ void main() {
       expect(html, contains('new YT.Player'));
       expect(html, contains('videoId:"abc12345"'));
       expect(html, contains('controls:0'));
-      expect(html, contains('origin:"https://${Brand.hfPlayPackageId}"'));
+      expect(html, contains('origin:"https://${Brand.domain}"'));
       expect(html, contains('window.hfToggle'));
       expect(html, contains('error:'));
       // [HF-REEL-ZOOM-1] zoomed in so YouTube's own header, side buttons and title strip sit off screen

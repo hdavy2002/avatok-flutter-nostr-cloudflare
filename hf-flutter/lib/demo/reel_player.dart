@@ -143,9 +143,10 @@ class ReelPlayer extends StatefulWidget {
   static const String mobileUserAgent =
       'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
-  /// The page origin YouTube sees (an Android app's package id, as YouTube's embed rules expect): sent as the Referer
-  /// through the base URL and as the `origin` player parameter, which is what stops embed errors 152 / 153.
-  static String get youtubeOrigin => 'https://${Brand.hfPlayPackageId}';
+  /// The page origin YouTube sees: sent as the Referer through the base URL and as the `origin` player parameter (stops
+  /// embed errors 152 / 153). [HF-REEL-YT-ORIGIN-1] It is our real website: with the app's package id as a made-up
+  /// https host, YouTube answered error 150 for every video, so every YouTube reel was dropped from the feed.
+  static String get youtubeOrigin => 'https://${Brand.domain}';
 
   /// Accept the original public link when the feed has no separate embed URL.
   /// Only official provider hosts can become a player source.

@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// account: whether a video can be embedded is a fact about the video, not about a person. Entries expire after
 /// [keep] (an uploader can switch embedding back on) and the list is capped at [cap] (oldest dropped).
 abstract final class UnplayableReels {
-  static const _key = 'hf_unplayable_reels_v1';
+  static const _key = 'hf_unplayable_reels_v2'; // [HF-REEL-YT-ORIGIN-1] v1 held every YouTube reel (wrong-origin error 150)
   static const Duration keep = Duration(days: 14);
   static const int cap = 400;
 
