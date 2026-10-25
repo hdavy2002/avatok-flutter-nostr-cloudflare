@@ -761,6 +761,19 @@ class _ReelPageState extends State<ReelPage>
                   key: const ValueKey('reel-info-left'),
                 ),
               ),
+            // [HF-REEL-ICONS-1] a screen too short for the whole column keeps the original-post button bottom-left,
+            // above Reel information, with its own icon.
+            if (short && _originalUrl != null)
+              Positioned(
+                left: 8,
+                bottom: 15 + 64,
+                child: _action(
+                  _originalUrl!.host.contains('instagram') ? 'See this post on Instagram' : 'See this video on YouTube',
+                  Icons.open_in_new_rounded,
+                  () => _whileCovered(() => OriginalPostPage.open(context, _originalUrl!)),
+                  key: const ValueKey('reel-original'),
+                ),
+              ),
             Positioned(
               right: 8,
               bottom: 12,
@@ -772,7 +785,7 @@ class _ReelPageState extends State<ReelPage>
                 children: [
                   // [HF-REEL-ICONS-1] owner: the original-post button moves from the bottom left to the top of this
                   // list, with its own icon (it used to share the info icon with Reel information below).
-                  if (_originalUrl != null)
+                  if (_originalUrl != null && !short)
                     _action(
                       _originalUrl!.host.contains('instagram')
                           ? 'See this post on Instagram'
