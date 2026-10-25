@@ -100,6 +100,18 @@ class _RealSearchState extends State<RealSearch> {
     setState(() => _state = next);
   }
 
+  List<Widget> _topicBlock() => [
+        if (_topics.isNotEmpty) ...[
+          SearchTopics(
+            topics: [for (final topic in _topics.take(16)) (topic.slug, topic.label)],
+            selected: _topic,
+            keyFor: (slug) => ValueKey('topic-$slug'),
+            onTap: _pickTopic,
+          ),
+          const SizedBox(height: 14),
+        ],
+      ];
+
   void _pickTopic(String? slug) {
     _timer?.cancel();
     setState(() => _topic = _topic == slug ? null : slug);
@@ -250,15 +262,9 @@ class _RealSearchState extends State<RealSearch> {
             _platformFilter(),
             _spaceFilter(),
             const SizedBox(height: 14),
-            if (_topics.isNotEmpty) ...[
-              SearchTopics(
-                topics: [for (final topic in _topics.take(16)) (topic.slug, topic.label)],
-                selected: _topic,
-                keyFor: (slug) => ValueKey('topic-$slug'),
-                onTap: _pickTopic,
-              ),
-              const SizedBox(height: 14),
-            ],
+            // [HF-SEARCH-RESULTS-FIRST-1] While a search or filter is on, results sit right under the
+            // filters and the topic list moves below them, so nobody has to scroll past 16 chips to see them.
+            if (_browsing) ..._topicBlock(),
             AsyncView<SearchResult>(
               state: _state,
               onRetry: () => unawaited(_search()),
@@ -267,6 +273,7 @@ class _RealSearchState extends State<RealSearch> {
               emptyMessage: 'Try another name, or type their @handle to ask them to join.',
               builder: (context, r) => _browsing ? _home(context, r) : _results(context, r),
             ),
+            if (!_browsing) ...[const SizedBox(height: 14), ..._topicBlock()],
           ],
         ),
       ),

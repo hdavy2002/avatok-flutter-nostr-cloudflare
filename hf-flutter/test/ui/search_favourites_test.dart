@@ -157,6 +157,10 @@ void main() {
       final online = tester.getTopLeft(find.byKey(const ValueKey('hit-maya'))).dy;
       final offline = tester.getTopLeft(find.byKey(const ValueKey('hit-ravi'))).dy;
       expect(online, lessThan(offline));
+      // [HF-SEARCH-RESULTS-FIRST-1] while searching, results come before the topic chips.
+      // (A lazy list may not build the chips at all when they are far below; that also means "below".)
+      final topicChip = find.byKey(const ValueKey('topic-travel-and-food'), skipOffstage: false);
+      if (topicChip.evaluate().isNotEmpty) expect(online, lessThan(tester.getTopLeft(topicChip).dy));
       expect(find.text('Not on ${Brand.name} yet'), findsOneWidget);
 
       await tester.tap(find.text('INVITE'));

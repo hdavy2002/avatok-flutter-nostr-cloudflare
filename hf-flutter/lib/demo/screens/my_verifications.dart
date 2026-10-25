@@ -75,6 +75,24 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
     if (mounted) await _load();
   }
 
+  /// [HF-SPACE-JOIN-UX-1] Shown when a live creator picks a space before video KYC.
+  Future<bool> _askStartKyc(SpaceLane lane) async {
+    final name = lane == SpaceLane.women ? 'Women-only' : 'LGBTQ+';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        backgroundColor: C.white,
+        title: Text('Video KYC first', style: t(20, color: C.maroon, w: FontWeight.w900)),
+        content: Text('To start a $name channel, finish your video KYC first: your Aadhaar, then a 10-second selfie video.', style: t(16, w: FontWeight.w700, h: 1.4)),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: Text('Not now', style: t(16, color: C.muted, w: FontWeight.w900))),
+          TextButton(onPressed: () => Navigator.of(dialog).pop(true), child: Text('Start video KYC', style: t(16, color: C.maroon, w: FontWeight.w900))),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
   Future<bool> _askLgbtqConsent() async {
     var tag = false;
     var declare = false;
@@ -143,6 +161,16 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
       await Services.instance.spacesRepo.setSpace(lane, declare: lgbtq, acceptTerms: lgbtq, publicTagConsent: lgbtq);
       Telemetry.event('hf_space_joined', {'space': lane.name});
     } catch (e) {
+      // [HF-SPACE-JOIN-UX-1] A live creator must finish video KYC first: say so and offer the button, not a passing toast.
+      if (e is ApiException && e.code == 'video_kyc_required') {
+        if (mounted) setState(() => _busy = false);
+        if (mounted && await _askStartKyc(lane)) {
+          if (!mounted) return;
+          await openSpaceVerify(context, lane, creator: true);
+        }
+        if (mounted) await _load();
+        return;
+      }
       if (mounted) toast(context, e is ApiException ? e.userMessage : ApiException.genericText);
     }
     if (!mounted) return;
@@ -206,7 +234,10 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
               status,
             ]),
           ),
-          if (action != null)
+          // [HF-SPACE-JOIN-UX-1] Show that a save is running instead of a silent pause.
+          if (action != null && _busy)
+            const SizedBox(width: 64, height: 48, child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: C.maroon))))
+          else if (action != null)
             TextButton(
               onPressed: _busy ? null : onTap,
               style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
