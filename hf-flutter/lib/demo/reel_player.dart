@@ -265,6 +265,8 @@ class ReelPlayer extends StatefulWidget {
         '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
         // [HF-REEL-YT-CENTER-1] YouTube's own previous / pause / next buttons appear in the middle at the same moments as its
         // top bar; a soft frosted oval covers them while that chrome is showing (owner: "YouTube buttons briefly showed").
+        // [HF-REEL-YT-CENTER-2] only while paused: at the start it blurred faces in the middle of the video.
+        '#bc{opacity:0!important}body.p #bc{opacity:1!important}'
         '#bc{left:50%;top:50%;width:72%;max-width:340px;height:120px;transform:translate(-50%,-50%);border-radius:60px;-webkit-mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%);mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%)}'
         '</style></head>'
         '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bc"></div><div class="hfb" id="bb"></div><script>'
@@ -286,7 +288,7 @@ class ReelPlayer extends StatefulWidget {
         'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
         'events:{onReady:function(){fit();ready=true;mute();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
-        'onStateChange:function(e){if(e.data===1)chrome($youtubeChromeMs);else chrome(0);if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
+        'onStateChange:function(e){document.body.classList.toggle("p",e.data===2);if(e.data===1)chrome($youtubeChromeMs);else chrome(0);if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
         'onError:function(e){post("error:"+e.data)}}})}'
         '</script><script src="https://www.youtube.com/iframe_api"></script></body></html>';
   }
