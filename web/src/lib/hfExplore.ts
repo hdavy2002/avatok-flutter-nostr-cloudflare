@@ -60,7 +60,7 @@ export function sizeFor(frameW: number, frameH: number, platform: 'youtube' | 'i
   return { width: w, height: h, left: (frameW - w) / 2, top: (frameH - h) / 2 };
 }
 const IG_MEDIA_RATIO = 1.25; // the media area is at most 4:5
-const IG_CHROME_PX = 170; // header ~58 + footer / caption strip
+const IG_CHROME_PX = 250; // measured 2026-10-26: header ~55 + footer (View more, actions, likes, add a comment) ~190
 
 /** YouTube draws a title + channel band on top and its logo at the bottom of the player; taps there must reach YouTube (it opens its own link in a new tab). */
 export const YT_BAND_TOP = 64;
