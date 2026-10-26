@@ -101,8 +101,8 @@ class _GateObserver extends NavigatorObserver {
 /// Plays one real reel. EMBEDS ONLY (HF-REEL-32, HF-WIRE-14): we never download or host a video file. Every reel plays
 /// from the official YouTube / Instagram embed, loaded in a WebView that WE control: a transparent tap layer sits on top
 /// and passes play / pause down to the video through JavaScript (owner decision 2026-10-20, [HF-REEL-PLAYER-2]).
-/// [HF-REEL-RAW-APP-1] (owner 2026-10-26) the players are shown as they are: no cropping, no blur, Instagram's own page.
-/// The tap layer covers only the video, and the platforms' links open in the app (never in their apps). When a video cannot be started the card shows the poster with a "Watch on …" button.
+/// [HF-REEL-OVERLAY-APP-1] (owner 2026-10-26) YouTube is shown as it is (our tap layer leaves a hole over its mute icon);
+/// Instagram's card is hidden and the video fills the page. Links that still load open in the app (never in their apps). When a video cannot be started the card shows the poster with a "Watch on …" button.
 /// The thumbnail shows until the player is up. [active] plays; a page with [preload] is only kept ready.
 class ReelPlayer extends StatefulWidget {
   const ReelPlayer({
@@ -243,13 +243,6 @@ class ReelPlayer extends StatefulWidget {
     ).firstMatch(u.path)?.group(1);
   }
 
-  /// [HF-REEL-RAW-APP-1] Bands of the YouTube player (CSS px) our tap layer leaves uncovered so YouTube's own title /
-  /// channel bar (top, about 60 px) and logo (bottom right, about 48 px) stay tappable.
-  @visibleForTesting
-  static const double youtubeBandTop = 64;
-  @visibleForTesting
-  static const double youtubeBandBottom = 56;
-
   /// [HF-REEL-RAW-APP-1] Is [reel] an Instagram reel (its player is the stock Instagram embed page)?
   static bool isInstagram(FeedReel reel) =>
       (Uri.tryParse(sourceFor(reel) ?? '')?.host ?? '').contains('instagram');
@@ -273,14 +266,12 @@ class ReelPlayer extends StatefulWidget {
     return (rect: Rect.fromLTWH(v[0], v[1], v[2], v[3]), view: view);
   }
 
-  /// [HF-REEL-RAW-APP-1] The part of the player our transparent tap layer (play / pause) covers, in the WebView's logical
-  /// px ([box] is the WebView's size). Until the page has said where the video is, the middle 70% of the height. YouTube:
-  /// the player rectangle minus a [youtubeBandTop] band at the top and a [youtubeBandBottom] band at the bottom.
-  /// Instagram: exactly the `<video>`, so its header and footer stay tappable.
+  /// [HF-REEL-OVERLAY-APP-1] The YouTube player box in the WebView's logical px ([box] is the WebView's size): the
+  /// rectangle the page posted (scaled from CSS px), or the whole WebView until the page has said, or when it makes no sense.
   @visibleForTesting
-  static Rect tapRect(PageRect? page, Size box, {required bool instagram}) {
-    final fallback = Rect.fromLTWH(0, box.height * 0.15, box.width, box.height * 0.7);
-    if (page == null || box.isEmpty) return fallback;
+  static Rect playerBox(PageRect? page, Size box) {
+    final whole = Offset.zero & box;
+    if (page == null || box.isEmpty) return whole;
     var r = page.rect;
     final v = page.view;
     if (v != null && v.width > 0 && v.height > 0) {
@@ -288,12 +279,25 @@ class ReelPlayer extends StatefulWidget {
       final sy = box.height / v.height;
       r = Rect.fromLTWH(r.left * sx, r.top * sy, r.width * sx, r.height * sy);
     }
-    if (!instagram) {
-      r = Rect.fromLTRB(r.left, r.top + youtubeBandTop, r.right, r.bottom - youtubeBandBottom);
-    }
-    r = r.intersect(Offset.zero & box);
-    if (r.width < 40 || r.height < 40) return fallback;
+    r = r.intersect(whole);
+    if (r.width < 40 || r.height < 40) return whole;
     return r;
+  }
+
+  /// [HF-REEL-OVERLAY-APP-1] The tiles of our transparent tap layer over a YouTube player at [box]: the whole box EXCEPT a
+  /// hole over YouTube's own mute icon (top right: from 100 to 52 px left of the right edge, 4 to 60 px down), so the
+  /// viewer uses YouTube's sound button. The menu further right stays covered. Tiles do not overlap; empty ones are left out.
+  @visibleForTesting
+  static List<Rect> youtubeTapTiles(Rect box) {
+    final hole = Rect.fromLTRB(box.right - 100, box.top + 4, box.right - 52, box.top + 60).intersect(box);
+    if (hole.isEmpty) return [box];
+    final tiles = <Rect>[
+      Rect.fromLTRB(box.left, box.top, box.right, hole.top),
+      Rect.fromLTRB(box.left, hole.top, hole.left, hole.bottom),
+      Rect.fromLTRB(hole.right, hole.top, box.right, hole.bottom),
+      Rect.fromLTRB(box.left, hole.bottom, box.right, box.bottom),
+    ];
+    return tiles.where((t) => t.width > 0 && t.height > 0).toList();
   }
 
   /// [HF-REEL-RAW-APP-1] True when a main-frame address is the player itself (or the small page that holds it), which may
@@ -381,23 +385,31 @@ class ReelPlayer extends StatefulWidget {
         '</script><script src="https://www.youtube.com/iframe_api"></script></body></html>';
   }
 
-  /// JavaScript run once Instagram's embed page has loaded. [HF-REEL-RAW-APP-1] The stock embed page is left as it is
-  /// (header with the account, the video, footer). The script finds the `<video>` (waits up to 6 s, clicking the embed's
-  /// own play control to make it appear), exposes `hfSet(bool)` / `hfToggle()` / `hfMute(bool)` / `hfRestart()` and reports
-  /// `ready`, `playing`, `paused`, `error:novideo|blocked|media|appOnly` and `rect:...` (where the `<video>` is) over `HFPlayer`.
-  /// It hides nothing and does not resize the video.
+  /// [HF-REEL-OVERLAY-APP-1] (owner 2026-10-26) Instagram's white card is hidden again: only the `<video>` shows and it fills the page.
+  /// JavaScript run once Instagram's embed page has loaded. It finds the `<video>` (waits up to 6 s, clicking the embed's
+  /// own play control to make it appear), makes it fill the page (object-fit: cover) with everything else hidden, and exposes
+  /// `hfSet(bool)` / `hfToggle()`. It reports `ready`, `playing`, `paused` and `error:novideo|blocked|media` over `HFPlayer`.
   @visibleForTesting
   static String instagramScript({bool sound = true, bool start = true}) =>
       '''
 (function(){
 if(window.__hfInit)return;window.__hfInit=true;
-var SOUND=$sound,MUTED=${!start},want=$start,vid=null,started=Date.now(),clicks=0,last='';
+var SOUND=$sound,MUTED=${!start},want=$start,vid=null,started=Date.now(),clicks=0,tick=0;
 function post(m){try{HFPlayer.postMessage(m)}catch(e){}}
-function rect(){
-  if(!vid)return;var r=vid.getBoundingClientRect();
-  if(r.width<2||r.height<2)return;
-  var m='rect:'+[r.left,r.top,r.width,r.height,window.innerWidth,window.innerHeight].map(function(n){return Math.round(n*10)/10;}).join(',');
-  if(m!==last){last=m;post(m);}
+var st=document.createElement('style');
+st.textContent='html,body{background:#000!important;margin:0!important;padding:0!important;overflow:hidden!important}'
++'body{visibility:hidden!important}video{visibility:visible!important}'
++'video{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:cover!important;z-index:2147483647!important;background:#000!important;transform:none!important;margin:0!important}';
+(document.head||document.documentElement).appendChild(st);
+function isolate(v){
+  var n=v;
+  while(n&&n!==document.body&&n.parentElement){
+    var p=n.parentElement;
+    for(var i=0;i<p.children.length;i++){var s=p.children[i];
+      if(s!==n&&s.tagName!=='STYLE'&&s.tagName!=='SCRIPT'&&s.tagName!=='LINK'){s.style.setProperty('display','none','important');}}
+    ['transform','filter','perspective','contain','will-change','backdrop-filter'].forEach(function(k){p.style.setProperty(k,'none','important');});
+    n=p;
+  }
 }
 function apply(){
   if(!vid)return;
@@ -408,30 +420,28 @@ function apply(){
 function bind(v){
   vid=v;v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');
   v.playsInline=true;v.loop=true;v.controls=false;v.removeAttribute('controls');v.muted=MUTED||!SOUND;
-  v.addEventListener('playing',function(){post('playing');rect();});
+  v.addEventListener('playing',function(){post('playing');});
   v.addEventListener('pause',function(){post('paused');});
-  v.addEventListener('loadedmetadata',rect);
-  v.addEventListener('resize',rect);
   v.addEventListener('error',function(){post('error:media');});
-  post('ready');rect();apply();
+  isolate(v);post('ready');apply();
 }
 function clickPlay(){
   var sels=['[aria-label*="lay" i]','button[class*="lay" i]','[role="button"][class*="lay" i]','[class*="PlayButton"]','[data-testid*="play" i]'];
   for(var i=0;i<sels.length;i++){var el=document.querySelector(sels[i]);if(el){el.click();return;}}
+  document.body.style.setProperty('visibility','visible','important');
   var c=document.elementFromPoint(window.innerWidth/2,window.innerHeight/2);
-  if(c&&!(c.closest&&c.closest('a')))c.click();
+  document.body.style.removeProperty('visibility');if(c)c.click();
 }
-window.addEventListener('resize',rect);
 window.hfSet=function(b){want=!!b;apply();};
 window.hfToggle=function(){want=vid?vid.paused:true;apply();};
 window.hfMute=function(m){MUTED=!!m;if(vid)vid.muted=MUTED||!SOUND;};
 window.hfRestart=function(){want=true;if(vid){try{vid.currentTime=0;}catch(e){}}apply();};
 var iv=setInterval(function(){
-  var t=Date.now()-started;
-  if(vid&&!vid.isConnected){vid=null;started=Date.now();clicks=0;last='';}
+  tick++;var t=Date.now()-started;
+  if(vid&&!vid.isConnected){vid=null;started=Date.now();clicks=0;}
   var v=document.querySelector('video');
   if(v&&v!==vid)bind(v);
-  if(vid){rect();return;}
+  if(vid){if(tick%4===0)isolate(vid);return;}
   if(t>2500&&/watch this reel in the app/i.test((document.body&&document.body.textContent)||'')){clearInterval(iv);post('error:appOnly');return;}
   if((t>1500&&clicks===0)||(t>3500&&clicks===1)){clicks++;clickPlay();}
   if(t>6000){clearInterval(iv);post('error:novideo');}
@@ -822,24 +832,50 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         // embed page loading (Instagram's header / likes / comments, YouTube's spinner) or a black flash while scrolling
         if (_web != null && _fg && (!_played || _chromeCover))
           Positioned.fill(child: IgnorePointer(child: _thumb())),
-        // The transparent layer with our control: a tap goes to the video underneath as play / pause. [HF-REEL-RAW-APP-1] It
-        // covers only the video rectangle (not YouTube's title bar / logo, not Instagram's header / footer), so those links
-        // are tappable. Only taps are taken, so a vertical swipe still reaches the PageView.
+        // The transparent layer with our control: a tap goes to the video underneath as play / pause. [HF-REEL-OVERLAY-APP-1]
+        // Instagram: the whole player (its own controls are hidden). YouTube: the whole player except a hole over YouTube's own
+        // mute icon, so YouTube's title, channel, menu, like and share are visible but not tappable. Only taps are taken, so a
+        // vertical swipe still reaches the PageView.
         if (_wantEmbed && _engine && _fg)
           LayoutBuilder(
-            builder: (context, box) => Stack(
-              fit: StackFit.expand,
-              children: [
-                Positioned.fromRect(
-                  rect: ReelPlayer.tapRect(_page, box.biggest, instagram: _isIg),
-                  child: GestureDetector(
-                    key: const ValueKey('reel-tap'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _toggle,
-                    child: const SizedBox.expand(),
-                  ),
+            builder: (context, box) {
+              final tiles = _isIg
+                  ? [Offset.zero & box.biggest]
+                  : ReelPlayer.youtubeTapTiles(ReelPlayer.playerBox(_page, box.biggest));
+              var big = 0;
+              for (var i = 1; i < tiles.length; i++) {
+                if (tiles[i].width * tiles[i].height > tiles[big].width * tiles[big].height) big = i;
+              }
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  for (var i = 0; i < tiles.length; i++)
+                    Positioned.fromRect(
+                      rect: tiles[i],
+                      child: GestureDetector(
+                        key: i == big ? const ValueKey('reel-tap') : null,
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggle,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        // Instagram's own play control is hidden, so this is the ONE paused symbol the viewer sees (YouTube draws its own).
+        if (_isIg && _engine && _fg && !_isPlaying)
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: Icon(
+                  key: ValueKey('reel-glyph'),
+                  Icons.play_arrow_rounded,
+                  size: 84,
+                  color: C.white,
+                  shadows: [Shadow(color: C.cinema, blurRadius: 12)],
                 ),
-              ],
+              ),
             ),
           ),
         // [HF-REEL-NOIG-1] no "Open in Instagram" chip on the video (owner 2026-10-22); the link is in the reel's info sheet

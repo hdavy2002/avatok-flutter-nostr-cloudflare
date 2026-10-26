@@ -118,7 +118,7 @@ void main() {
     demo.signOut();
   });
 
-  testWidgets('buttons show the totals, Like above Comment above More (save and share live under More)', (tester) async {
+  testWidgets('buttons show the totals; Comment and More above, Like then Share at the bottom (save lives under More)', (tester) async {
     await _pump(tester, _reel(), _Repo());
     expect(find.byKey(const ValueKey('reel-like')), findsOneWidget);
     expect(find.byKey(const ValueKey('reel-comment')), findsOneWidget);
@@ -128,10 +128,12 @@ void main() {
     final like = tester.getTopLeft(find.byKey(const ValueKey('reel-like'))).dy;
     final comment = tester.getTopLeft(find.byKey(const ValueKey('reel-comment'))).dy;
     final more = tester.getTopLeft(find.byKey(const ValueKey('reel-more'))).dy;
-    expect(like < comment && comment < more, isTrue);
+    final share = tester.getTopLeft(find.byKey(const ValueKey('reel-share'))).dy;
+    expect(comment < more && more < like && like < share, isTrue); // [HF-REEL-OVERLAY-APP-1]
+    expect(find.byIcon(Icons.thumb_up_outlined), findsOneWidget); // YouTube reel: thumbs up and the curved arrow
+    expect(find.byIcon(Icons.shortcut_rounded), findsOneWidget);
     await openReelMore(tester);
     expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.share_outlined), findsOneWidget);
     final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));
     expect(count.style!.fontSize, greaterThanOrEqualTo(14));
   });
@@ -146,10 +148,10 @@ void main() {
   testWidgets('Like is instant and turns pink; the server count then replaces it', (tester) async {
     final repo = _Repo();
     await _pump(tester, _reel(), repo);
-    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+    await tester.tap(find.byIcon(Icons.thumb_up_outlined));
     await tester.pump();
     expect(store.of('hfrl_abc12345')!.liked, isTrue);
-    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.thumb_up_rounded), findsOneWidget);
     await _settle(tester);
     expect(repo.likes, ['hfrl_abc12345:true']);
     expect(store.of('hfrl_abc12345')!.likes.total, 11);
@@ -158,7 +160,7 @@ void main() {
   testWidgets('a failed Like is rolled back with a message', (tester) async {
     final repo = _Repo()..likeError = const ApiException(kind: ApiFailure.offline, code: 'network');
     await _pump(tester, _reel(), repo);
-    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+    await tester.tap(find.byIcon(Icons.thumb_up_outlined));
     await _settle(tester);
     expect(store.of('hfrl_abc12345')!.liked, isFalse);
     expect(store.of('hfrl_abc12345')!.likes.total, 2000);
@@ -255,7 +257,7 @@ void main() {
     Services.instance.user = null;
     final repo = _Repo();
     await _pump(tester, _reel(), repo);
-    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+    await tester.tap(find.byIcon(Icons.thumb_up_outlined));
     await _settle(tester);
     expect(find.byType(SignUpSheet), findsOneWidget);
     expect(repo.likes, isEmpty);
@@ -265,7 +267,8 @@ void main() {
     await _pump(tester, _reel(), _Repo(), size: const Size(400, 560));
     expect(find.byKey(const ValueKey('reel-info-left')), findsNothing); // [HF-REEL-RAIL-2]
     expect(find.byIcon(Icons.info_outline_rounded), findsNothing); // [HF-REEL-CALL-2] the information button is gone
-    expect(find.byKey(const ValueKey('reel-photo')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reel-photo')), findsNothing); // [HF-REEL-OVERLAY-APP-1] no photo in the rail
+    expect(find.byKey(const ValueKey('reel-share')), findsOneWidget);
     expect(find.byKey(const ValueKey('reel-more')), findsOneWidget);
     expect(find.byType(FittedBox), findsNothing);
     final count = tester.widget<Text>(find.byKey(const ValueKey('reel-like-count')));

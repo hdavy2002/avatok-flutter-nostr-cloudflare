@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -546,9 +547,6 @@ class _FeedScreenState extends State<_DemoFeed> {
 }
 
 class ReelPage extends StatefulWidget {
-  /// [HF-REEL-CALLBAR-1] Height of the call strip at the bottom of every reel (the right-hand buttons sit above it).
-  static const double callBarHeight = 72;
-
   const ReelPage({
     super.key,
     required this.reel,
@@ -706,27 +704,22 @@ class _ReelPageState extends State<ReelPage>
         // [HF-REEL-ENGAGE-APP-1] On a short screen the "Reel information" button leaves the column (it moves to the bottom-left)
         // so nothing has to shrink: text never renders under 14 sp.
         return LayoutBuilder(builder: (context, box) {
-        // [HF-REEL-RAW-APP-1] The side buttons stay clear of the platform's own controls: above YouTube's logo / Instagram's
-        // footer at the bottom, and on a wide screen beside the video instead of over it.
-        final railBottom = widget.real != null && ReelPlayer.isInstagram(widget.real!) ? 80.0 : 56.0;
-        final railInset = widget.real != null && box.maxWidth >= 600 ? 72.0 : 0.0;
-        // The video area ends above the creator strip (photo, name, Call / Invite): nothing of ours sits over the video's
-        // own header and footer.
-        return Column(children: [
-        Expanded(child: Stack(
+        // [HF-REEL-OVERLAY-APP-1] (owner 2026-10-26) everything sits INSIDE the video, which fills the page: our buttons on the
+        // right (Like and Share at the bottom), Call / Invite bottom-right, and for Instagram a name + caption bottom-left.
+        final ig = widget.real != null && ReelPlayer.isInstagram(widget.real!);
+        final yt = widget.real != null && !ig;
+        final pad = MediaQuery.paddingOf(context);
+        return Stack(
           fit: StackFit.expand,
           children: [
             // the video: the real player, or the stand-in with a slow zoom
             if (widget.real != null)
-              Padding(
-                padding: EdgeInsets.only(right: railInset),
-                child: ReelPlayer(
-                  reel: widget.real!,
-                  active: widget.active && !_covered,
-                  preload: widget.preload,
-                  onUnplayable: widget.onUnplayable,
-                  onOpenLink: _openLinkInApp,
-                ),
+              ReelPlayer(
+                reel: widget.real!,
+                active: widget.active && !_covered,
+                preload: widget.preload,
+                onUnplayable: widget.onUnplayable,
+                onOpenLink: _openLinkInApp,
               )
             else
               AnimatedBuilder(
@@ -833,52 +826,107 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
-            Positioned(
-              right: 8,
-              bottom: railBottom,
-              top: MediaQuery.paddingOf(context).top + 8,
-              child: Align(
-               alignment: Alignment.bottomRight,
-               child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // [HF-REEL-RAIL-3] owner 2026-10-25: Like, Book a time, Comments, Share (+ the photo, [HF-REEL-CALL-2]) on the video; the rest
-                  // (creator status, profile, save) is under "More" so the column fits any screen.
-                  if (eState != null)
-                    _countAction(
-                      eState.liked ? 'Unlike' : 'Like',
-                      eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      eState.likes.total,
-                      _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
-                      color: eState.liked ? C.rani : C.ivory,
-                      key: const ValueKey('reel-like'),
+            // Instagram: its card is hidden, so a small attribution label (not Instagram's artwork) top-left
+            if (ig)
+              Positioned(
+                left: 16,
+                top: pad.top + 18,
+                child: IgnorePointer(
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: C.white, width: 2),
+                      ),
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.white, width: 1.5)),
+                      ),
                     ),
-                  // [HF-REEL-CALL-2] no information button any more; a creator who is not on the app has nothing to book
-                  if (inviteOf == null)
-                    _action('Book a time', Icons.calendar_month_outlined, () {
-                      Telemetry.event('hf_reel_action', {'action': 'book'});
-                      _whileCovered(
-                        () => context.push<void>(
-                          '/book/${Uri.encodeComponent(widget.real?.host.slug ?? who.id)}',
+                    const SizedBox(width: 8),
+                    Text('Instagram', style: t(15, color: C.white, w: FontWeight.w900).copyWith(shadows: _textShadow)),
+                  ]),
+                ),
+              ),
+            // Instagram: photo, name and caption bottom-left (not tappable: a tap falls to the play / pause layer)
+            if (ig)
+              Positioned(
+                left: 16,
+                bottom: pad.bottom + 90,
+                child: IgnorePointer(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: (box.maxWidth - 120).clamp(120.0, 600.0).toDouble()),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Container(
+                          key: const ValueKey('reel-photo'),
+                          width: 36,
+                          height: 36,
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(shape: BoxShape.circle, color: C.white),
+                          child: ClipOval(child: Avatar(who, size: 32, ring: false)),
                         ),
-                      );
-                    }),
-                  if (eState != null)
-                    _countAction(
-                      'Comments',
-                      Icons.chat_bubble_outline_rounded,
-                      eState.comments.total,
-                      () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
-                      key: const ValueKey('reel-comment'),
-                    ),
-                  _action(
-                    'Share this reel',
-                    Icons.share_outlined,
-                    () => widget.real == null
-                        ? toast(context, 'Share link copied (demo)')
-                        : _share(context, widget.real!),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            _callName(who),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t(16, color: C.white, w: FontWeight.w900).copyWith(shadows: _textShadow),
+                          ),
+                        ),
+                      ]),
+                      if ((widget.real?.caption ?? '').trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.real!.caption.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: t(14, color: C.white, w: FontWeight.w700).copyWith(shadows: _textShadow),
+                        ),
+                      ],
+                    ]),
                   ),
-                  _action(
+                ),
+              ),
+            // Our buttons on the right, bottom edge just above the Call / Invite button. On YouTube they sit on a frosted patch
+            // so YouTube's own like / share underneath are blurred (a platform-view WebView may not blur on every Android; the tint stays).
+            Positioned(
+              right: 0,
+              bottom: pad.bottom + 92,
+              top: pad.top + 8,
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: _railPatch(
+                  blur: yt,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Book a time, Comments, More above; Like then Share at the bottom ([HF-REEL-OVERLAY-APP-1]).
+                      // [HF-REEL-CALL-2] a creator who is not on the app has nothing to book
+                      if (inviteOf == null)
+                        _railBtn('Book a time', Icons.calendar_month_outlined, () {
+                          Telemetry.event('hf_reel_action', {'action': 'book'});
+                          _whileCovered(
+                            () => context.push<void>(
+                              '/book/${Uri.encodeComponent(widget.real?.host.slug ?? who.id)}',
+                            ),
+                          );
+                        }, text: 'Book'),
+                      if (eState != null)
+                        _railBtn(
+                          'Comments',
+                          Icons.chat_bubble_outline_rounded,
+                          () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
+                          key: const ValueKey('reel-comment'),
+                          text: compactCount(eState.comments.total),
+                          count: true,
+                        ),
+                  _railBtn(
                     'More',
                     Icons.more_horiz_rounded,
                     () => _whileCovered(() => _openMore(
@@ -891,7 +939,7 @@ class _ReelPageState extends State<ReelPage>
                             ),
                       items: [
                         ('Open ${who.name} profile', Icons.person_outline_rounded, null, () async {
-                          _openChannel(context);
+                          _openProfile(context, 'more');
                         }),
                         (
                           faved ? 'Remove saved video' : 'Save video',
@@ -914,15 +962,44 @@ class _ReelPageState extends State<ReelPage>
                       ],
                     )),
                     key: const ValueKey('reel-more'),
+                    text: 'More',
                   ),
-                ],
-              ),
+                      if (eState != null)
+                        _railBtn(
+                          eState.liked ? 'Unlike' : 'Like',
+                          yt
+                              ? (eState.liked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined)
+                              : (eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+                          _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
+                          color: eState.liked ? (yt ? C.marigold : C.rani) : C.ivory,
+                          key: const ValueKey('reel-like'),
+                          text: compactCount(eState.likes.total),
+                          count: true,
+                        ),
+                      _railBtn(
+                        'Share this reel',
+                        yt ? Icons.shortcut_rounded : Icons.send_outlined,
+                        () => widget.real == null
+                            ? toast(context, 'Share link copied (demo)')
+                            : _share(context, widget.real!),
+                        key: const ValueKey('reel-share'),
+                        text: 'Share',
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
+            // Call now (a creator on the app) or the invite vote (a creator who is not), inside the video, bottom-right
+            Positioned(
+              right: 12,
+              bottom: pad.bottom + 26,
+              child: inviteOf != null
+                  ? SizedBox(width: 170, height: 52, child: InviteButton(creator: inviteOf, repo: widget.searchRepo, compact: true))
+                  : _callNow(context, who),
+            ),
           ],
-        )),
-        _stripBar(context, r, inviteOf),
-        ]);
+        );
         });
       },
     );
@@ -951,34 +1028,6 @@ class _ReelPageState extends State<ReelPage>
     _openChannel(context);
   }
 
-  /// [HF-REEL-RAW-APP-1] The creator's round photo and name; a tap opens our profile for them.
-  Widget _identity(BuildContext context, Influencer who) => Tooltip(
-        message: 'View ${_callName(who)}\'s profile',
-        child: GestureDetector(
-          key: const ValueKey('reel-photo'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _openProfile(context, 'strip'),
-          child: Row(children: [
-            Container(
-              width: 46,
-              height: 46,
-              padding: const EdgeInsets.all(2.5),
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: C.marigold),
-              child: ClipOval(child: Avatar(who, size: 41, ring: false)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _callName(who),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: t(16, color: C.ivory, w: FontWeight.w800),
-              ),
-            ),
-          ]),
-        ),
-      );
-
   /// [HF-REEL-RAW-APP-1] The red Call button (56 px tall). [label] is what a screen reader says, [text] what it shows.
   Widget _callPill(String label, VoidCallback onTap, {Key key = const ValueKey('reel-call-bar'), String text = 'Call', double? width}) => Semantics(
         button: true,
@@ -1005,29 +1054,99 @@ class _ReelPageState extends State<ReelPage>
         ),
       );
 
-  /// [HF-REEL-RAW-APP-1] The strip UNDER the video (owner 2026-10-26): photo and name (tap = our profile) and the Call
-  /// button, or VOTE TO INVITE for a creator who is not on the app. It never sits over the video, so it cannot hide the
-  /// platform's own title, logo or footer. [HF-REEL-CALL-2] Call opens the creator's profile, where Call / Book live.
-  Widget _stripBar(BuildContext context, Reel r, InviteCreator? invite) {
-    final who = r.who;
-    return Container(
-      key: const ValueKey('reel-strip'),
-      height: ReelPage.callBarHeight,
-      color: C.cinema,
+  static final List<Shadow> _textShadow = [
+    Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 4),
+    Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 8),
+  ];
+
+  /// [HF-REEL-OVERLAY-APP-1] The Call button inside the video, bottom-right: marigold stadium, 52 px tall. [HF-REEL-CALL-2]
+  /// It opens the creator's profile, where Call / Book live.
+  Widget _callNow(BuildContext context, Influencer who) => Semantics(
+        button: true,
+        label: 'Call ${_callName(who)}',
+        child: Material(
+          color: C.marigold,
+          shape: const StadiumBorder(),
+          elevation: 2,
+          child: InkWell(
+            key: const ValueKey('reel-call-bar'),
+            customBorder: const StadiumBorder(),
+            onTap: () {
+              Telemetry.event('hf_reel_action', {'action': 'call_bar'});
+              _openProfile(context, 'callbar');
+            },
+            child: SizedBox(
+              height: 52,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(width: 18),
+                const Icon(Icons.call_rounded, color: C.deep, size: 22),
+                const SizedBox(width: 8),
+                Text('Call now', maxLines: 1, style: t(17, color: C.deep, w: FontWeight.w900)),
+                const SizedBox(width: 18),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  /// [HF-REEL-OVERLAY-APP-1] The right-hand column's holder: 92 px wide at the right edge. With [blur] (YouTube) it is a
+  /// frosted patch (blur 14, light dark tint, left corners 28) so YouTube's own like / share beneath are not readable.
+  Widget _railPatch({required bool blur, required Widget child}) {
+    final inner = Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Row(children: [
-        Expanded(child: _identity(context, who)),
-        const SizedBox(width: 10),
-        if (invite != null)
-          SizedBox(width: 200, child: InviteButton(creator: invite, repo: widget.searchRepo, compact: true))
-        else
-          _callPill('Call ${_callName(who)}', () {
-            Telemetry.event('hf_reel_action', {'action': 'call_bar'});
-            _openProfile(context, 'callbar');
-          }),
-      ]),
+      child: SizedBox(width: 68, child: child),
+    );
+    if (!blur) return SizedBox(width: 92, child: inner);
+    return ClipRRect(
+      key: const ValueKey('reel-rail-blur'),
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(28)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(width: 92, color: C.cinema.withValues(alpha: 0.22), child: inner),
+      ),
     );
   }
+
+  /// [HF-REEL-OVERLAY-APP-1] A round dark rail button (50 px) with a 13 px w900 label under it. [count] shows [text] as a
+  /// number (14 px).
+  Widget _railBtn(
+    String label,
+    IconData icon,
+    VoidCallback? tap, {
+    Color color = C.ivory,
+    Key? key,
+    required String text,
+    bool count = false,
+  }) => Padding(
+    key: key,
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: label,
+          onPressed: tap,
+          iconSize: 26,
+          style: IconButton.styleFrom(
+            backgroundColor: C.cinema.withValues(alpha: 0.72),
+            fixedSize: const Size(50, 50),
+            minimumSize: const Size(50, 50),
+            padding: EdgeInsets.zero,
+          ),
+          icon: Icon(icon, color: color),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          text,
+          key: count && key is ValueKey ? ValueKey('${key.value}-count') : null,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: t(count ? 14 : 13, color: C.white, w: FontWeight.w900).copyWith(shadows: _textShadow),
+        ),
+      ],
+    ),
+  );
 
   /// [HF-REEL-RAW-APP-1] A YouTube / Instagram link tapped inside the player opens in the app, with our Call / Invite
   /// bar under it; the reel is paused while it is open.
@@ -1098,43 +1217,6 @@ class _ReelPageState extends State<ReelPage>
     );
     if (pick != null && context.mounted) await pick();
   }
-
-  Widget _action(
-    String label,
-    IconData icon,
-    VoidCallback? tap, {
-    Color color = C.ivory,
-    Key? key,
-  }) => Padding(
-    key: key,
-    // [HF-REEL-CLEAN-1] bigger, darker circles: they sit right over Instagram's own side buttons and hide them
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: IconButton(
-      tooltip: label,
-      onPressed: tap,
-      iconSize: 26,
-      style: IconButton.styleFrom(
-        backgroundColor: C.cinema.withValues(alpha: 0.92),
-        minimumSize: const Size(58, 58),
-      ),
-      icon: Icon(icon, color: color),
-    ),
-  );
-
-  /// [HF-REEL-ENGAGE-APP-1] A round button with its count under it (14 sp, white, soft shadow so it reads on any video).
-  Widget _countAction(String label, IconData icon, int count, VoidCallback? tap, {Color color = C.ivory, Key? key}) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      _action(label, icon, tap, color: color, key: key),
-      Text(
-        compactCount(count),
-        key: key == null ? null : ValueKey('${(key as ValueKey).value}-count'),
-        style: t(14, color: C.white).copyWith(
-          shadows: [Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 4), Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 8)],
-        ),
-      ),
-    ],
-  );
 
   void _toggleLike(BuildContext context, String id, ReelEngageApi repo) {
     unawaited(requireAccount(context, () async {

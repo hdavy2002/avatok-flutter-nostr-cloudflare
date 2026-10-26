@@ -169,16 +169,18 @@ void main() {
       expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');
     });
 
-    test('Instagram opens the reel embed page and the script only finds and drives the video', () {
+    test('Instagram opens the reel embed page and the script hides everything but the video, which fills the page', () {
       expect(ReelPlayer.instagramUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
       expect(ReelPlayer.instagramUri('https://www.instagram.com/p/Cx12345/embed/').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
       final js = ReelPlayer.instagramScript(sound: false);
-      // [HF-REEL-RAW-APP-1] Instagram's own page stays: nothing hidden, the video is not resized
-      expect(js, isNot(contains('object-fit')));
-      expect(js, isNot(contains('display')));
-      expect(js, isNot(contains('visibility')));
-      expect(js, isNot(contains('createElement(\'style\')')));
-      expect(js, contains('rect:'));
+      // [HF-REEL-OVERLAY-APP-1] Instagram's white card is hidden again: only the <video> shows and it fills the page
+      expect(js, contains('object-fit:cover'));
+      expect(js, contains('visibility:hidden'));
+      expect(js, contains('isolate('));
+      expect(js, contains('createElement(\'style\')'));
+      expect(js, contains('error:appOnly'));
+      expect(js, contains('window.hfSet'));
+      expect(js, contains('window.hfRestart'));
       expect(js, contains('window.hfToggle'));
       expect(js, contains('window.hfMute'));
       expect(js, contains('querySelector(\'video\')'));
@@ -237,19 +239,36 @@ void main() {
       expect(ReelPlayer.parseRect('rect:0,0,10,NaN'), isNull);
     });
 
-    test('tapRect: middle 70% until known; YouTube leaves a top and a bottom band; Instagram covers the video only', () {
+    test('playerBox: the whole view until the page says, then the posted rectangle scaled; youtubeTapTiles leaves the mute hole', () {
       const box = Size(400, 800);
-      expect(ReelPlayer.tapRect(null, box, instagram: false), Rect.fromLTWH(0, 800 * 0.15, 400, 800 * 0.7));
+      expect(ReelPlayer.playerBox(null, box), Offset.zero & box);
       final page = ReelPlayer.parseRect('rect:0,0,400,800,400,800');
-      expect(ReelPlayer.tapRect(page, box, instagram: false), const Rect.fromLTRB(0, 64, 400, 744));
-      final ivid = ReelPlayer.parseRect('rect:10,100,380,600,400,800');
-      expect(ReelPlayer.tapRect(ivid, box, instagram: true), const Rect.fromLTWH(10, 100, 380, 600));
-      // the page's own size differs from the WebView's: scaled
+      expect(ReelPlayer.playerBox(page, box), Offset.zero & box);
       final scaled = ReelPlayer.parseRect('rect:0,100,200,300,200,400');
-      expect(ReelPlayer.tapRect(scaled, box, instagram: true), const Rect.fromLTWH(0, 200, 400, 600));
-      // nonsense falls back
+      expect(ReelPlayer.playerBox(scaled, box), const Rect.fromLTWH(0, 200, 400, 600));
       final tiny = ReelPlayer.parseRect('rect:0,0,10,10,400,800');
-      expect(ReelPlayer.tapRect(tiny, box, instagram: true), Rect.fromLTWH(0, 800 * 0.15, 400, 800 * 0.7));
+      expect(ReelPlayer.playerBox(tiny, box), Offset.zero & box);
+
+      const player = Rect.fromLTWH(0, 0, 400, 800);
+      final tiles = ReelPlayer.youtubeTapTiles(player);
+      final hole = Rect.fromLTRB(300, 4, 348, 60);
+      // nothing covers the hole, nothing overlaps, and together the tiles are the player minus the hole
+      for (final t in tiles) {
+        expect(t.overlaps(hole), isFalse);
+        expect(t.intersect(player), t);
+      }
+      for (var i = 0; i < tiles.length; i++) {
+        for (var j = i + 1; j < tiles.length; j++) {
+          expect(tiles[i].overlaps(tiles[j]), isFalse);
+        }
+      }
+      expect(tiles.fold<double>(0, (a, t) => a + t.width * t.height), closeTo(400 * 800 - hole.width * hole.height, 0.01));
+      // the menu (about 34 px from the right edge) and the title area are covered
+      expect(tiles.any((t) => t.contains(const Offset(366, 30))), isTrue);
+      expect(tiles.any((t) => t.contains(const Offset(60, 30))), isTrue);
+      expect(tiles.any((t) => t.contains(const Offset(324, 30))), isFalse);
+      // a box too small to hold the hole is one tile
+      expect(ReelPlayer.youtubeTapTiles(const Rect.fromLTWH(0, 0, 40, 40)), [const Rect.fromLTWH(0, 0, 40, 40)]);
     });
   });
 
@@ -285,9 +304,10 @@ void main() {
       expect(find.text('Caption hfrl_1'), findsNothing);
       // [HF-REEL-CALL-2] no information sheet any more: the bar says Call <name>, the photo sits in the rail, nothing else
       expect(find.byTooltip('Reel information'), findsNothing);
-      expect(find.byKey(const ValueKey('reel-call-bar')), findsWidgets); // [HF-REEL-RAW-APP-1] Call sits in the strip under the video
-      expect(find.descendant(of: find.byKey(const ValueKey('reel-photo')), matching: find.text('Maya')), findsWidgets);
-      expect(find.byKey(const ValueKey('reel-photo')), findsWidgets);
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsWidgets); // [HF-REEL-OVERLAY-APP-1] Call now sits inside the video, bottom-right
+      expect(find.text('Call now'), findsWidgets);
+      expect(find.byKey(const ValueKey('reel-strip')), findsNothing);
+      expect(find.byKey(const ValueKey('reel-photo')), findsNothing); // YouTube draws its own title and channel
       expect(find.byTooltip('Book a time'), findsWidgets);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
@@ -343,7 +363,7 @@ void main() {
       expect(log, contains('hfrl_9:true'));
       expect(log, isNot(contains('hfrl_1:true')));
       expect(log, isNot(contains('hfrl_2:true')));
-      expect(find.descendant(of: find.byKey(const ValueKey('reel-photo')), matching: find.text('Zara')), findsWidgets);
+      expect(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Call Zara'), findsWidgets);
       expect(api.calls.where((c) => c == 'GET /api/hf/reels/hfrl_9'), hasLength(1));
       expect(api.calls.where((c) => c == 'GET /api/hf/reels'), hasLength(2)); // the opening feed + the one attached behind the link
       expect(events, contains('reel_deeplink_open hfrl_9 false'));

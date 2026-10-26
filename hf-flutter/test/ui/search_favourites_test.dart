@@ -242,7 +242,7 @@ void main() {
       await tester.pump();
       expect(api.calls, contains('PUT /api/hf/reel-bookmarks/hfrl_abc12345'));
 
-      await tester.tap(find.byIcon(Icons.share_outlined)); // [HF-REEL-RAIL-3] Share is on the video again
+      await tester.tap(find.byKey(const ValueKey('reel-share'))); // [HF-REEL-OVERLAY-APP-1] Share is in the rail, bottom
       await tester.pump();
       expect(shared, contains(Brand.url('/r/hfrl_abc12345')));
     });

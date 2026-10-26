@@ -102,7 +102,7 @@ void main() {
   });
 
   group('channel name and avatar on a reel', () {
-    testWidgets('a creator not on the app: the photo opens the invite page, never /profile/', (tester) async {
+    testWidgets('a creator not on the app: the profile item in More opens the invite page, never /profile/', (tester) async {
       final api = FakeApiClient((m, p, q, b) {
         if (p.startsWith('/api/hf/invites/')) return {'ok': true, 'votes': 4, 'voted': true};
         return {'ok': true, 'items': [_invite('hfiv_1'), _invite('hfiv_2')], 'nextCursor': null};
@@ -113,13 +113,14 @@ void main() {
       Telemetry.sink = (e, props) => events.add('$e ${props['source']} ${props['kind']}');
       addTearDown(() => Telemetry.sink = old);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: search, onlineFetch: () async => 0), searchRepo: search);
-      await tester.tap(find.byKey(const ValueKey('reel-photo')).first); // [HF-REEL-RAW-APP-1] the photo in the strip under the video
+      await openReelMore(tester); // [HF-REEL-OVERLAY-APP-1] YouTube draws the creator; ours is in More
+      await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
       // The feed stays underneath the pushed page, so look inside the page only.
       Finder inPage(Finder f) => find.descendant(of: find.byKey(const ValueKey('invite-profile')), matching: f);
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
-      expect(events, contains('reel_profile_tap strip invite'));
+      expect(events, contains('reel_profile_tap more invite'));
       expect(find.textContaining('PROFILE'), findsNothing);
       expect(inPage(find.text('New Star')), findsOneWidget);
       expect(inPage(find.textContaining('@newstar')), findsWidgets);
@@ -141,24 +142,25 @@ void main() {
       expect(inPage(find.text('VOTED')), findsOneWidget);
     });
 
-    testWidgets('[HF-REEL-RAW-APP-1] an invite reel has VOTE TO INVITE in the strip under the video (no Call bar); the name opens the same page', (tester) async {
+    testWidgets('[HF-REEL-OVERLAY-APP-1] an invite reel has VOTE TO INVITE inside the video, bottom-right (no Call button); More opens the same page', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       final events = <String>[];
       final old = Telemetry.sink;
       Telemetry.sink = (e, props) => events.add('$e ${props['source']} ${props['kind']}');
       addTearDown(() => Telemetry.sink = old);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      expect(find.byKey(const ValueKey('reel-strip')), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-strip')), findsNothing);
       expect(find.byKey(const ValueKey('reel-call-bar')), findsNothing);
-      expect(find.descendant(of: find.byKey(const ValueKey('reel-strip')), matching: find.byKey(const ValueKey('invite-button'))), findsOneWidget);
+      expect(find.byKey(const ValueKey('invite-button')), findsOneWidget);
       expect(find.textContaining('Not on ${Brand.name}'), findsNothing);
       expect(find.text('Invite caption hfiv_1'), findsNothing); // no caption over the video
       expect(find.byTooltip('Reel information'), findsNothing);
-      await tester.tap(find.descendant(of: find.byKey(const ValueKey('reel-strip')), matching: find.text('New Star')));
+      await openReelMore(tester);
+      await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
-      expect(events, contains('reel_profile_tap strip invite'));
+      expect(events, contains('reel_profile_tap more invite'));
     });
 
     testWidgets('a creator page opened from a link (no extra) still shows name, handle and VOTE TO INVITE', (tester) async {
