@@ -1,11 +1,11 @@
 /* [HF-EXPLORE-PUBLIC-1] Web version of the app's InviteProfileScreen: /i/<platform>/<handle>, a creator who is NOT on the app yet.
  * "VOTE TO INVITE" (POST /api/hf/invites/:platform/:handle; logged out -> the same sign-in card as Explore), and the creator's videos as a grid
- * that plays in place in a small dialog (official embed shown as it is, no crop - HF-REEL-RAW-WEB-1). */
+ * that plays in place in a small dialog (YouTube shown as it is with its sound icon free; the Instagram card cropped away - HF-REEL-OVERLAY-WEB-1). */
 import { useEffect, useRef, useState } from 'react';
 import { ClerkIsland, activeSessionSignedOut, getActiveToken, getActiveTokenWaited } from '../../lib/clerk';
 import { hfCall } from '../../lib/hfCallsApi';
 import { capture } from '../../lib/analytics';
-import { GATE_COPY, compactCount, playerFor, signInHref, sizeFor, tapBoxFor, whatsappGateHref, ytCmd, type ReelCreator, type ReelItem } from '../../lib/hfExplore';
+import { GATE_COPY, compactCount, playerFor, signInHref, sizeFor, tapClipPath, whatsappGateHref, ytCmd, type ReelCreator, type ReelItem } from '../../lib/hfExplore';
 
 const PLATFORM: Record<string, string> = { youtube: 'YouTube', instagram: 'Instagram' };
 interface Props { creator: ReelCreator; reels: ReelItem[] }
@@ -72,7 +72,6 @@ function Profile({ creator, reels }: Props) {
     if (!spec || spec.platform !== 'youtube') return;
     if (paused) { ytCmd(player.current, 'playVideo'); setPaused(false); } else { ytCmd(player.current, 'pauseVideo'); setPaused(true); }
   };
-  const tb = spec && sz ? tapBoxFor(sz, spec.platform) : null;
   const copy = gate ? GATE_COPY.vote : null;
 
   return <div className="xi-wrap">
@@ -103,13 +102,13 @@ function Profile({ creator, reels }: Props) {
       <div className="ex" style={{ minHeight: 0, overflow: 'visible', background: 'none', height: '100%' }}>
         <div className="ex-frame" ref={frame}>
           {open && spec && sz && <div className="ex-slide" data-active="1">
-            {open.thumbUrl && <img className="ex-poster" src={open.thumbUrl} alt="" referrerPolicy="no-referrer" style={{ width: sz.width, height: sz.height, left: sz.left, top: sz.top, inset: 'auto' }} />}
+            {open.thumbUrl && <img className="ex-poster" src={open.thumbUrl} alt="" referrerPolicy="no-referrer" {...(spec.platform === 'youtube' ? { style: { width: sz.width, height: sz.height, left: sz.left, top: sz.top, inset: 'auto' } } : {})} />}
             <iframe ref={player} key={open.id} title="" tabIndex={-1} aria-hidden="true" allow="autoplay; encrypted-media; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin"
               src={spec.platform === 'youtube' ? spec.src(true, location.origin) : spec.src}
-              style={{ width: sz.width, height: sz.height, left: sz.left, top: sz.top, pointerEvents: spec.platform === 'instagram' ? 'auto' : 'none' }} />
+              style={{ width: sz.width, height: sz.height, left: sz.left, top: sz.top, pointerEvents: 'auto' }} />
           </div>}
-          {spec?.platform === 'youtube' && tb && <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'} style={{ left: tb.left, top: tb.top, width: tb.width, height: tb.height }} onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }} />}
-          {paused && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
+          {spec?.platform === 'youtube' && sz && <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'} style={{ left: sz.left, top: sz.top, width: sz.width, height: sz.height, clipPath: tapClipPath(sz.width, sz.height) }} onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }} />}
+          {paused && spec?.platform === 'youtube' && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
         </div>
       </div>
     </dialog>

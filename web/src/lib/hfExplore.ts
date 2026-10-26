@@ -33,43 +33,44 @@ export function playerFor(r: ReelItem): PlayerSpec | null {
   if (e.platform === 'instagram') return { platform: 'instagram', src: e.src };
   const id = /\/embed\/([A-Za-z0-9_-]{6,20})/.exec(e.src)?.[1];
   if (!id) return null;
-  // controls=0 + modestbranding + iv_load_policy=3 + fs=0 hide the player UI; enablejsapi lets our own tap layer play / pause / mute it.
+  // [HF-REEL-OVERLAY-WEB-1] controls=1: a Short then draws its own Shorts UI (sound icon + menu on top, like / share, title + channel); our tap layer covers
+  // all of it except the sound icon. fs=0 hides fullscreen; enablejsapi lets our tap layer play / pause and lets us hear the player's muted state.
   return {
     platform: 'youtube', videoId: id,
-    src: (autoplay, origin) => `https://www.youtube-nocookie.com/embed/${id}?controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&enablejsapi=1&mute=1&loop=1&playlist=${id}&autoplay=${autoplay ? 1 : 0}&origin=${encodeURIComponent(origin)}`,
+    src: (autoplay, origin) => `https://www.youtube-nocookie.com/embed/${id}?controls=1&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&enablejsapi=1&mute=1&loop=1&playlist=${id}&autoplay=${autoplay ? 1 : 0}&origin=${encodeURIComponent(origin)}`,
   };
 }
 
 /** Items the page can actually play. */
 export const playable = (items: ReelItem[]): ReelItem[] => items.filter(i => !!playerFor(i));
 
-/** [HF-REEL-RAW-WEB-1] The platform players are shown as they are: no crop, no zoom. The iframe is fitted INSIDE the frame at its natural
- * shape and centred; the rest of the frame stays black (letterbox). YouTube: a 9:16 box, so a Short fills it and the player draws its own
- * title / channel (top) and logo (bottom). Instagram: the card is taller than 9:16 (header + media up to ~4:5 + footer), so it is fitted by
- * height and capped at Instagram's own maximum embed width. */
+/** [HF-REEL-OVERLAY-WEB-1] YouTube: the player is shown as it is, fitted in a 9:16 box (it draws its own title / channel, like / share, sound icon, menu).
+ * Instagram: the embed is a card (header on top, caption / likes below). Make it wide enough that its media box is as tall as the frame: the reel then fills
+ * the frame, the black side bars fall outside it, the ~58px header is pushed above and the likes / caption below (the white card is hidden). */
 export function sizeFor(frameW: number, frameH: number, platform: 'youtube' | 'instagram'): { width: number; height: number; left: number; top: number } {
-  let w: number;
-  let h: number;
   if (platform === 'instagram') {
-    w = Math.max(120, Math.min(frameW, 540, (frameH - IG_CHROME_PX) / IG_MEDIA_RATIO));
-    h = w * IG_MEDIA_RATIO + IG_CHROME_PX;
-  } else {
-    w = Math.min(frameW, (frameH * 9) / 16);
-    h = (w * 16) / 9;
+    const w = (frameH / 1.215) * 1.04;
+    return { width: w, height: 58 + w * 1.215 + 320, left: (frameW - w) / 2, top: -58 - (w * 1.215 - frameH) / 2 };
   }
+  const w = Math.min(frameW, (frameH * 9) / 16);
+  const h = (w * 16) / 9;
   return { width: w, height: h, left: (frameW - w) / 2, top: (frameH - h) / 2 };
 }
-const IG_MEDIA_RATIO = 1.25; // the media area is at most 4:5
-const IG_CHROME_PX = 250; // measured 2026-10-26: header ~55 + footer (View more, actions, likes, add a comment) ~190
 
-/** YouTube draws a title + channel band on top and its logo at the bottom of the player; taps there must reach YouTube (it opens its own link in a new tab). */
-export const YT_BAND_TOP = 64;
-export const YT_BAND_BOTTOM = 56;
-/** The area our see-through tap layer covers: the player box, minus YouTube's link bands. */
-export function tapBoxFor(box: { width: number; height: number; left: number; top: number }, platform: 'youtube' | 'instagram'): { width: number; height: number; left: number; top: number } {
-  if (platform !== 'youtube') return box;
-  const h = Math.max(0, box.height - YT_BAND_TOP - YT_BAND_BOTTOM);
-  return { width: box.width, height: h, left: box.left, top: box.top + YT_BAND_TOP };
+/** [HF-REEL-OVERLAY-WEB-1] Where YouTube draws its own sound (mute) icon, in the player box's own coordinates (px from its top-left). Our see-through
+ * tap layer covers the whole box EXCEPT this hole, so that icon is clickable while everything else (title, channel, menu, like / share) is not.
+ * Measured 2026-10-26 in Chrome (box 682 px wide, icons ~22 px from the top). YouTube draws TWO layouts: the Shorts one (touch / no mouse activity: speaker
+ * centre 73 px from the right edge, 3-dot menu centre 34 px) and the desktop one once the mouse is over the player (speaker centre 145, CC 96, settings 49).
+ * The hole spans 165..62 px from the right edge: both speakers, never the Shorts 3-dot menu. */
+export const YT_MUTE_HOLE = { fromRight: 165, toRight: 62, top: 2, bottom: 46 };
+export function ytMuteHole(boxW: number, _boxH: number): { left: number; right: number; top: number; bottom: number } {
+  return { left: Math.max(0, boxW - YT_MUTE_HOLE.fromRight), right: Math.max(0, boxW - YT_MUTE_HOLE.toRight), top: YT_MUTE_HOLE.top, bottom: YT_MUTE_HOLE.bottom };
+}
+/** CSS clip-path (px, relative to the tap layer = the player box) that cuts the mute hole out of the tap layer (clipped areas get no clicks). */
+export function tapClipPath(boxW: number, boxH: number): string {
+  const h = ytMuteHole(boxW, boxH);
+  const f = (n: number) => `${Math.round(n * 10) / 10}px`;
+  return `polygon(evenodd, 0 0, ${f(boxW)} 0, ${f(boxW)} ${f(boxH)}, 0 ${f(boxH)}, 0 0, ${f(h.left)} ${f(h.top)}, ${f(h.right)} ${f(h.top)}, ${f(h.right)} ${f(h.bottom)}, ${f(h.left)} ${f(h.bottom)}, ${f(h.left)} ${f(h.top)})`;
 }
 
 export const compactCount = (n: number): string => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '')}K` : String(Math.max(0, Math.trunc(n || 0)));

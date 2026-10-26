@@ -1,14 +1,16 @@
 /* [HF-EXPLORE-PUBLIC-1] Public reels page (/explore and /r/<id>): ONE official embed per screen, wheel / swipe / buttons / arrow keys move between reels.
- * [HF-REEL-RAW-WEB-1] The player is shown as it is (no crop, no zoom): fitted inside the black frame. Our see-through tap layer (tap = play / pause) covers
- * the player except YouTube's title band (top) and logo band (bottom), so those links work (they open in a new tab; this tab stays). The Call / Invite
- * strip sits UNDER the video. Watching and scrolling are free; Like / Comment /
- * Save open the sign-in card when logged out. Telemetry: explore_reel_view, explore_reel_swipe, explore_signin_prompt {action}, explore_call_tap, explore_share. */
+ * [HF-REEL-OVERLAY-WEB-1] Everything sits INSIDE the 9:16 video frame: Call now / Invite bottom-right, the Comments / Save / Like / Share rail above it.
+ * YouTube: the player is shown as it is (its own title, sound icon, menu); our see-through tap layer (tap = play / pause) covers all of it except YouTube's
+ * sound icon, and a frosted patch hides YouTube's own like / share behind our rail. Instagram: the white card is cropped away (the reel fills the frame), the
+ * middle of the video belongs to Instagram's own play / pause, two transparent strips (top / bottom) only carry swipes, and we draw the creator + caption.
+ * Watching and scrolling are free; Like / Comment / Save open the sign-in card when logged out.
+ * Telemetry: explore_reel_view, explore_reel_swipe, explore_signin_prompt {action}, explore_call_tap, explore_share. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClerkIsland, getActiveToken, getActiveTokenWaited, activeSessionSignedOut, ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { hfCall } from '../../lib/hfCallsApi';
 import { capture } from '../../lib/analytics';
 import { brandUrl } from '../../lib/brand';
-import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, tapBoxFor, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
+import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, tapClipPath, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
 
 const YT_ORIGIN = 'https://www.youtube-nocookie.com';
 /** [HF-EXPLORE-SMOOTH-1] What one YouTube player last told us (it only talks after the "listening" handshake). */
@@ -31,11 +33,14 @@ const Icon = {
   heart: (on: boolean) => <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20.5s-7.5-4.6-9.2-9.3C1.6 7.9 3.6 4.5 7 4.5c2 0 3.9 1.1 5 2.9 1.1-1.8 3-2.9 5-2.9 3.4 0 5.4 3.4 4.2 6.7-1.7 4.7-9.2 9.3-9.2 9.3z" /></svg>,
   comment: <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.5L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z" /></svg>,
   save: (on: boolean) => <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z" /></svg>,
-  share: <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z" /></svg>,
+  plane: <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z" /></svg>,
+  thumb: (on: boolean) => <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10.5V21H3.5V10.5zM7 10.5l4-7.2a2 2 0 0 1 2.2 1.9v4.3h5.6a2 2 0 0 1 2 2.4l-1.3 6.8a2 2 0 0 1-2 1.6H7" /></svg>,
+  ytShare: <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4.5 21.5 11 14 17.5v-3.7c-5.2 0-8.4 1.6-10.5 5.2.6-5.8 4-9.7 10.5-10.4z" /></svg>,
+  plus: <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>,
+  igMark: <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="6" /><path d="M10 8.5v7l5.5-3.5z" fill="currentColor" /></svg>,
   phone: <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.3.2 2.5.57 3.6a1 1 0 0 1-.25 1z" /></svg>,
   up: <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m6 15 6-6 6 6" /></svg>,
   down: <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>,
-  mute: (m: boolean) => <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z" fill="currentColor" />{m ? <path d="m16 9 5 6m0-6-5 6" /> : <path d="M16 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11" />}</svg>,
   close: <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>,
 };
 
@@ -49,7 +54,6 @@ function Reels({ initial, nextCursor }: Props) {
   const [idx, setIdx] = useState(0);
   const [muted, setMuted] = useState(true);
   const [paused, setPaused] = useState(false);
-  const [igLive, setIgLive] = useState<Record<string, boolean>>({});
   const [size, setSize] = useState({ w: 360, h: 640 });
   const [signedIn, setSignedIn] = useState(false);
   const [gate, setGate] = useState<GateAction | null>(null);
@@ -179,7 +183,7 @@ function Reels({ initial, nextCursor }: Props) {
           soundOff.current.add(id);
           live.current.muted = true;
           setMuted(true);
-          say('Sound is off. Tap the speaker to turn it on.');
+          say('Sound is off. Tap the speaker on the video to turn it on.');
           capture('explore_reel_sound_blocked', { reel_id: id });
         }
         ytCmd(el, live.current.muted ? 'mute' : 'unMute');
@@ -222,6 +226,13 @@ function Reels({ initial, nextCursor }: Props) {
         s.ready = true;
         if (typeof d.info.playerState === 'number') st = d.info.playerState;
         if (typeof d.info.currentTime === 'number') s.time = d.info.currentTime;
+        // [HF-REEL-OVERLAY-WEB-1] YouTube's own sound icon is the control now: follow it, so the choice carries to the next reels.
+        // Ignore the first moments of a reel (a warmed player still reports the muted state of its warm-up) and anything but live playback.
+        if (typeof d.info.muted === 'boolean' && live.current.items[live.current.idx]?.id === id && s.state === 1
+          && Date.now() - curSince.current > 1200 && d.info.muted !== live.current.muted) {
+          live.current.muted = d.info.muted;
+          setMuted(d.info.muted);
+        }
       }
       if (st != null && st !== s.state) { s.state = st; onState(id); }
       if (d.event === 'onReady') drive();
@@ -291,24 +302,28 @@ function Reels({ initial, nextCursor }: Props) {
       else if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); go(-1, 'key'); }
       else if (e.key === 'Escape') { setGate(null); setPanel(false); }
     };
+    // [HF-REEL-OVERLAY-WEB-1] a click on YouTube's own sound icon puts keyboard focus inside the player iframe, which would swallow the arrow keys:
+    // hand the focus straight back to the page.
+    const unfocus = () => window.setTimeout(() => { const a = document.activeElement; if (a && a.tagName === 'IFRAME') (a as HTMLElement).blur(); }, 0);
     root.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('keydown', key);
-    return () => { root.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); };
+    window.addEventListener('blur', unfocus);
+    return () => { root.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); window.removeEventListener('blur', unfocus); };
   }, [go]);
 
   // ---- swipe up / down anywhere on the page (the black letterbox too), not only on the tap layer ----
-  const onTouchStart = (e: React.TouchEvent) => { touchY.current = (e.target as HTMLElement).closest('.ex-panel, .ex-gate, .ex-rail, .ex-strip, .ex-nav') ? null : (e.touches[0]?.clientY ?? null); };
+  const onTouchStart = (e: React.TouchEvent) => { touchY.current = (e.target as HTMLElement).closest('.ex-panel, .ex-gate, .ex-rail, .ex-call, .ex-nav') ? null : (e.touches[0]?.clientY ?? null); };
   const onTouchEnd = (e: React.TouchEvent) => {
     const y0 = touchY.current; touchY.current = null;
     const y1 = e.changedTouches[0]?.clientY;
     if (y0 != null && y1 != null && Math.abs(y0 - y1) > 48) { e.preventDefault(); go(y0 > y1 ? 1 : -1, 'touch'); }
   };
 
-  // ---- tap layer: play / pause (YouTube); Instagram has no player API, so the first tap hands the embed the next tap ----
+  // ---- tap layer: play / pause (YouTube only; Instagram's middle belongs to Instagram's own player) ----
   const spec = cur ? playerFor(cur) : null;
   const tap = () => {
     if (!cur || !spec) return;
-    if (spec.platform === 'instagram') { setIgLive(m => ({ ...m, [cur.id]: true })); return; }
+    if (spec.platform !== 'youtube') return;
     const el = frames.current[cur.id];
     if (paused) { ytCmd(el, 'playVideo'); setPaused(false); } else { ytCmd(el, 'pauseVideo'); setPaused(true); }
   };
@@ -394,6 +409,11 @@ function Reels({ initial, nextCursor }: Props) {
   const gateCopy = gate ? GATE_COPY[gate] : null;
   const back = `/r/${cur.id}`;
 
+  const isYt = spec?.platform === 'youtube';
+  const isIg = spec?.platform === 'instagram';
+  const ytBox = isYt ? sizeFor(size.w, size.h, 'youtube') : null;
+  const callLabel = cur.kind === 'invite' ? 'Invite' : 'Call now';
+
   return <div className="ex-root" ref={rootRef} data-panel={panel ? '1' : undefined} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
     <div className="ex-stage">
       <div className="ex-wrap">
@@ -405,43 +425,49 @@ function Reels({ initial, nextCursor }: Props) {
             const active = it.id === cur.id;
             const src = p.platform === 'youtube' ? p.src(it.id === items[0]?.id && active, origin) : p.src;
             return <div className="ex-slide" key={it.id} data-active={active ? '1' : undefined}>
-              {it.thumbUrl && p.platform !== 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer"
-                style={{ width: box.width, height: box.height, left: box.left, top: box.top, inset: 'auto' }} />}
+              {it.thumbUrl && p.platform !== 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer" />}
               <iframe
                 ref={el => { frames.current[it.id] = el; }}
                 src={src} title="" loading="eager" tabIndex={-1} aria-hidden="true"
                 allow="autoplay; encrypted-media; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin"
                 onLoad={() => { yt.current[it.id] = { ready: false, state: -1, time: 0, warm: false, seen: false, hello: 0, tries: 0 }; setShown(m => { if (!m[it.id]) return m; const n = { ...m }; delete n[it.id]; return n; }); hello(it.id); drive(); }}
-                style={{ width: box.width, height: box.height, left: box.left, top: box.top, pointerEvents: p.platform === 'instagram' && igLive[it.id] && active ? 'auto' : 'none' }}
+                style={{ width: box.width, height: box.height, left: box.left, top: box.top, pointerEvents: 'auto' }}
               />
               {/* [HF-EXPLORE-SMOOTH-1] YouTube: the poster sits ON TOP until the video really plays (no grey YouTube still) */}
               {it.thumbUrl && p.platform === 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer"
                 style={{ width: box.width, height: box.height, left: box.left, top: box.top, inset: 'auto', zIndex: 1, pointerEvents: 'none', transition: 'opacity .2s', opacity: shown[it.id] ? 0 : 1 }} />}
             </div>;
           })}
-          {spec && !(spec.platform === 'instagram' && igLive[cur.id]) && (() => {
-            const t = tapBoxFor(sizeFor(size.w, size.h, spec.platform), spec.platform);
-            return <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'}
-              style={{ left: t.left, top: t.top, width: t.width, height: t.height }}
-              onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }} />;
-          })()}
-          {spec?.platform === 'instagram' && !igLive[cur.id] && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
-          {paused && spec?.platform === 'youtube' && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
+          {isYt && ytBox && <>
+            {/* the whole player box is ours (tap = play / pause) except the hole over YouTube's own sound icon */}
+            <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'}
+              style={{ left: ytBox.left, top: ytBox.top, width: ytBox.width, height: ytBox.height, clipPath: tapClipPath(ytBox.width, ytBox.height) }}
+              onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }} />
+            {/* frosted patch: YouTube's own like / share are blurred behind our rail */}
+            <div className="ex-frost" aria-hidden="true" style={{ right: Math.max(0, size.w - (ytBox.left + ytBox.width)) }} />
+          </>}
+          {paused && isYt && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
+          {isIg && <>
+            <div className="ex-igshade" aria-hidden="true" />
+            <div className="ex-iglabel" aria-hidden="true">{Icon.igMark}<span>Instagram</span></div>
+            <div className="ex-igmeta" aria-hidden="true">
+              <div className="ex-igwho">
+                <span className="ex-igpic">{who.avatar ? <img src={who.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{who.name.slice(0, 1).toUpperCase()}</span>}</span>
+                <span className="ex-igname">{who.name}</span>
+              </div>
+              {cur.caption && <p className="ex-igcap">{cur.caption}</p>}
+            </div>
+            {/* swipe-only strips: Instagram's own player owns everything between them */}
+            <div className="ex-igstrip" data-pos="top" aria-hidden="true" />
+            <div className="ex-igstrip" data-pos="bottom" aria-hidden="true" />
+          </>}
         </div>
-        {/* [HF-REEL-RAW-WEB-1] Creator + Call / Invite strip UNDER the video (never over it). */}
-        <div className="ex-strip">
-          <a className="ex-who" href={who.href} aria-label={`${who.name}'s page`} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network', via: 'photo' })}>
-            <span className="ex-pic">{who.avatar ? <img src={who.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{who.name.slice(0, 1).toUpperCase()}</span>}</span>
-            <span className="ex-nm">{who.name}</span>
-          </a>
-          <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{Icon.phone}<span>{cur.kind === 'invite' ? 'Invite' : 'Call'}</span></a>
-        </div>
-        <div className="ex-rail">
-          {spec?.platform === 'youtube' && <button type="button" className="ex-act ex-sound" aria-label={muted ? 'Turn sound on' : 'Mute'} onClick={() => setMuted(m => !m)}>{Icon.mute(muted)}<b>{muted ? 'Sound' : 'Mute'}</b></button>}
-          <button type="button" className="ex-act" data-on={isLiked ? '1' : undefined} aria-pressed={isLiked} aria-label="Like" onClick={like}>{Icon.heart(isLiked)}<b>{compactCount(likeN[cur.id] ?? cur.likes)}</b></button>
+        <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{cur.kind === 'invite' ? Icon.plus : Icon.phone}<span>{callLabel}</span></a>
+        <div className="ex-rail" data-platform={spec?.platform}>
           <button type="button" className="ex-act" aria-label="Comments" onClick={openComments}>{Icon.comment}<b>{compactCount(commentN[cur.id] ?? cur.comments)}</b></button>
           <button type="button" className="ex-act" data-on={saved[cur.id] ? '1' : undefined} aria-pressed={saved[cur.id] === true} aria-label="Save" onClick={save}>{Icon.save(saved[cur.id] === true)}<b>Save</b></button>
-          <button type="button" className="ex-act" aria-label="Share" onClick={share}>{Icon.share}<b>Share</b></button>
+          <button type="button" className="ex-act" data-on={isLiked ? '1' : undefined} aria-pressed={isLiked} aria-label="Like" onClick={like}>{isYt ? Icon.thumb(isLiked) : Icon.heart(isLiked)}<b>{compactCount(likeN[cur.id] ?? cur.likes)}</b></button>
+          <button type="button" className="ex-act" aria-label="Share" onClick={share}>{isYt ? Icon.ytShare : Icon.plane}<b>Share</b></button>
         </div>
       </div>
       <div className="ex-nav">
