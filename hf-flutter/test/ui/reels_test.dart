@@ -147,7 +147,7 @@ void main() {
       final html = ReelPlayer.youtubeHtml('https://www.youtube.com/embed/abc12345')!;
       expect(html, contains('new YT.Player'));
       expect(html, contains('videoId:"abc12345"'));
-      expect(html, contains('controls:0'));
+      expect(html, contains('controls:1')); // [HF-REEL-OVERLAY-APP-1] YouTube's own sound icon must show
       expect(html, contains('origin:"https://${Brand.domain}"'));
       expect(html, contains('window.hfToggle'));
       expect(html, contains('error:'));
@@ -251,7 +251,7 @@ void main() {
 
       const player = Rect.fromLTWH(0, 0, 400, 800);
       final tiles = ReelPlayer.youtubeTapTiles(player);
-      final hole = Rect.fromLTRB(300, 4, 348, 60);
+      final hole = Rect.fromLTRB(235, 2, 338, 46);
       // nothing covers the hole, nothing overlaps, and together the tiles are the player minus the hole
       for (final t in tiles) {
         expect(t.overlaps(hole), isFalse);
@@ -264,9 +264,9 @@ void main() {
       }
       expect(tiles.fold<double>(0, (a, t) => a + t.width * t.height), closeTo(400 * 800 - hole.width * hole.height, 0.01));
       // the menu (about 34 px from the right edge) and the title area are covered
-      expect(tiles.any((t) => t.contains(const Offset(366, 30))), isTrue);
+      expect(tiles.any((t) => t.contains(const Offset(366, 22))), isTrue);
       expect(tiles.any((t) => t.contains(const Offset(60, 30))), isTrue);
-      expect(tiles.any((t) => t.contains(const Offset(324, 30))), isFalse);
+      expect(tiles.any((t) => t.contains(const Offset(290, 30))), isFalse);
       // a box too small to hold the hole is one tile
       expect(ReelPlayer.youtubeTapTiles(const Rect.fromLTWH(0, 0, 40, 40)), [const Rect.fromLTWH(0, 0, 40, 40)]);
     });

@@ -212,7 +212,7 @@ void main() {
     await tester.pump();
     expect(js.where((s) => s.contains('hfToggle')), isEmpty);
     // the menu, further right, and the title area stay covered: a tap there is play / pause
-    await tester.tapAt(Offset(player.right - 34, player.top + 32));
+    await tester.tapAt(Offset(player.right - 34, player.top + 22));
     await tester.pump();
     expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
     await tester.tapAt(Offset(player.left + 40, player.bottom - 40));

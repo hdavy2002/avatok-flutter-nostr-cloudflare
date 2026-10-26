@@ -1117,7 +1117,10 @@ class _ReelPageState extends State<ReelPage>
     Key? key,
     required String text,
     bool count = false,
-  }) => Padding(
+  }) {
+    final k = key;
+    final Key? countKey = (count && k is ValueKey) ? ValueKey('${k.value}-count') : null;
+    return Padding(
     key: key,
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Column(
@@ -1138,7 +1141,7 @@ class _ReelPageState extends State<ReelPage>
         const SizedBox(height: 2),
         Text(
           text,
-          key: count && key is ValueKey ? ValueKey('${key.value}-count') : null,
+          key: countKey,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
@@ -1146,7 +1149,8 @@ class _ReelPageState extends State<ReelPage>
         ),
       ],
     ),
-  );
+    );
+  }
 
   /// [HF-REEL-RAW-APP-1] A YouTube / Instagram link tapped inside the player opens in the app, with our Call / Invite
   /// bar under it; the reel is paused while it is open.

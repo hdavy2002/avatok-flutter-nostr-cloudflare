@@ -285,11 +285,12 @@ class ReelPlayer extends StatefulWidget {
   }
 
   /// [HF-REEL-OVERLAY-APP-1] The tiles of our transparent tap layer over a YouTube player at [box]: the whole box EXCEPT a
-  /// hole over YouTube's own mute icon (top right: from 100 to 52 px left of the right edge, 4 to 60 px down), so the
+  /// hole over YouTube's own sound icon (top right: from 165 to 62 px left of the right edge, 2 to 46 px down; covers both the Shorts
+  /// layout, icon about 73 px from the right, and the desktop layout, about 145 px), so the
   /// viewer uses YouTube's sound button. The menu further right stays covered. Tiles do not overlap; empty ones are left out.
   @visibleForTesting
   static List<Rect> youtubeTapTiles(Rect box) {
-    final hole = Rect.fromLTRB(box.right - 100, box.top + 4, box.right - 52, box.top + 60).intersect(box);
+    final hole = Rect.fromLTRB(box.right - 165, box.top + 2, box.right - 62, box.top + 46).intersect(box);
     if (hole.isEmpty) return [box];
     final tiles = <Rect>[
       Rect.fromLTRB(box.left, box.top, box.right, hole.top),
@@ -377,7 +378,7 @@ class ReelPlayer extends StatefulWidget {
         'window.hfMute=function(m){MUTED=!!m;if(ready)mute()};'
         'window.hfRestart=function(){want=true;if(!ready)return;try{if(pl.getCurrentTime()>1)pl.seekTo(0,true)}catch(e){}apply()};'
         'function onYouTubeIframeAPIReady(){pl=new YT.Player("p",{videoId:"$id",width:"100%",height:"100%",host:"https://www.youtube.com",'
-        'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
+        'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:1,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
         'events:{onReady:function(){ready=true;mute();rect();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
         'onStateChange:function(e){if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
@@ -865,15 +866,15 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           ),
         // Instagram's own play control is hidden, so this is the ONE paused symbol the viewer sees (YouTube draws its own).
         if (_isIg && _engine && _fg && !_isPlaying)
-          const Positioned.fill(
+          Positioned.fill(
             child: IgnorePointer(
               child: Center(
                 child: Icon(
-                  key: ValueKey('reel-glyph'),
                   Icons.play_arrow_rounded,
+                  key: const ValueKey('reel-glyph'),
                   size: 84,
                   color: C.white,
-                  shadows: [Shadow(color: C.cinema, blurRadius: 12)],
+                  shadows: [Shadow(color: C.cinema.withValues(alpha: 0.9), blurRadius: 12)],
                 ),
               ),
             ),
