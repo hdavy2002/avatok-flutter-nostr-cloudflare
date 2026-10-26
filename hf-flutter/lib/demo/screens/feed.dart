@@ -1019,7 +1019,7 @@ class _ReelPageState extends State<ReelPage>
         Expanded(child: _identity(context, who)),
         const SizedBox(width: 10),
         if (invite != null)
-          SizedBox(width: 190, child: InviteButton(creator: invite, repo: widget.searchRepo))
+          SizedBox(width: 200, child: InviteButton(creator: invite, repo: widget.searchRepo, compact: true))
         else
           _callPill('Call ${_callName(who)}', () {
             Telemetry.event('hf_reel_action', {'action': 'call_bar'});
@@ -1204,10 +1204,13 @@ class InviteVotes {
 
 /// [HF-WIRE-22] HF-REEL-40: the INVITE button of an invite reel. One tap = one vote (HF-REEL-9), needs an account, then reads VOTED.
 class InviteButton extends StatefulWidget {
-  const InviteButton({required this.creator, this.repo});
+  const InviteButton({required this.creator, this.repo, this.compact = false});
 
   final InviteCreator creator;
   final SearchRepo? repo;
+
+  /// [HF-REEL-RAW-APP-1] Smaller label and padding so it fits the strip under a reel on a phone.
+  final bool compact;
 
   @override
   State<InviteButton> createState() => InviteButtonState();
@@ -1252,6 +1255,7 @@ class InviteButtonState extends State<InviteButton> {
           backgroundColor: voted ? C.sand : C.marigold,
           foregroundColor: C.deep,
           shape: const StadiumBorder(),
+          padding: widget.compact ? const EdgeInsets.symmetric(horizontal: 12) : null,
         ),
         onPressed: voted || _busy
             ? null
@@ -1262,7 +1266,8 @@ class InviteButtonState extends State<InviteButton> {
               ),
         child: Text(
           voted ? 'VOTED' : 'VOTE TO INVITE', // [HF-REEL-CALL-2]
-          style: t(18, color: C.deep, ls: 0.06),
+          maxLines: 1,
+          style: t(widget.compact ? 15 : 18, color: C.deep, ls: 0.06),
         ),
       ),
     );
