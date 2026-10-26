@@ -1,13 +1,14 @@
-/* [HF-EXPLORE-PUBLIC-1] Public reels page (/explore and /r/<id>): ONE 9:16 official embed per screen, wheel / swipe / buttons / arrow keys move between reels.
- * The platform player's own chrome is hidden: the iframe is scaled so its controls and title fall outside the frame, pointer-events:none keeps every
- * tap on OUR layer (tap = play / pause) and we never link out to YouTube / Instagram (HF-WEB-NOOUT-1). Watching and scrolling are free; Like / Comment /
+/* [HF-EXPLORE-PUBLIC-1] Public reels page (/explore and /r/<id>): ONE official embed per screen, wheel / swipe / buttons / arrow keys move between reels.
+ * [HF-REEL-RAW-WEB-1] The player is shown as it is (no crop, no zoom): fitted inside the black frame. Our see-through tap layer (tap = play / pause) covers
+ * the player except YouTube's title band (top) and logo band (bottom), so those links work (they open in a new tab; this tab stays). The Call / Invite
+ * strip sits UNDER the video. Watching and scrolling are free; Like / Comment /
  * Save open the sign-in card when logged out. Telemetry: explore_reel_view, explore_reel_swipe, explore_signin_prompt {action}, explore_call_tap, explore_share. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClerkIsland, getActiveToken, getActiveTokenWaited, activeSessionSignedOut, ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { hfCall } from '../../lib/hfCallsApi';
 import { capture } from '../../lib/analytics';
 import { brandUrl } from '../../lib/brand';
-import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
+import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, tapBoxFor, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
 
 const YT_ORIGIN = 'https://www.youtube-nocookie.com';
 /** [HF-EXPLORE-SMOOTH-1] What one YouTube player last told us (it only talks after the "listening" handshake). */
@@ -96,7 +97,7 @@ function Reels({ initial, nextCursor }: Props) {
     return () => { alive = false; window.removeEventListener(ACTIVE_SESSION_CHANGED, check); };
   }, []);
 
-  // ---- frame size (the iframe is cropped against it) ----
+  // ---- frame size (the iframe is fitted inside it) ----
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -295,6 +296,14 @@ function Reels({ initial, nextCursor }: Props) {
     return () => { root.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); };
   }, [go]);
 
+  // ---- swipe up / down anywhere on the page (the black letterbox too), not only on the tap layer ----
+  const onTouchStart = (e: React.TouchEvent) => { touchY.current = (e.target as HTMLElement).closest('.ex-panel, .ex-gate, .ex-rail, .ex-strip, .ex-nav') ? null : (e.touches[0]?.clientY ?? null); };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const y0 = touchY.current; touchY.current = null;
+    const y1 = e.changedTouches[0]?.clientY;
+    if (y0 != null && y1 != null && Math.abs(y0 - y1) > 48) { e.preventDefault(); go(y0 > y1 ? 1 : -1, 'touch'); }
+  };
+
   // ---- tap layer: play / pause (YouTube); Instagram has no player API, so the first tap hands the embed the next tap ----
   const spec = cur ? playerFor(cur) : null;
   const tap = () => {
@@ -385,7 +394,7 @@ function Reels({ initial, nextCursor }: Props) {
   const gateCopy = gate ? GATE_COPY[gate] : null;
   const back = `/r/${cur.id}`;
 
-  return <div className="ex-root" ref={rootRef} data-panel={panel ? '1' : undefined}>
+  return <div className="ex-root" ref={rootRef} data-panel={panel ? '1' : undefined} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
     <div className="ex-stage">
       <div className="ex-wrap">
         <div className="ex-frame" ref={frameRef}>
@@ -396,7 +405,8 @@ function Reels({ initial, nextCursor }: Props) {
             const active = it.id === cur.id;
             const src = p.platform === 'youtube' ? p.src(it.id === items[0]?.id && active, origin) : p.src;
             return <div className="ex-slide" key={it.id} data-active={active ? '1' : undefined}>
-              {it.thumbUrl && p.platform !== 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer" />}
+              {it.thumbUrl && p.platform !== 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer"
+                style={{ width: box.width, height: box.height, left: box.left, top: box.top, inset: 'auto' }} />}
               <iframe
                 ref={el => { frames.current[it.id] = el; }}
                 src={src} title="" loading="eager" tabIndex={-1} aria-hidden="true"
@@ -406,31 +416,32 @@ function Reels({ initial, nextCursor }: Props) {
               />
               {/* [HF-EXPLORE-SMOOTH-1] YouTube: the poster sits ON TOP until the video really plays (no grey YouTube still) */}
               {it.thumbUrl && p.platform === 'youtube' && <img className="ex-poster" src={it.thumbUrl} alt="" referrerPolicy="no-referrer"
-                style={{ zIndex: 1, pointerEvents: 'none', transition: 'opacity .2s', opacity: shown[it.id] ? 0 : 1 }} />}
+                style={{ width: box.width, height: box.height, left: box.left, top: box.top, inset: 'auto', zIndex: 1, pointerEvents: 'none', transition: 'opacity .2s', opacity: shown[it.id] ? 0 : 1 }} />}
             </div>;
           })}
-          {spec && !(spec.platform === 'instagram' && igLive[cur.id]) &&
-            <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'}
-              onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }}
-              onTouchStart={e => { touchY.current = e.touches[0]?.clientY ?? null; }}
-              onTouchEnd={e => {
-                const y0 = touchY.current; touchY.current = null;
-                const y1 = e.changedTouches[0]?.clientY;
-                if (y0 != null && y1 != null && Math.abs(y0 - y1) > 48) { e.preventDefault(); go(y0 > y1 ? 1 : -1, 'touch'); }
-              }} />}
+          {spec && !(spec.platform === 'instagram' && igLive[cur.id]) && (() => {
+            const t = tapBoxFor(sizeFor(size.w, size.h, spec.platform), spec.platform);
+            return <div className="ex-tap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'}
+              style={{ left: t.left, top: t.top, width: t.width, height: t.height }}
+              onClick={tap} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tap(); } }} />;
+          })()}
           {spec?.platform === 'instagram' && !igLive[cur.id] && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
           {paused && spec?.platform === 'youtube' && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
-          {spec?.platform === 'youtube' && <button type="button" className="ex-mute" aria-label={muted ? 'Turn sound on' : 'Mute'} onClick={() => setMuted(m => !m)}>{Icon.mute(muted)}</button>}
-          <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{Icon.phone}<span>Call {who.name}</span></a>
+        </div>
+        {/* [HF-REEL-RAW-WEB-1] Creator + Call / Invite strip UNDER the video (never over it). */}
+        <div className="ex-strip">
+          <a className="ex-who" href={who.href} aria-label={`${who.name}'s page`} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network', via: 'photo' })}>
+            <span className="ex-pic">{who.avatar ? <img src={who.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{who.name.slice(0, 1).toUpperCase()}</span>}</span>
+            <span className="ex-nm">{who.name}</span>
+          </a>
+          <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{Icon.phone}<span>{cur.kind === 'invite' ? 'Invite' : 'Call'}</span></a>
         </div>
         <div className="ex-rail">
+          {spec?.platform === 'youtube' && <button type="button" className="ex-act ex-sound" aria-label={muted ? 'Turn sound on' : 'Mute'} onClick={() => setMuted(m => !m)}>{Icon.mute(muted)}<b>{muted ? 'Sound' : 'Mute'}</b></button>}
           <button type="button" className="ex-act" data-on={isLiked ? '1' : undefined} aria-pressed={isLiked} aria-label="Like" onClick={like}>{Icon.heart(isLiked)}<b>{compactCount(likeN[cur.id] ?? cur.likes)}</b></button>
           <button type="button" className="ex-act" aria-label="Comments" onClick={openComments}>{Icon.comment}<b>{compactCount(commentN[cur.id] ?? cur.comments)}</b></button>
           <button type="button" className="ex-act" data-on={saved[cur.id] ? '1' : undefined} aria-pressed={saved[cur.id] === true} aria-label="Save" onClick={save}>{Icon.save(saved[cur.id] === true)}<b>Save</b></button>
           <button type="button" className="ex-act" aria-label="Share" onClick={share}>{Icon.share}<b>Share</b></button>
-          <a className="ex-avatar" href={who.href} aria-label={`${who.name}'s profile`} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network', via: 'photo' })}>
-            {who.avatar ? <img src={who.avatar} alt="" referrerPolicy="no-referrer" /> : <span>{who.name.slice(0, 1).toUpperCase()}</span>}
-          </a>
         </div>
       </div>
       <div className="ex-nav">

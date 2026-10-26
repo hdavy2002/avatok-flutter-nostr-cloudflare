@@ -26,7 +26,7 @@ export type PlayerSpec =
   | { platform: 'youtube'; videoId: string; src: (autoplay: boolean, origin: string) => string }
   | { platform: 'instagram'; src: string };
 
-/** The cropped, chrome-free official player for a reel, or null when it has no embeddable player (then the item is skipped). */
+/** The official player for a reel, or null when it has no embeddable player (then the item is skipped). */
 export function playerFor(r: ReelItem): PlayerSpec | null {
   const e = embedFor(toChannelReel(r), false);
   if (!e) return null;
@@ -43,19 +43,33 @@ export function playerFor(r: ReelItem): PlayerSpec | null {
 /** Items the page can actually play. */
 export const playable = (items: ReelItem[]): ReelItem[] => items.filter(i => !!playerFor(i));
 
+/** [HF-REEL-RAW-WEB-1] The platform players are shown as they are: no crop, no zoom. The iframe is fitted INSIDE the frame at its natural
+ * shape and centred; the rest of the frame stays black (letterbox). YouTube: a 9:16 box, so a Short fills it and the player draws its own
+ * title / channel (top) and logo (bottom). Instagram: the card is taller than 9:16 (header + media up to ~4:5 + footer), so it is fitted by
+ * height and capped at Instagram's own maximum embed width. */
 export function sizeFor(frameW: number, frameH: number, platform: 'youtube' | 'instagram'): { width: number; height: number; left: number; top: number } {
+  let w: number;
+  let h: number;
   if (platform === 'instagram') {
-    // The Instagram embed is a card: header bar on top, caption bar below the video. Make it as wide as the frame, then push the header out of view and let the caption fall off the bottom.
-    // [HF-EXPLORE-PUBLIC-1] The embed's media box is ~1.215x its width tall (Instagram caps it near 4:5) and a 9:16 reel sits
-    // pillar-boxed in it. Make the iframe wide enough that the media box is as tall as the frame: the reel then fills the
-    // frame exactly, the black side bars fall outside it, the ~58px header is pushed above and the likes/caption below.
-    const w = (frameH / 1.215) * 1.04;
-    return { width: w, height: 58 + w * 1.215 + 320, left: (frameW - w) / 2, top: -58 - (w * 1.215 - frameH) / 2 };
+    w = Math.max(120, Math.min(frameW, 540, (frameH - IG_CHROME_PX) / IG_MEDIA_RATIO));
+    h = w * IG_MEDIA_RATIO + IG_CHROME_PX;
+  } else {
+    w = Math.min(frameW, (frameH * 9) / 16);
+    h = (w * 16) / 9;
   }
-  // YouTube: a 16:9 box; a 9:16 Short sits pillar-boxed inside it. Scale until the video covers the frame, plus 18% so the title strip is cropped away.
-  const boxH = Math.max(frameH, frameW * 16 / 9) * 1.18;
-  const boxW = boxH * 16 / 9;
-  return { width: boxW, height: boxH, left: (frameW - boxW) / 2, top: (frameH - boxH) / 2 };
+  return { width: w, height: h, left: (frameW - w) / 2, top: (frameH - h) / 2 };
+}
+const IG_MEDIA_RATIO = 1.25; // the media area is at most 4:5
+const IG_CHROME_PX = 170; // header ~58 + footer / caption strip
+
+/** YouTube draws a title + channel band on top and its logo at the bottom of the player; taps there must reach YouTube (it opens its own link in a new tab). */
+export const YT_BAND_TOP = 64;
+export const YT_BAND_BOTTOM = 56;
+/** The area our see-through tap layer covers: the player box, minus YouTube's link bands. */
+export function tapBoxFor(box: { width: number; height: number; left: number; top: number }, platform: 'youtube' | 'instagram'): { width: number; height: number; left: number; top: number } {
+  if (platform !== 'youtube') return box;
+  const h = Math.max(0, box.height - YT_BAND_TOP - YT_BAND_BOTTOM);
+  return { width: box.width, height: h, left: box.left, top: box.top + YT_BAND_TOP };
 }
 
 export const compactCount = (n: number): string => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '')}K` : String(Math.max(0, Math.trunc(n || 0)));
