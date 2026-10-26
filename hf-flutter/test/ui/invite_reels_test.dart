@@ -130,14 +130,15 @@ void main() {
   });
 
   group('feed with invite reels', () {
-    testWidgets('[HF-REEL-CALL-2] a feed with only invite reels is not empty: just Call <name>, no invite text, no information button', (tester) async {
+    testWidgets('[HF-REEL-CALL-2] a feed with only invite reels is not empty: the strip under the video has VOTE TO INVITE, no Call bar, no information button', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
       expect(find.text(kFeedEmptyText), findsNothing);
       expect(find.byKey(const ValueKey('player-hfiv_1')), findsOneWidget);
-      expect(find.text('Call New Star'), findsOneWidget);
+      expect(find.text('New Star'), findsWidgets);
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsNothing);
       expect(find.text('INVITE'), findsNothing);
-      expect(find.text('VOTE TO INVITE'), findsNothing);
+      expect(find.text('VOTE TO INVITE'), findsOneWidget); // [HF-REEL-RAW-APP-1]
       expect(find.text('CALL NOW'), findsNothing);
       expect(find.text('Not on ${Brand.name} yet'), findsNothing);
       expect(find.text('Invite caption hfiv_1'), findsNothing);

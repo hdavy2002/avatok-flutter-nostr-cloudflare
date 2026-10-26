@@ -200,4 +200,39 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     },
   );
+
+  // [HF-REEL-RAW-APP-1]
+  testWidgets('the tap layer covers the middle until the page says where the video is, then only the video (YouTube: minus the bands)', (tester) async {
+    await pumpPlayer(tester, _reel('y', platform: 'youtube'));
+    final player = tester.getRect(find.byType(ReelPlayer));
+    var tap = tester.getRect(find.byKey(const ValueKey('reel-tap')));
+    expect(tap.height, closeTo(player.height * 0.7, 0.5));
+    expect(tap.top, closeTo(player.top + player.height * 0.15, 0.5));
+    msgs.add('rect:0,0,${player.width},${player.height},${player.width},${player.height}');
+    await tester.pump();
+    tap = tester.getRect(find.byKey(const ValueKey('reel-tap')));
+    expect(tap.top, closeTo(player.top + ReelPlayer.youtubeBandTop, 0.5));
+    expect(tap.bottom, closeTo(player.bottom - ReelPlayer.youtubeBandBottom, 0.5));
+    expect(tap.left, closeTo(player.left, 0.5));
+    expect(tap.right, closeTo(player.right, 0.5));
+    // a tap in the top band is not ours: it would reach YouTube's title bar underneath
+    await tester.tapAt(Offset(player.center.dx, player.top + 20));
+    await tester.pump();
+    expect(js.where((s) => s.contains('hfToggle')), isEmpty);
+    await tester.tap(find.byKey(const ValueKey('reel-tap')));
+    await tester.pump();
+    expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
+  });
+
+  testWidgets('Instagram: the tap layer is exactly the video rectangle', (tester) async {
+    await pumpPlayer(tester, _reel('i'));
+    final player = tester.getRect(find.byType(ReelPlayer));
+    msgs.add('rect:10,100,200,300,${player.width},${player.height}');
+    await tester.pump();
+    final tap = tester.getRect(find.byKey(const ValueKey('reel-tap')));
+    expect(tap.left, closeTo(player.left + 10, 0.5));
+    expect(tap.top, closeTo(player.top + 100, 0.5));
+    expect(tap.width, closeTo(200, 0.5));
+    expect(tap.height, closeTo(300, 0.5));
+  });
 }

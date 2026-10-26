@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +27,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'creator_page.dart';
+import 'original_post_page.dart'; // [HF-REEL-RAW-APP-1]
 import 'reel_comments_sheet.dart';
 
 /// Reels feed: full-screen cards, swipe up/down. Presence controls instant calls; offline creators can still be booked.
@@ -706,16 +706,27 @@ class _ReelPageState extends State<ReelPage>
         // [HF-REEL-ENGAGE-APP-1] On a short screen the "Reel information" button leaves the column (it moves to the bottom-left)
         // so nothing has to shrink: text never renders under 14 sp.
         return LayoutBuilder(builder: (context, box) {
-        return Stack(
+        // [HF-REEL-RAW-APP-1] The side buttons stay clear of the platform's own controls: above YouTube's logo / Instagram's
+        // footer at the bottom, and on a wide screen beside the video instead of over it.
+        final railBottom = widget.real != null && ReelPlayer.isInstagram(widget.real!) ? 80.0 : 56.0;
+        final railInset = widget.real != null && box.maxWidth >= 600 ? 72.0 : 0.0;
+        // The video area ends above the creator strip (photo, name, Call / Invite): nothing of ours sits over the video's
+        // own header and footer.
+        return Column(children: [
+        Expanded(child: Stack(
           fit: StackFit.expand,
           children: [
             // the video: the real player, or the stand-in with a slow zoom
             if (widget.real != null)
-              ReelPlayer(
-                reel: widget.real!,
-                active: widget.active && !_covered,
-                preload: widget.preload,
-                onUnplayable: widget.onUnplayable,
+              Padding(
+                padding: EdgeInsets.only(right: railInset),
+                child: ReelPlayer(
+                  reel: widget.real!,
+                  active: widget.active && !_covered,
+                  preload: widget.preload,
+                  onUnplayable: widget.onUnplayable,
+                  onOpenLink: _openLinkInApp,
+                ),
               )
             else
               AnimatedBuilder(
@@ -822,17 +833,9 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
-            // [HF-REEL-CALLBAR-1] owner: a wide "Call influencer" button just above the tab bar, on every screen size, with
-            // a softly blurred strip behind it (it also covers any channel name / caption YouTube shows at the bottom).
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _callBar(context, r), // [HF-REEL-CALL-2] only "Call <name>", for every reel
-            ),
             Positioned(
               right: 8,
-              bottom: ReelPage.callBarHeight + 8,
+              bottom: railBottom,
               top: MediaQuery.paddingOf(context).top + 8,
               child: Align(
                alignment: Alignment.bottomRight,
@@ -875,7 +878,6 @@ class _ReelPageState extends State<ReelPage>
                         ? toast(context, 'Share link copied (demo)')
                         : _share(context, widget.real!),
                   ),
-                  _photo(context, who), // [HF-REEL-CALL-2] the influencer's round photo, directly under Share
                   _action(
                     'More',
                     Icons.more_horiz_rounded,
@@ -918,7 +920,9 @@ class _ReelPageState extends State<ReelPage>
               ),
             ),
           ],
-        );
+        )),
+        _stripBar(context, r, inviteOf),
+        ]);
         });
       },
     );
@@ -947,68 +951,108 @@ class _ReelPageState extends State<ReelPage>
     _openChannel(context);
   }
 
-  /// [HF-REEL-CALL-2] The round photo under Share: a marigold ring, 50 px, opens the profile.
-  Widget _photo(BuildContext context, Influencer who) => Padding(
-        padding: const EdgeInsets.only(top: 6, bottom: 3),
-        child: Tooltip(
-          message: 'View ${_callName(who)}\'s profile',
-          child: GestureDetector(
-            key: const ValueKey('reel-photo'),
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _openProfile(context, 'rail'),
-            child: Container(
-              width: 50,
-              height: 50,
+  /// [HF-REEL-RAW-APP-1] The creator's round photo and name; a tap opens our profile for them.
+  Widget _identity(BuildContext context, Influencer who) => Tooltip(
+        message: 'View ${_callName(who)}\'s profile',
+        child: GestureDetector(
+          key: const ValueKey('reel-photo'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openProfile(context, 'strip'),
+          child: Row(children: [
+            Container(
+              width: 46,
+              height: 46,
               padding: const EdgeInsets.all(2.5),
               decoration: const BoxDecoration(shape: BoxShape.circle, color: C.marigold),
-              child: ClipOval(child: Avatar(who, size: 45, ring: false)),
+              child: ClipOval(child: Avatar(who, size: 41, ring: false)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _callName(who),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t(16, color: C.ivory, w: FontWeight.w800),
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  /// [HF-REEL-RAW-APP-1] The red Call button (56 px tall). [label] is what a screen reader says, [text] what it shows.
+  Widget _callPill(String label, VoidCallback onTap, {Key key = const ValueKey('reel-call-bar'), String text = 'Call', double? width}) => Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: C.rani,
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(999),
+            onTap: onTap,
+            child: SizedBox(
+              height: 56,
+              width: width,
+              child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                const SizedBox(width: 22),
+                const Icon(Icons.call_rounded, color: C.white, size: 22),
+                const SizedBox(width: 10),
+                Text(text, maxLines: 1, style: t(17, color: C.white, w: FontWeight.w900)),
+                const SizedBox(width: 22),
+              ]),
             ),
           ),
         ),
       );
 
-  /// [HF-REEL-CALLBAR-1] The call button under the video. [HF-REEL-CALL-2] Owner 2026-10-25: it says "Call <name>" on every
-  /// reel (network or not) and opens that creator's profile, where Call / Book (or the vote) live. Nothing else sits
-  /// above it: no name, handle, caption or "not on the app" line.
-  Widget _callBar(BuildContext context, Reel r) {
-    final label = 'Call ${_callName(r.who)}';
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          height: ReelPage.callBarHeight,
-          color: C.cinema.withValues(alpha: 0.35),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          alignment: Alignment.center,
-          child: Semantics(
-            button: true,
-            label: label,
-            child: Material(
-              color: C.rani,
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                key: const ValueKey('reel-call-bar'),
-                borderRadius: BorderRadius.circular(999),
-                onTap: () {
-                  Telemetry.event('hf_reel_action', {'action': 'call_bar'});
-                  _openProfile(context, 'callbar');
+  /// [HF-REEL-RAW-APP-1] The strip UNDER the video (owner 2026-10-26): photo and name (tap = our profile) and the Call
+  /// button, or VOTE TO INVITE for a creator who is not on the app. It never sits over the video, so it cannot hide the
+  /// platform's own title, logo or footer. [HF-REEL-CALL-2] Call opens the creator's profile, where Call / Book live.
+  Widget _stripBar(BuildContext context, Reel r, InviteCreator? invite) {
+    final who = r.who;
+    return Container(
+      key: const ValueKey('reel-strip'),
+      height: ReelPage.callBarHeight,
+      color: C.cinema,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(children: [
+        Expanded(child: _identity(context, who)),
+        const SizedBox(width: 10),
+        if (invite != null)
+          SizedBox(width: 190, child: InviteButton(creator: invite, repo: widget.searchRepo))
+        else
+          _callPill('Call ${_callName(who)}', () {
+            Telemetry.event('hf_reel_action', {'action': 'call_bar'});
+            _openProfile(context, 'callbar');
+          }),
+      ]),
+    );
+  }
+
+  /// [HF-REEL-RAW-APP-1] A YouTube / Instagram link tapped inside the player opens in the app, with our Call / Invite
+  /// bar under it; the reel is paused while it is open.
+  Future<void> _openLinkInApp(Uri url) =>
+      _whileCovered(() => OriginalPostPage.open(context, url, bottom: _linkBar()));
+
+  Widget _linkBar() {
+    final invite = widget.real?.invite;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: invite != null
+          ? InviteButton(creator: invite, repo: widget.searchRepo)
+          : Builder(
+              builder: (bar) => _callPill(
+                'Call ${_callName(widget.reel.who)}',
+                () {
+                  Telemetry.event('hf_reel_action', {'action': 'link_call'});
+                  Navigator.of(bar).maybePop();
+                  _openProfile(context, 'linkbar');
                 },
-                child: SizedBox(
-                  height: 52,
-                  width: double.infinity,
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.call_rounded, color: C.white, size: 22),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17, color: C.white, w: FontWeight.w900)),
-                    ),
-                  ]),
-                ),
+                key: const ValueKey('reel-link-call'),
+                text: 'Call ${_callName(widget.reel.who)}',
+                width: double.infinity,
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 

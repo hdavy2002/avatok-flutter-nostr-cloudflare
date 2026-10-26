@@ -113,13 +113,13 @@ void main() {
       Telemetry.sink = (e, props) => events.add('$e ${props['source']} ${props['kind']}');
       addTearDown(() => Telemetry.sink = old);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: search, onlineFetch: () async => 0), searchRepo: search);
-      await tester.tap(find.byKey(const ValueKey('reel-photo')).first); // [HF-REEL-CALL-2] the photo under Share
+      await tester.tap(find.byKey(const ValueKey('reel-photo')).first); // [HF-REEL-RAW-APP-1] the photo in the strip under the video
       await tester.pump();
       await tester.pump();
       // The feed stays underneath the pushed page, so look inside the page only.
       Finder inPage(Finder f) => find.descendant(of: find.byKey(const ValueKey('invite-profile')), matching: f);
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
-      expect(events, contains('reel_profile_tap rail invite'));
+      expect(events, contains('reel_profile_tap strip invite'));
       expect(find.textContaining('PROFILE'), findsNothing);
       expect(inPage(find.text('New Star')), findsOneWidget);
       expect(inPage(find.textContaining('@newstar')), findsWidgets);
@@ -141,23 +141,24 @@ void main() {
       expect(inPage(find.text('VOTED')), findsOneWidget);
     });
 
-    testWidgets('[HF-REEL-CALL-2] the Call bar of an invite reel says Call <name> and opens the same page; no Invite text on the reel', (tester) async {
+    testWidgets('[HF-REEL-RAW-APP-1] an invite reel has VOTE TO INVITE in the strip under the video (no Call bar); the name opens the same page', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       final events = <String>[];
       final old = Telemetry.sink;
       Telemetry.sink = (e, props) => events.add('$e ${props['source']} ${props['kind']}');
       addTearDown(() => Telemetry.sink = old);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      expect(find.text('Call New Star'), findsOneWidget);
-      expect(find.textContaining('INVITE'), findsNothing);
+      expect(find.byKey(const ValueKey('reel-strip')), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsNothing);
+      expect(find.descendant(of: find.byKey(const ValueKey('reel-strip')), matching: find.byKey(const ValueKey('invite-button'))), findsOneWidget);
       expect(find.textContaining('Not on ${Brand.name}'), findsNothing);
-      expect(find.text('Invite caption hfiv_1'), findsNothing); // no caption over the bar
+      expect(find.text('Invite caption hfiv_1'), findsNothing); // no caption over the video
       expect(find.byTooltip('Reel information'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('reel-call-bar')));
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('reel-strip')), matching: find.text('New Star')));
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
-      expect(events, contains('reel_profile_tap callbar invite'));
+      expect(events, contains('reel_profile_tap strip invite'));
     });
 
     testWidgets('a creator page opened from a link (no extra) still shows name, handle and VOTE TO INVITE', (tester) async {

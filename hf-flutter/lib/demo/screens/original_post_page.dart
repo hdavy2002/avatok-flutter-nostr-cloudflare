@@ -9,17 +9,20 @@ import '../theme.dart';
 /// "Open in Instagram" chip on the video. The page stays on the platform's own website: links to other sites and
 /// "open the app" links (intent:, instagram:, vnd.youtube:) are ignored.
 class OriginalPostPage extends StatefulWidget {
-  const OriginalPostPage({super.key, required this.url});
+  const OriginalPostPage({super.key, required this.url, this.bottom});
 
   final Uri url;
 
+  /// [HF-REEL-RAW-APP-1] Our own bar (Call / Invite) pinned under the page, above the safe area. Null = none.
+  final Widget? bottom;
+
   /// Opens the page full screen over everything (the reel underneath pauses while it is open).
-  static Future<void> open(BuildContext context, Uri url) {
+  static Future<void> open(BuildContext context, Uri url, {Widget? bottom}) {
     Telemetry.event('hf_reel_action', {'action': 'open_original'});
     return Navigator.of(context, rootNavigator: true).push<void>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => OriginalPostPage(url: url),
+        builder: (_) => OriginalPostPage(url: url, bottom: bottom),
       ),
     );
   }
@@ -98,7 +101,17 @@ class _OriginalPostPageState extends State<OriginalPostPage> {
               )
             : null,
       ),
-      body: WebViewWidget(controller: _web),
+      body: Column(
+        children: [
+          Expanded(child: WebViewWidget(controller: _web)),
+          if (widget.bottom != null)
+            ColoredBox(
+              key: const ValueKey('original-bottom'),
+              color: C.cinema,
+              child: SafeArea(top: false, child: widget.bottom!),
+            ),
+        ],
+      ),
     );
   }
 }

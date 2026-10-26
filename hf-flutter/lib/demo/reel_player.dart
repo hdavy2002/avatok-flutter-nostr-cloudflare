@@ -10,7 +10,12 @@ import '../data/models/reel.dart';
 import '../data/telemetry.dart';
 import '../data/unplayable_reels.dart';
 import '../ui/net_image.dart';
+import 'screens/original_post_page.dart';
 import 'theme.dart';
+
+/// [HF-REEL-RAW-APP-1] Where the video is on the player's page, in CSS px (`rect`), and the page's own size (`view`) when it
+/// said so.
+typedef PageRect = ({Rect rect, Size? view});
 
 /// Whether the main Reels feed is on screen. The Reels tab stays alive offstage (indexed stack), so the feed must be told
 /// when to stop: visible = the main shell is mounted AND its current tab is Reels AND no page, dialog or sheet is pushed above it.
@@ -96,8 +101,8 @@ class _GateObserver extends NavigatorObserver {
 /// Plays one real reel. EMBEDS ONLY (HF-REEL-32, HF-WIRE-14): we never download or host a video file. Every reel plays
 /// from the official YouTube / Instagram embed, loaded in a WebView that WE control: a transparent tap layer sits on top
 /// and passes play / pause down to the video through JavaScript (owner decision 2026-10-20, [HF-REEL-PLAYER-2]).
-/// Instagram's own header / footer are pushed out of view (the video fills the page) and an "Open in Instagram" chip is
-/// our own attribution. When a video cannot be started the card shows the poster with a "Watch on …" button.
+/// [HF-REEL-RAW-APP-1] (owner 2026-10-26) the players are shown as they are: no cropping, no blur, Instagram's own page.
+/// The tap layer covers only the video, and the platforms' links open in the app (never in their apps). When a video cannot be started the card shows the poster with a "Watch on …" button.
 /// The thumbnail shows until the player is up. [active] plays; a page with [preload] is only kept ready.
 class ReelPlayer extends StatefulWidget {
   const ReelPlayer({
@@ -108,7 +113,13 @@ class ReelPlayer extends StatefulWidget {
     this.sound = true,
     this.muted = false,
     this.onUnplayable,
+    this.onOpenLink,
   });
+
+  /// [HF-REEL-RAW-APP-1] A link the viewer tapped inside the player (YouTube title / channel / logo, Instagram profile ...).
+  /// The player never lets it load; the feed decides how to show it (with its Call / Invite bar). Without it the plain
+  /// in-app page opens. The reel is paused while the returned future runs.
+  final Future<void> Function(Uri url)? onOpenLink;
 
   /// [HF-REEL-CALL-2] The profile preview's mute toggle: flipping it silences / restores the playing video in place.
   final bool muted;
@@ -232,25 +243,103 @@ class ReelPlayer extends StatefulWidget {
     ).firstMatch(u.path)?.group(1);
   }
 
-  /// [HF-REEL-BLUR-2] HF-REEL-48: heights in CSS px of YouTube's own top bar and bottom strip. The page blurs them only
-  /// while YouTube is showing them (see [youtubeChromeMs]); the video is not zoomed or moved. The page never scrolls.
+  /// [HF-REEL-RAW-APP-1] Bands of the YouTube player (CSS px) our tap layer leaves uncovered so YouTube's own title /
+  /// channel bar (top, about 60 px) and logo (bottom right, about 48 px) stay tappable.
   @visibleForTesting
-  static const int youtubeHideTop = 60;
+  static const double youtubeBandTop = 64;
+  @visibleForTesting
+  static const double youtubeBandBottom = 56;
 
-  /// How long YouTube keeps its top / bottom bars after it starts playing (they fade on their own; our blur follows).
-  @visibleForTesting
-  static const int youtubeChromeMs = 4000;
+  /// [HF-REEL-RAW-APP-1] Is [reel] an Instagram reel (its player is the stock Instagram embed page)?
+  static bool isInstagram(FeedReel reel) =>
+      (Uri.tryParse(sourceFor(reel) ?? '')?.host ?? '').contains('instagram');
 
-  /// [HF-REEL-YT-ZOOM-2] extra zoom on YouTube reels. Back to 1 (owner 2026-10-25): the video is not cropped; the call
-  /// strip at the bottom of the reel covers YouTube's channel name / caption line instead, on every screen size.
+  /// [HF-REEL-RAW-APP-1] The page posts `rect:<left>,<top>,<width>,<height>[,<viewW>,<viewH>]` (CSS px) over the `HFPlayer`
+  /// channel: where the video is on the page. Null for anything else or a rectangle that makes no sense.
   @visibleForTesting
-  static const double youtubeZoom = 1.0;
-  @visibleForTesting
-  static const int youtubeHideBottom = 84;
+  static PageRect? parseRect(String message) {
+    if (!message.startsWith('rect:')) return null;
+    final n = message
+        .substring(5)
+        .split(',')
+        .map((s) => double.tryParse(s.trim()))
+        .toList();
+    if (n.length != 4 && n.length != 6) return null;
+    if (n.any((v) => v == null || !v.isFinite)) return null;
+    final v = n.cast<double>();
+    if (v[2] <= 0 || v[3] <= 0) return null;
+    Size? view;
+    if (n.length == 6 && v[4] > 0 && v[5] > 0) view = Size(v[4], v[5]);
+    return (rect: Rect.fromLTWH(v[0], v[1], v[2], v[3]), view: view);
+  }
 
-  /// A small page that runs the YouTube IFrame Player API. It is loaded with the app id as its base URL so YouTube gets a
-  /// Referer and origin. The tap layer in Flutter calls `hfSet(bool)` / `hfToggle()`; state and errors come back over the
-  /// `HFPlayer` channel (`ready`, `playing`, `paused`, `error:<code>`). Null for a non-YouTube embed.
+  /// [HF-REEL-RAW-APP-1] The part of the player our transparent tap layer (play / pause) covers, in the WebView's logical
+  /// px ([box] is the WebView's size). Until the page has said where the video is, the middle 70% of the height. YouTube:
+  /// the player rectangle minus a [youtubeBandTop] band at the top and a [youtubeBandBottom] band at the bottom.
+  /// Instagram: exactly the `<video>`, so its header and footer stay tappable.
+  @visibleForTesting
+  static Rect tapRect(PageRect? page, Size box, {required bool instagram}) {
+    final fallback = Rect.fromLTWH(0, box.height * 0.15, box.width, box.height * 0.7);
+    if (page == null || box.isEmpty) return fallback;
+    var r = page.rect;
+    final v = page.view;
+    if (v != null && v.width > 0 && v.height > 0) {
+      final sx = box.width / v.width;
+      final sy = box.height / v.height;
+      r = Rect.fromLTWH(r.left * sx, r.top * sy, r.width * sx, r.height * sy);
+    }
+    if (!instagram) {
+      r = Rect.fromLTRB(r.left, r.top + youtubeBandTop, r.right, r.bottom - youtubeBandBottom);
+    }
+    r = r.intersect(Offset.zero & box);
+    if (r.width < 40 || r.height < 40) return fallback;
+    return r;
+  }
+
+  /// [HF-REEL-RAW-APP-1] True when a main-frame address is the player itself (or the small page that holds it), which may
+  /// load inside the WebView. Everything else is a link the viewer tapped.
+  @visibleForTesting
+  static bool isEmbedLoad(String url, String embed) {
+    if (url == 'about:blank') return true;
+    if (url == embedUri(embed).toString() ||
+        url == instagramUri(embed).toString()) {
+      return true;
+    }
+    if (url.startsWith('$youtubeOrigin/') ||
+        url.startsWith('${Brand.webOrigin}/')) {
+      return true;
+    }
+    final u = Uri.tryParse(url);
+    if (u == null || u.scheme != 'https') return false;
+    final h = u.host.toLowerCase();
+    if (h == 'www.youtube.com' && u.path.startsWith('/embed/')) return true;
+    if (h == 'www.instagram.com' && u.pathSegments.contains('embed')) {
+      return true;
+    }
+    return false;
+  }
+
+  /// [HF-REEL-RAW-APP-1] The in-app address to open for a link the viewer tapped inside the player (YouTube title, channel,
+  /// logo; Instagram profile, "View more on Instagram"), or null: the player itself, another site, or an app scheme
+  /// (`intent:`, `vnd.youtube:`, `instagram:`), none of which may open. The caller prevents the navigation either way.
+  @visibleForTesting
+  static Uri? externalLink(Uri u, String embed) {
+    if (u.scheme != 'https' && u.scheme != 'http') return null;
+    final h = u.host.toLowerCase();
+    bool on(String d) => h == d || h.endsWith('.$d');
+    if (!(on('youtube.com') || h == 'youtu.be' || on('instagram.com'))) {
+      return null;
+    }
+    final https = u.scheme == 'https' ? u : u.replace(scheme: 'https');
+    if (isEmbedLoad(https.toString(), embed)) return null;
+    return https;
+  }
+
+  /// A small page that runs the YouTube IFrame Player API, loaded with our website as its base URL so YouTube gets a
+  /// Referer and origin. [HF-REEL-RAW-APP-1] The player is shown as it is (no cropping, no blur): YouTube's own title
+  /// bar and logo stay visible and tappable. The tap layer in Flutter calls `hfSet(bool)` / `hfToggle()`; state and errors
+  /// come back over the `HFPlayer` channel (`ready`, `playing`, `paused`, `error:<code>`, `rect:<l>,<t>,<w>,<h>,<vw>,<vh>`).
+  /// Null for a non-YouTube embed.
   @visibleForTesting
   static String? youtubeHtml(
     String embed, {
@@ -267,28 +356,16 @@ class ReelPlayer extends StatefulWidget {
         '<link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com">'
         '<link rel="preconnect" href="https://www.google.com"><link rel="dns-prefetch" href="https://googlevideo.com">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
-        '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0;transform-origin:50% 50%}'
-        // [HF-REEL-BLUR-2] frosted strips over YouTube's own top bar (channel / title) and bottom strip, shown only while
-        // YouTube shows them: from load until a few seconds after it starts playing, all the time it is paused or
-        // buffering, and again for a few seconds after every play. The video stays full size and centred.
-        '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18);opacity:0;transition:opacity .3s}body.c .hfb{opacity:1}'
-        '#bt{left:0;right:0;top:0;height:${youtubeHideTop}px;-webkit-mask-image:linear-gradient(#000 65%,transparent);mask-image:linear-gradient(#000 65%,transparent)}'
-        '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
-        // [HF-REEL-YT-CENTER-1] YouTube's own previous / pause / next buttons appear in the middle at the same moments as its
-        // top bar; a soft frosted oval covers them while that chrome is showing (owner: "YouTube buttons briefly showed").
-        // [HF-REEL-YT-CENTER-2] only while paused: at the start it blurred faces in the middle of the video.
-        '#bc{opacity:0!important}body.p #bc{opacity:1!important}'
-        '#bc{left:50%;top:50%;width:72%;max-width:340px;height:120px;transform:translate(-50%,-50%);border-radius:60px;-webkit-mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%);mask-image:radial-gradient(ellipse at center,#000 55%,transparent 75%)}'
+        '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}'
         '</style></head>'
-        '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bc"></div><div class="hfb" id="bb"></div><script>'
-        // [HF-REEL-FILL-1] a 9:16 reel on a taller phone screen leaves black bands above and below it; scale the player
-        // (centred) just enough that the video reaches the top and the bottom, as Instagram reels do
-        'function fit(){var e=document.getElementById("p");if(!e)return;var W=window.innerWidth,H=window.innerHeight,v=W*16/9;'
-        'e.style.transform="scale("+((H>v?H/v:1)*$youtubeZoom)+")"}window.addEventListener("resize",fit);'
-        'var ht=null;function chrome(ms){document.body.classList.add("c");clearTimeout(ht);if(ms)ht=setTimeout(function(){document.body.classList.remove("c")},ms)}'
+        '<body><div id="p"></div><script>'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
-        'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
+        'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start},lastRect="";'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
+        // [HF-REEL-RAW-APP-1] tell Flutter where the player is, so its tap layer can leave YouTube's title bar and logo alone
+        'function rect(){var e=document.getElementById("p");if(!e)return;var r=e.getBoundingClientRect();'
+        'var m="rect:"+[r.left,r.top,r.width,r.height,window.innerWidth,window.innerHeight].map(function(n){return Math.round(n*10)/10}).join(",");'
+        'if(m!==lastRect){lastRect=m;post(m)}}window.addEventListener("resize",rect);'
         'function apply(){if(!ready)return;try{if(want)pl.playVideo();else pl.pauseVideo()}catch(e){}}'
         'window.hfSet=function(b){want=!!b;apply()};'
         'window.hfToggle=function(){if(!ready)return;try{want=pl.getPlayerState()!==1;apply()}catch(e){}};'
@@ -297,37 +374,30 @@ class ReelPlayer extends StatefulWidget {
         'window.hfRestart=function(){want=true;if(!ready)return;try{if(pl.getCurrentTime()>1)pl.seekTo(0,true)}catch(e){}apply()};'
         'function onYouTubeIframeAPIReady(){pl=new YT.Player("p",{videoId:"$id",width:"100%",height:"100%",host:"https://www.youtube.com",'
         'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
-        'events:{onReady:function(){fit();ready=true;mute();post("ready");apply()},'
+        'events:{onReady:function(){ready=true;mute();rect();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
-        'onStateChange:function(e){document.body.classList.toggle("p",e.data===2);if(e.data===1)chrome($youtubeChromeMs);else chrome(0);if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
+        'onStateChange:function(e){if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
         'onError:function(e){post("error:"+e.data)}}})}'
         '</script><script src="https://www.youtube.com/iframe_api"></script></body></html>';
   }
 
-  /// JavaScript run once Instagram's embed page has loaded. It finds the `<video>` (waits up to 6 s, clicking the embed's
-  /// own play control to make it appear), makes it fill the page (object-fit: cover) with everything else hidden, and exposes
-  /// `hfSet(bool)` / `hfToggle()`. It reports `ready`, `playing`, `paused` and `error:novideo|blocked|media` over `HFPlayer`.
+  /// JavaScript run once Instagram's embed page has loaded. [HF-REEL-RAW-APP-1] The stock embed page is left as it is
+  /// (header with the account, the video, footer). The script finds the `<video>` (waits up to 6 s, clicking the embed's
+  /// own play control to make it appear), exposes `hfSet(bool)` / `hfToggle()` / `hfMute(bool)` / `hfRestart()` and reports
+  /// `ready`, `playing`, `paused`, `error:novideo|blocked|media|appOnly` and `rect:...` (where the `<video>` is) over `HFPlayer`.
+  /// It hides nothing and does not resize the video.
   @visibleForTesting
   static String instagramScript({bool sound = true, bool start = true}) =>
       '''
 (function(){
 if(window.__hfInit)return;window.__hfInit=true;
-var SOUND=$sound,MUTED=${!start},want=$start,vid=null,started=Date.now(),clicks=0,tick=0;
+var SOUND=$sound,MUTED=${!start},want=$start,vid=null,started=Date.now(),clicks=0,last='';
 function post(m){try{HFPlayer.postMessage(m)}catch(e){}}
-var st=document.createElement('style');
-st.textContent='html,body{background:#000!important;margin:0!important;padding:0!important;overflow:hidden!important}'
-+'body{visibility:hidden!important}video{visibility:visible!important}'
-+'video{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:cover!important;z-index:2147483647!important;background:#000!important;transform:none!important;margin:0!important}';
-(document.head||document.documentElement).appendChild(st);
-function isolate(v){
-  var n=v;
-  while(n&&n!==document.body&&n.parentElement){
-    var p=n.parentElement;
-    for(var i=0;i<p.children.length;i++){var s=p.children[i];
-      if(s!==n&&s.tagName!=='STYLE'&&s.tagName!=='SCRIPT'&&s.tagName!=='LINK'){s.style.setProperty('display','none','important');}}
-    ['transform','filter','perspective','contain','will-change','backdrop-filter'].forEach(function(k){p.style.setProperty(k,'none','important');});
-    n=p;
-  }
+function rect(){
+  if(!vid)return;var r=vid.getBoundingClientRect();
+  if(r.width<2||r.height<2)return;
+  var m='rect:'+[r.left,r.top,r.width,r.height,window.innerWidth,window.innerHeight].map(function(n){return Math.round(n*10)/10;}).join(',');
+  if(m!==last){last=m;post(m);}
 }
 function apply(){
   if(!vid)return;
@@ -338,28 +408,30 @@ function apply(){
 function bind(v){
   vid=v;v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');
   v.playsInline=true;v.loop=true;v.controls=false;v.removeAttribute('controls');v.muted=MUTED||!SOUND;
-  v.addEventListener('playing',function(){post('playing');});
+  v.addEventListener('playing',function(){post('playing');rect();});
   v.addEventListener('pause',function(){post('paused');});
+  v.addEventListener('loadedmetadata',rect);
+  v.addEventListener('resize',rect);
   v.addEventListener('error',function(){post('error:media');});
-  isolate(v);post('ready');apply();
+  post('ready');rect();apply();
 }
 function clickPlay(){
   var sels=['[aria-label*="lay" i]','button[class*="lay" i]','[role="button"][class*="lay" i]','[class*="PlayButton"]','[data-testid*="play" i]'];
   for(var i=0;i<sels.length;i++){var el=document.querySelector(sels[i]);if(el){el.click();return;}}
-  document.body.style.setProperty('visibility','visible','important');
   var c=document.elementFromPoint(window.innerWidth/2,window.innerHeight/2);
-  document.body.style.removeProperty('visibility');if(c)c.click();
+  if(c&&!(c.closest&&c.closest('a')))c.click();
 }
+window.addEventListener('resize',rect);
 window.hfSet=function(b){want=!!b;apply();};
 window.hfToggle=function(){want=vid?vid.paused:true;apply();};
 window.hfMute=function(m){MUTED=!!m;if(vid)vid.muted=MUTED||!SOUND;};
 window.hfRestart=function(){want=true;if(vid){try{vid.currentTime=0;}catch(e){}}apply();};
 var iv=setInterval(function(){
-  tick++;var t=Date.now()-started;
-  if(vid&&!vid.isConnected){vid=null;started=Date.now();clicks=0;}
+  var t=Date.now()-started;
+  if(vid&&!vid.isConnected){vid=null;started=Date.now();clicks=0;last='';}
   var v=document.querySelector('video');
   if(v&&v!==vid)bind(v);
-  if(vid){if(tick%4===0)isolate(vid);return;}
+  if(vid){rect();return;}
   if(t>2500&&/watch this reel in the app/i.test((document.body&&document.body.textContent)||'')){clearInterval(iv);post('error:appOnly');return;}
   if((t>1500&&clicks===0)||(t>3500&&clicks===1)){clicks++;clickPlay();}
   if(t>6000){clearInterval(iv);post('error:novideo');}
@@ -404,6 +476,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   DateTime? _shownAt;
   bool _shownWarm = false;
   StreamSubscription<String>? _testSub;
+
+  /// [HF-REEL-RAW-APP-1] Where the page says its video is; null until the first `rect:` message.
+  PageRect? _page;
+  bool _linkBusy = false;
 
   String? get _source => ReelPlayer.sourceFor(widget.reel);
   bool get _wantEmbed => _source != null;
@@ -455,6 +531,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       _played = false;
       _warmed = false;
       _seenActive = false;
+      _page = null;
     }
     _sync();
     if (old.muted != widget.muted && _engine) _run('window.hfMute&&window.hfMute(${widget.muted})'); // [HF-REEL-CALL-2]
@@ -484,6 +561,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     _run('window.hfSet&&window.hfSet(false)');
     _web = null;
     _webFor = null;
+    _page = null;
   }
 
   void _sync() {
@@ -517,21 +595,18 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
-          // The embed stays on its own page: no tapping out to other sites. Only YouTube / Instagram embeds and the
-          // first page itself may load (about:blank and the app base URL belong to the small page that holds the player).
+          // [HF-REEL-RAW-APP-1] The player stays on its own page. A YouTube / Instagram page the viewer tapped (title,
+          // channel, logo, profile, "View more on Instagram") is stopped here and opens in the app instead; app schemes
+          // (intent:, vnd.youtube:, instagram:) and other sites are simply stopped.
           onNavigationRequest: (r) {
             if (!r.isMainFrame) return NavigationDecision.navigate;
-            final ok =
-                r.url == 'about:blank' ||
-                r.url == ReelPlayer.embedUri(embed).toString() ||
-                r.url == ReelPlayer.instagramUri(embed).toString() ||
-                r.url.startsWith('${ReelPlayer.youtubeOrigin}/') ||
-                r.url.startsWith('${Brand.webOrigin}/') ||
-                r.url.startsWith('https://www.youtube.com/embed/') ||
-                r.url.startsWith('https://www.instagram.com/reel/');
-            return ok
-                ? NavigationDecision.navigate
-                : NavigationDecision.prevent;
+            if (ReelPlayer.isEmbedLoad(r.url, embed)) {
+              return NavigationDecision.navigate;
+            }
+            final u = Uri.tryParse(r.url);
+            final link = u == null ? null : ReelPlayer.externalLink(u, embed);
+            if (link != null) unawaited(_openLink(link));
+            return NavigationDecision.prevent;
           },
           onPageFinished: (_) {
             if (!mounted || _webFor != embed) return;
@@ -585,6 +660,30 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     }
   }
 
+  /// [HF-REEL-RAW-APP-1] Opens a link from inside the player in the app, with the reel paused behind it.
+  Future<void> _openLink(Uri uri) async {
+    if (_linkBusy || !mounted) return;
+    _linkBusy = true;
+    Telemetry.event('hf_reel_link_open', {
+      'platform': _platform,
+      'host': uri.host,
+    });
+    _run('window.hfSet&&window.hfSet(false)');
+    try {
+      final open = widget.onOpenLink;
+      if (open != null) {
+        await open(uri);
+      } else {
+        await OriginalPostPage.open(context, uri);
+      }
+    } finally {
+      _linkBusy = false;
+      if (mounted && widget.active && _fg && ReelGate.visible.value) {
+        _run('window.hfSet&&window.hfSet(true)');
+      }
+    }
+  }
+
   void _armWatchdog() {
     _watchdog?.cancel();
     _watchdog = Timer(const Duration(seconds: 9), () {
@@ -594,6 +693,11 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
 
   void _onMessage(String m) {
     if (!mounted) return;
+    if (m.startsWith('rect:')) {
+      final p = ReelPlayer.parseRect(m);
+      if (p != null && p != _page) setState(() => _page = p);
+      return;
+    }
     if (m == 'ready') {
       if (widget.active && _fg) {
         _run('window.hfMute&&window.hfMute(false)');
@@ -718,15 +822,24 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         // embed page loading (Instagram's header / likes / comments, YouTube's spinner) or a black flash while scrolling
         if (_web != null && _fg && (!_played || _chromeCover))
           Positioned.fill(child: IgnorePointer(child: _thumb())),
-        // The transparent layer with our control: a tap goes to the video underneath as play / pause. Only taps are taken,
-        // so a vertical swipe still reaches the PageView.
+        // The transparent layer with our control: a tap goes to the video underneath as play / pause. [HF-REEL-RAW-APP-1] It
+        // covers only the video rectangle (not YouTube's title bar / logo, not Instagram's header / footer), so those links
+        // are tappable. Only taps are taken, so a vertical swipe still reaches the PageView.
         if (_wantEmbed && _engine && _fg)
-          Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey('reel-tap'),
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggle,
-              child: const SizedBox.expand(),
+          LayoutBuilder(
+            builder: (context, box) => Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned.fromRect(
+                  rect: ReelPlayer.tapRect(_page, box.biggest, instagram: _isIg),
+                  child: GestureDetector(
+                    key: const ValueKey('reel-tap'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggle,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ],
             ),
           ),
         // [HF-REEL-NOIG-1] no "Open in Instagram" chip on the video (owner 2026-10-22); the link is in the reel's info sheet

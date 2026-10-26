@@ -151,30 +151,105 @@ void main() {
       expect(html, contains('origin:"https://${Brand.domain}"'));
       expect(html, contains('window.hfToggle'));
       expect(html, contains('error:'));
-      // [HF-REEL-ZOOM-1] zoomed in so YouTube's own header, side buttons and title strip sit off screen
-      expect(html, contains('backdrop-filter:blur('));
-      expect(html, contains('id="bb"'));
-      expect(html, contains('id="bc"')); // [HF-REEL-YT-CENTER-1]
-      expect(html, contains('id="bt"'));
-      expect(html, contains('chrome(4000)'));
-      expect(html, contains('function fit()'));
-      expect(html, contains('*1.0)')); // [HF-REEL-YT-ZOOM-2]
-      expect(html, isNot(contains('id="br"')));
-      expect(html, isNot(contains('hfZoom')));
+      // [HF-REEL-RAW-APP-1] the player is shown as it is: no frosted strips, no cropping, no zoom; the page tells Flutter where it is
+      expect(html, isNot(contains('backdrop-filter')));
+      expect(html, isNot(contains('blur(')));
+      expect(html, isNot(contains('id="bb"')));
+      expect(html, isNot(contains('id="bc"')));
+      expect(html, isNot(contains('id="bt"')));
+      expect(html, isNot(contains('chrome(')));
+      expect(html, isNot(contains('function fit()')));
+      expect(html, isNot(contains('scale(')));
+      expect(html, contains('"rect:"'));
+      expect(html, contains('window.hfSet'));
+      expect(html, contains('window.hfMute'));
+      expect(html, contains('window.hfRestart'));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
       expect(ReelPlayer.youtubeHtml('https://evil.example/embed/abc12345'), isNull);
       expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');
     });
 
-    test('Instagram opens the reel embed page and the script fills the page with the video', () {
+    test('Instagram opens the reel embed page and the script only finds and drives the video', () {
       expect(ReelPlayer.instagramUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
       expect(ReelPlayer.instagramUri('https://www.instagram.com/p/Cx12345/embed/').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
       final js = ReelPlayer.instagramScript(sound: false);
-      expect(js, contains('object-fit:cover'));
+      // [HF-REEL-RAW-APP-1] Instagram's own page stays: nothing hidden, the video is not resized
+      expect(js, isNot(contains('object-fit')));
+      expect(js, isNot(contains('display')));
+      expect(js, isNot(contains('visibility')));
+      expect(js, isNot(contains('createElement(\'style\')')));
+      expect(js, contains('rect:'));
+      expect(js, contains('window.hfToggle'));
+      expect(js, contains('window.hfMute'));
       expect(js, contains('querySelector(\'video\')'));
       expect(js, contains('SOUND=false'));
       expect(js, contains('HFPlayer.postMessage'));
       expect(js, contains('error:novideo'));
+    });
+  });
+
+  group('[HF-REEL-RAW-APP-1] links and the video rectangle', () {
+    const yt = 'https://www.youtube.com/embed/abc12345';
+    const ig = 'https://www.instagram.com/reel/Cx12345/embed/';
+    Uri? link(String u, String embed) => ReelPlayer.externalLink(Uri.parse(u), embed);
+
+    test('a tapped YouTube / Instagram page opens in the app; the player itself, app schemes and other sites do not', () {
+      expect(link('https://www.youtube.com/watch?v=abc12345&feature=emb_logo', yt)?.host, 'www.youtube.com');
+      expect(link('https://m.youtube.com/@somechannel', yt), isNotNull);
+      expect(link('https://youtu.be/abc12345', yt), isNotNull);
+      expect(link('https://www.youtube.com/shorts/abc12345', yt), isNotNull);
+      expect(link('https://www.instagram.com/nova/', ig)?.path, '/nova/');
+      expect(link('https://www.instagram.com/reel/Cx12345/', ig), isNotNull); // "View more on Instagram"
+      expect(link('http://www.youtube.com/watch?v=abc12345', yt)?.scheme, 'https');
+      expect(link(yt, yt), isNull);
+      expect(link(ig, ig), isNull);
+      expect(link('https://www.instagram.com/reel/Cx12345/embed/captioned/', ig), isNull);
+      expect(link('intent://www.youtube.com/watch?v=abc12345#Intent;scheme=https;end', yt), isNull);
+      expect(link('vnd.youtube://abc12345', yt), isNull);
+      expect(link('instagram://media?id=1', ig), isNull);
+      expect(link('https://evil.example/watch', yt), isNull);
+      expect(link('https://youtube.com.evil.example/watch', yt), isNull);
+    });
+
+    test('the player page and its base URL still load inside the WebView', () {
+      expect(ReelPlayer.isEmbedLoad('about:blank', yt), isTrue);
+      expect(ReelPlayer.isEmbedLoad(ReelPlayer.embedUri(yt).toString(), yt), isTrue);
+      expect(ReelPlayer.isEmbedLoad(ig, ig), isTrue);
+      expect(ReelPlayer.isEmbedLoad('${ReelPlayer.youtubeOrigin}/', yt), isTrue);
+      expect(ReelPlayer.isEmbedLoad('https://www.youtube.com/watch?v=abc12345', yt), isFalse);
+      expect(ReelPlayer.isEmbedLoad('https://www.instagram.com/nova/', ig), isFalse);
+      expect(ReelPlayer.isEmbedLoad('https://www.instagram.com/reel/Cx12345/', ig), isFalse);
+      expect(ReelPlayer.isEmbedLoad('intent://x', yt), isFalse);
+    });
+
+    test('parseRect reads rect: messages and nothing else', () {
+      final p = ReelPlayer.parseRect('rect:10,20.5,300,400,360,640')!;
+      expect(p.rect, const Rect.fromLTWH(10, 20.5, 300, 400));
+      expect(p.view, const Size(360, 640));
+      final q = ReelPlayer.parseRect('rect:0,0,100,200')!;
+      expect(q.rect, const Rect.fromLTWH(0, 0, 100, 200));
+      expect(q.view, isNull);
+      expect(ReelPlayer.parseRect('ready'), isNull);
+      expect(ReelPlayer.parseRect('rect:'), isNull);
+      expect(ReelPlayer.parseRect('rect:1,2,3'), isNull);
+      expect(ReelPlayer.parseRect('rect:a,b,c,d'), isNull);
+      expect(ReelPlayer.parseRect('rect:0,0,0,10'), isNull);
+      expect(ReelPlayer.parseRect('rect:0,0,10,NaN'), isNull);
+    });
+
+    test('tapRect: middle 70% until known; YouTube leaves a top and a bottom band; Instagram covers the video only', () {
+      const box = Size(400, 800);
+      expect(ReelPlayer.tapRect(null, box, instagram: false), Rect.fromLTWH(0, 800 * 0.15, 400, 800 * 0.7));
+      final page = ReelPlayer.parseRect('rect:0,0,400,800,400,800');
+      expect(ReelPlayer.tapRect(page, box, instagram: false), const Rect.fromLTRB(0, 64, 400, 744));
+      final ivid = ReelPlayer.parseRect('rect:10,100,380,600,400,800');
+      expect(ReelPlayer.tapRect(ivid, box, instagram: true), const Rect.fromLTWH(10, 100, 380, 600));
+      // the page's own size differs from the WebView's: scaled
+      final scaled = ReelPlayer.parseRect('rect:0,100,200,300,200,400');
+      expect(ReelPlayer.tapRect(scaled, box, instagram: true), const Rect.fromLTWH(0, 200, 400, 600));
+      // nonsense falls back
+      final tiny = ReelPlayer.parseRect('rect:0,0,10,10,400,800');
+      expect(ReelPlayer.tapRect(tiny, box, instagram: true), Rect.fromLTWH(0, 800 * 0.15, 400, 800 * 0.7));
     });
   });
 
@@ -210,7 +285,8 @@ void main() {
       expect(find.text('Caption hfrl_1'), findsNothing);
       // [HF-REEL-CALL-2] no information sheet any more: the bar says Call <name>, the photo sits in the rail, nothing else
       expect(find.byTooltip('Reel information'), findsNothing);
-      expect(find.text('Call Maya'), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-call-bar')), findsWidgets); // [HF-REEL-RAW-APP-1] Call sits in the strip under the video
+      expect(find.descendant(of: find.byKey(const ValueKey('reel-photo')), matching: find.text('Maya')), findsWidgets);
       expect(find.byKey(const ValueKey('reel-photo')), findsWidgets);
       expect(find.byTooltip('Book a time'), findsWidgets);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
@@ -267,7 +343,7 @@ void main() {
       expect(log, contains('hfrl_9:true'));
       expect(log, isNot(contains('hfrl_1:true')));
       expect(log, isNot(contains('hfrl_2:true')));
-      expect(find.text('Call Zara'), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('reel-photo')), matching: find.text('Zara')), findsWidgets);
       expect(api.calls.where((c) => c == 'GET /api/hf/reels/hfrl_9'), hasLength(1));
       expect(api.calls.where((c) => c == 'GET /api/hf/reels'), hasLength(2)); // the opening feed + the one attached behind the link
       expect(events, contains('reel_deeplink_open hfrl_9 false'));
