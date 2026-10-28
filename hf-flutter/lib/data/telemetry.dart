@@ -48,6 +48,7 @@ abstract final class Telemetry {
     'hf_channel_threshold', // {result, followers, views}
     'hf_space_gate_shown', // {lane, missing}
     'hf_space_filter', // {space, surface}
+    'hf_search_filter', // {active, sort, surface} [HF-SEARCH-FILTERS-1]
     'hf_video_kyc_badge_shown', // {surface}
     'hf_space_verify_step', // {lane, step}
     // [HF-CREATOR-BADGES-1] never carries gender or the declaration

@@ -38,19 +38,52 @@ class MissingCreator {
 
 /// `GET /api/hf/search`.
 class SearchResult {
-  const SearchResult({this.online = const [], this.offline = const [], this.notOnNetwork = const []});
+  const SearchResult({
+    this.online = const [],
+    this.offline = const [],
+    this.notOnNetwork = const [],
+    this.intro = false,
+    this.items = const [],
+    this.total = 0,
+    this.nextOffset,
+  });
 
   final List<ReelHost> online;
   final List<ReelHost> offline;
   final List<MissingCreator> notOnNetwork;
 
-  bool get isEmpty => online.isEmpty && offline.isEmpty && notOnNetwork.isEmpty;
+  /// [HF-SEARCH-FILTERS-1] True when the server lists ONLY approved intro influencers (flag `hfIntroReelsEnabled`): [items] then holds
+  /// the cards (offline ones too), already filtered and sorted, and [total] / [nextOffset] page them. False for an older server.
+  final bool intro;
+  final List<FeedReel> items;
+  final int total;
+  final int? nextOffset;
 
-  factory SearchResult.fromJson(Map<String, dynamic> j) => SearchResult(
-        online: [for (final m in _maps(j['online'])) ReelHost.fromJson(m)],
-        offline: [for (final m in _maps(j['offline'])) ReelHost.fromJson(m)],
-        notOnNetwork: [for (final m in _maps(j['notOnNetwork'])) MissingCreator.fromJson(m)],
+  bool get isEmpty => intro ? items.isEmpty && notOnNetwork.isEmpty : online.isEmpty && offline.isEmpty && notOnNetwork.isEmpty;
+
+  SearchResult withMore(SearchResult next) => SearchResult(
+        online: online,
+        offline: offline,
+        notOnNetwork: notOnNetwork,
+        intro: intro,
+        items: [...items, ...next.items],
+        total: next.total,
+        nextOffset: next.nextOffset,
       );
+
+  factory SearchResult.fromJson(Map<String, dynamic> j) {
+    final intro = j['intro'] == true;
+    final next = j['nextOffset'];
+    return SearchResult(
+      online: [for (final m in _maps(j['online'])) ReelHost.fromJson(m)],
+      offline: [for (final m in _maps(j['offline'])) ReelHost.fromJson(m)],
+      notOnNetwork: [for (final m in _maps(j['notOnNetwork'])) MissingCreator.fromJson(m)],
+      intro: intro,
+      items: intro ? [for (final m in _maps(j['items'])) FeedReel.fromJson(m)] : const [],
+      total: _int(j['total']),
+      nextOffset: next is num ? next.toInt() : null,
+    );
+  }
 }
 
 /// A topic chip, from `GET /api/hf/options`.

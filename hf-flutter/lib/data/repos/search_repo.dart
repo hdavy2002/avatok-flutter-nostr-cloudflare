@@ -1,6 +1,7 @@
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/search.dart';
+import '../models/search_filters.dart'; // [HF-SEARCH-FILTERS-1]
 import '../response_cache.dart';
 
 /// Search, topic chips and Invite votes (HF-REEL-9 / HF-REEL-29).
@@ -24,22 +25,34 @@ class SearchRepo {
 
   /// Our network (online first), plus the exact @handle lookup for people who are not here yet. Public: no sign-in.
   /// [platform] is `youtube` or `instagram` (HF-REEL-41); null or `all` means everything.
-  Future<SearchResult> search(String q, {String? topic, String? platform, String? space}) => _guard(() async {
-        final query = <String, Object?>{'q': q.trim()};
-        if (topic != null && topic.isNotEmpty) query['topic'] = topic;
-        if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
-        if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
-        if (space == 'kyc') query['kyc'] = '1'; // [HF-CREATOR-BADGES-1]
+  /// [HF-SEARCH-FILTERS-1] With [filters] the new parameters are sent instead of topic / platform / space (see [searchQuery]); [offset] pages the list.
+  Future<SearchResult> search(String q, {String? topic, String? platform, String? space, SearchFilters? filters, int offset = 0}) => _guard(() async {
+        final query = searchQuery(q, topic: topic, platform: platform, space: space, filters: filters, offset: offset);
         return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false, store: true));
       });
 
-  /// [HF-APP-CACHE-1] [search] cached-first (the landing list and repeat searches paint at once).
-  Stream<SearchResult> watchSearch(String q, {String? topic, String? platform, String? space}) {
+  /// The query of `GET /api/hf/search`. Without [filters] it is exactly what older builds sent. With [filters] the server's intro listing
+  /// (flag `hfIntroReelsEnabled`) filters, sorts and pages; an older server just ignores the extra keys.
+  static Map<String, Object?> searchQuery(String q, {String? topic, String? platform, String? space, SearchFilters? filters, int offset = 0}) {
     final query = <String, Object?>{'q': q.trim()};
+    if (filters != null) {
+      query.addAll(filters.toQuery());
+      query['limit'] = '$kSearchPage';
+      if (offset > 0) query['offset'] = '$offset';
+      return query;
+    }
     if (topic != null && topic.isNotEmpty) query['topic'] = topic;
     if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
-    if (space == 'women' || space == 'lgbtq') query['space'] = space; // [HF-CREATOR-SPACES-1]
-    if (space == 'kyc') query['kyc'] = '1'; // [HF-CREATOR-BADGES-1]
+    if (space == 'women') query['space'] = space; // [HF-CREATOR-SPACES-1] [HF-SEARCH-FILTERS-1] the LGBTQ+ and Video KYC filters are gone
+    return query;
+  }
+
+  /// Cards per page.
+  static const int kSearchPage = 30;
+
+  /// [HF-APP-CACHE-1] [search] cached-first (the landing list and repeat searches paint at once).
+  Stream<SearchResult> watchSearch(String q, {String? topic, String? platform, String? space, SearchFilters? filters}) {
+    final query = searchQuery(q, topic: topic, platform: platform, space: space, filters: filters);
     return _guard2(_api.watchJson('/api/hf/search', query: query, auth: false, policy: CachePolicy.list).map(SearchResult.fromJson));
   }
 
@@ -57,6 +70,22 @@ class SearchRepo {
   /// [HF-APP-CACHE-1] The topic chips, cached-first (they almost never change).
   Stream<List<TopicOption>> watchTopics() =>
       _api.watchJson('/api/hf/options', auth: false, policy: CachePolicy.stable).map(_topicsOf);
+
+  /// [HF-SEARCH-FILTERS-1] The category catalogue (`GET /api/hf/onboarding/categories`, sensitive four last), cached-first. Empty when it cannot be read.
+  Stream<List<FilterOption>> watchCategories() => _api.watchJson('/api/hf/onboarding/categories', auth: false, policy: CachePolicy.stable).map(categoriesOf);
+
+  /// [HF-SEARCH-FILTERS-1] The language list (`languages` of `GET /api/hf/options`), cached-first. Empty when it cannot be read.
+  Stream<List<FilterOption>> watchLanguages() => _api.watchJson('/api/hf/options', auth: false, policy: CachePolicy.stable).map(languagesOf);
+
+  static List<FilterOption> categoriesOf(Map<String, dynamic> j) => [
+        for (final e in (j['categories'] is List ? j['categories'] as List : const []))
+          if (e is Map && e['id'] != null) FilterOption('${e['id']}', '${e['label'] ?? e['id']}', sensitive: e['sensitive'] == true),
+      ];
+
+  static List<FilterOption> languagesOf(Map<String, dynamic> j) => [
+        for (final e in (j['languages'] is List ? j['languages'] as List : const []))
+          if (e is Map && e['code'] != null) FilterOption('${e['code']}', '${e['label'] ?? e['code']}'),
+      ];
 
   /// [HF-APP-CACHE-1] "Most-wanted, not here yet", cached-first. Switched off (404) means an empty list.
   Stream<List<MissingCreator>> watchTopInvites() async* {

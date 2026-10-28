@@ -7,6 +7,7 @@ import '../core/brand.dart';
 import '../data/api_exception.dart';
 import '../data/models/reel.dart';
 import '../data/models/search.dart';
+import '../data/models/search_filters.dart'; // [HF-SEARCH-FILTERS-1]
 import '../data/repos/search_repo.dart';
 import '../data/telemetry.dart'; // [HF-CREATOR-SPACES-1]
 import '../ui/async_view.dart';
@@ -14,6 +15,8 @@ import 'reels_real.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'desi.dart';
+import 'search_filter_sheet.dart'; // [HF-SEARCH-FILTERS-1]
+import 'search_intro_card.dart'; // [HF-SEARCH-FILTERS-1]
 import 'search_kit.dart';
 import 'space_kit.dart'; // [HF-CREATOR-SPACES-1]
 
@@ -35,14 +38,22 @@ class _RealSearchState extends State<RealSearch> {
   int _run = 0;
   String? _topic;
   String _platform = 'all'; // [HF-WIRE-22] HF-REEL-41: all | youtube | instagram
-  String? _space; // [HF-CREATOR-SPACES-1] null | women | lgbtq | kyc ([HF-CREATOR-BADGES-1] Video KYC verified)
+  String? _space; // [HF-CREATOR-SPACES-1] null | women ([HF-SEARCH-FILTERS-1] the LGBTQ+ and Video KYC filters are gone)
+  // [HF-SEARCH-FILTERS-1] While the server lists only approved intro influencers (`intro: true`), the filters below replace the platform / space pills and topic chips.
+  // _intro is null until the first answer is in (no filter row is drawn until then), false for an older server (the old screen).
+  bool? _intro;
+  SearchFilters _filters = const SearchFilters();
+  List<FilterOption> _categories = const [];
+  List<FilterOption> _languages = const [];
+  bool _optionsAsked = false;
+  bool _loadingMore = false;
   AsyncState<SearchResult> _state = const AsyncLoading();
   List<TopicOption> _topics = const [];
   List<MissingCreator> _top = const [];
   final Set<String> _voted = {};
   final Map<String, int> _votes = {};
 
-  bool get _browsing => _q.text.trim().isEmpty && _topic == null && _space == null;
+  bool get _browsing => _q.text.trim().isEmpty && _topic == null && _space == null && _filters.isDefault;
 
   @override
   void initState() {
@@ -88,9 +99,13 @@ class _RealSearchState extends State<RealSearch> {
     AsyncState<SearchResult> next;
     try {
       // [HF-APP-CACHE-1] the same search seen before paints at once, then the server's answer replaces it
-      await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform, space: _space)) {
+      await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform, space: _space, filters: _intro == false ? null : _filters)) {
         if (!mounted || run != _run) return;
-        setState(() => _state = AsyncData(_space == 'kyc' ? _onlyKyc(r) : r));
+        setState(() {
+          _intro = r.intro;
+          _state = AsyncData(r);
+        });
+        if (r.intro) _askOptions();
       }
       return;
     } catch (e) {
@@ -98,6 +113,55 @@ class _RealSearchState extends State<RealSearch> {
     }
     if (!mounted || run != _run) return; // a newer search is on its way
     setState(() => _state = next);
+  }
+
+  /// [HF-SEARCH-FILTERS-1] The category catalogue and the language list for the filter sheet, asked once, after the first intro answer.
+  void _askOptions() {
+    if (_optionsAsked) return;
+    _optionsAsked = true;
+    unawaited(() async {
+      try {
+        await for (final c in widget.repo.watchCategories()) {
+          if (mounted) setState(() => _categories = c);
+        }
+      } catch (_) {}
+    }());
+    unawaited(() async {
+      try {
+        await for (final l in widget.repo.watchLanguages()) {
+          if (mounted) setState(() => _languages = l);
+        }
+      } catch (_) {}
+    }());
+  }
+
+  void _applyFilters(SearchFilters f) {
+    _timer?.cancel();
+    setState(() => _filters = f);
+    Telemetry.event('hf_search_filter', {'active': f.activeCount, 'sort': f.sort, 'surface': 'app_search'});
+    unawaited(_search());
+  }
+
+  Future<void> _openFilters() async {
+    final f = await showSearchFilterSheet(context, current: _filters, categories: _categories, languages: _languages);
+    if (f != null && mounted) _applyFilters(f);
+  }
+
+  /// "Show more": the next page of the same search, appended.
+  Future<void> _loadMore(SearchResult cur) async {
+    final off = cur.nextOffset;
+    if (off == null || _loadingMore) return;
+    final run = _run;
+    setState(() => _loadingMore = true);
+    try {
+      final more = await widget.repo.search(_q.text, filters: _filters, offset: off);
+      if (!mounted || run != _run) return;
+      setState(() => _state = AsyncData(cur.withMore(more)));
+    } catch (_) {
+      if (mounted) toast(context, ApiException.genericText);
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
   }
 
   List<Widget> _topicBlock() => [
@@ -161,12 +225,6 @@ class _RealSearchState extends State<RealSearch> {
     );
   }
 
-  /// [HF-CREATOR-BADGES-1] The "Video KYC verified" chip also filters here, so an older server that ignores `kyc=1` still behaves.
-  SearchResult _onlyKyc(SearchResult r) => SearchResult(
-        online: [for (final h in r.online) if (h.videoKycVerified) h],
-        offline: [for (final h in r.offline) if (h.videoKycVerified) h],
-      );
-
   /// [HF-CREATOR-SPACES-1] Women-only / LGBTQ+ channel filter. Tap the chosen one again to clear it.
   void _pickSpace(String space) {
     _timer?.cancel();
@@ -177,7 +235,7 @@ class _RealSearchState extends State<RealSearch> {
   }
 
   Widget _spaceFilter() {
-    const options = [('women', 'Women-only'), ('lgbtq', 'LGBTQ+'), ('kyc', 'Video KYC verified')];
+    const options = [('women', 'Women-only')];
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Wrap(
@@ -259,24 +317,54 @@ class _RealSearchState extends State<RealSearch> {
                       },
               ),
             ),
-            _platformFilter(),
-            _spaceFilter(),
+            if (_intro == false) ...[_platformFilter(), _spaceFilter()],
+            if (_intro == true)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SearchFilterBar(filters: _filters, categories: _categories, languages: _languages, onOpen: () => unawaited(_openFilters()), onChanged: _applyFilters),
+              ),
             const SizedBox(height: 14),
             // [HF-SEARCH-RESULTS-FIRST-1] While a search or filter is on, results sit right under the
             // filters and the topic list moves below them, so nobody has to scroll past 16 chips to see them.
-            if (_browsing) ..._topicBlock(),
+            if (_intro == false && _browsing) ..._topicBlock(),
             AsyncView<SearchResult>(
               state: _state,
               onRetry: () => unawaited(_search()),
-              isEmpty: (r) => !_browsing && r.isEmpty,
+              isEmpty: (r) => r.intro ? r.isEmpty : (!_browsing && r.isEmpty),
               emptyTitle: 'No one found',
-              emptyMessage: 'Try another name, or type their @handle to ask them to join.',
-              builder: (context, r) => _browsing ? _home(context, r) : _results(context, r),
+              emptyMessage: _intro == true ? 'Try fewer filters, or another name, category or language.' : 'Try another name, or type their @handle to ask them to join.',
+              builder: (context, r) => r.intro ? _introResults(context, r) : (_browsing ? _home(context, r) : _results(context, r)),
             ),
-            if (!_browsing) ...[const SizedBox(height: 14), ..._topicBlock()],
+            if (_intro == false && !_browsing) ...[const SizedBox(height: 14), ..._topicBlock()],
           ],
         ),
       ),
+    );
+  }
+
+  /// [HF-SEARCH-FILTERS-1] Approved influencers only (offline ones too), already filtered and sorted by the server.
+  Widget _introResults(BuildContext context, SearchResult r) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Text('${r.total} ${r.total == 1 ? 'influencer' : 'influencers'}', key: const ValueKey('intro-count'), style: t(14, color: C.muted, w: FontWeight.w700)),
+        ),
+        for (final it in r.items) SearchIntroCard(reel: it, onTap: () => context.push('/profile/${it.host.slug}')),
+        if (r.nextOffset != null)
+          Center(
+            child: OutlinedButton(
+              key: const ValueKey('search-more'),
+              onPressed: _loadingMore ? null : () => unawaited(_loadMore(r)),
+              child: Text(_loadingMore ? 'Loading...' : 'Show more', style: t(15, color: C.maroon, w: FontWeight.w800)),
+            ),
+          ),
+        if (r.notOnNetwork.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          MostWantedCard(title: 'Not on ${Brand.name} yet', rows: [for (var k = 0; k < r.notOnNetwork.length; k++) _missingRow(r.notOnNetwork[k], k + 1)]),
+        ],
+      ],
     );
   }
 
