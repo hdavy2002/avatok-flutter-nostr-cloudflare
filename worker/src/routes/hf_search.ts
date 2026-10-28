@@ -10,6 +10,10 @@
 //        Backs the public web page /i/<platform>/<handle>. joinedSlug is set when the creator has since joined (the page redirects to /h/<slug>). Never a uid.
 //   GET  /api/hf/invites/top           public, flag hfInvitesEnabled -> { ok, items:[{ handle, platform, votes, followers? }] }
 //   GET  /api/admin/hf/invites         ADMIN_UIDS only -> { ok, items:[{ handle, platform, votes, lastVoteAt, onNetwork }] }
+//   [HF-SEARCH-FILTERS-1] While hfIntroReelsEnabled is on the search lists ONLY approved intro influencers (offline ones too) and accepts
+//        category=a,b lang=hi,en avail=online|bookings priceMin= priceMax= (rupees/min) verified=youtube,instagram,facebook women=1 sort=recommended|online|price_low|newest limit= offset=
+//        and q matches name, @handle, verified social handle, category, language and description words. The response also carries
+//        intro:true, items:[intro card incl. languages[]], total, nextOffset (online[] / offline[] stay for old builds). Details: lib/hf_intro_search.ts.
 // Never returns a uid, phone or email. handle is returned with a leading "@".
 import type { Env } from "../types";
 import { json } from "../util";
@@ -27,6 +31,8 @@ import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup 
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { noteInviteCreator, hasJoined, inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
+import { introReelsOn } from "../lib/hf_intro_reels"; // [HF-SEARCH-FILTERS-1]
+import { introSearch, parseIntroSearch, legacyHosts } from "../lib/hf_intro_search"; // [HF-SEARCH-FILTERS-1]
 import { unplayableHideAt, unplayableWhere } from "./hf_reels"; // [HF-EXPLORE-PUBLIC-1]
 import { videoKycSql, channelVerifiedSql, effectiveCallerLevel, spaceOfRow, parseSpace, type SpaceName } from "../lib/hf_spaces"; // [HF-CREATOR-SPACES-1]
 
@@ -201,9 +207,13 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
       const spaceRaw = (url.searchParams.get("space") ?? "").trim();
       const space = parseSpace(spaceRaw);
       if (spaceRaw && !space) return err(400, "bad_space");
-      const hosts = await searchHosts(env, cfg, q, topic, platform, space, url.searchParams.get("kyc") === "1");
-      const online = hosts.filter((h) => h.presence !== "offline").slice(0, RESULT_MAX);
-      const offline = hosts.filter((h) => h.presence === "offline").slice(0, RESULT_MAX);
+      // [HF-SEARCH-FILTERS-1] flag on: ONLY approved intro influencers, with the new filters / sort / paging (see lib/hf_intro_search.ts). The legacy online[] / offline[] stay for old app builds.
+      const introOn = introReelsOn(cfg);
+      const intro = introOn ? await introSearch(env, parseIntroSearch(url.searchParams)) : null;
+      const hosts = intro ? [] : await searchHosts(env, cfg, q, topic, platform, space, url.searchParams.get("kyc") === "1");
+      const legacy = intro ? legacyHosts(intro.items) : null;
+      const online = legacy ? legacy.online : hosts.filter((h) => h.presence !== "offline").slice(0, RESULT_MAX);
+      const offline = legacy ? legacy.offline : hosts.filter((h) => h.presence === "offline").slice(0, RESULT_MAX);
       const notOnNetwork: { handle: string; platform: string; followers?: number; votes: number }[] = [];
       const exact = exactHandle(q);
       if (exact && cfg.hfInvitesEnabled === true) {
@@ -226,7 +236,7 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
           if (v > 0 && !(await onNetwork(env, platform, exact))) notOnNetwork.push({ handle: at(exact), platform, votes: v });
         }
       }
-      return json({ ok: true, q, online, offline, notOnNetwork }, 200, NO_STORE);
+      return json({ ok: true, q, online, offline, notOnNetwork, ...(intro ? { intro: true, items: intro.items, total: intro.total, nextOffset: intro.nextOffset } : {}) }, 200, NO_STORE);
     }
 
     // ── invites ───────────────────────────────────────────────────────────────────────────────────────────────
