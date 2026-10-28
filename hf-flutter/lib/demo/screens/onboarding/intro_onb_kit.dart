@@ -297,6 +297,26 @@ class OnbSection extends StatelessWidget {
       );
 }
 
+/// [HF-DESI-GAPS] One numbered line of a "How it works" list: the rangoli number and the text beside it.
+class OnbNumberedStep extends StatelessWidget {
+  const OnbNumberedStep({super.key, required this.n, required this.text, this.done = false});
+
+  final String n;
+  final String text;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: 'Step $n. $text',
+        excludeSemantics: true,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          RangoliNumber(n, done: done),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.35))),
+        ]),
+      );
+}
+
 /// The plum hero card at the top of each step: gold eyebrow, white title, soft body, a yellow marigold top-right (the title and
 /// body are padded so they never run under it).
 class OnbHero extends StatelessWidget {

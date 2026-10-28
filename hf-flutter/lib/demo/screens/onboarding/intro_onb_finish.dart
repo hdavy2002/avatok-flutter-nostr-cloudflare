@@ -482,16 +482,71 @@ class _ResultPage extends StatelessWidget {
   }
 }
 
+/// [HF-DESI-GAPS] A still of her intro video in the gold portrait frame with a play glyph (design App7Sent). Falls back to
+/// [fallback] when there is no still, or the network one fails to load.
+class OnbPosterFrame extends StatelessWidget {
+  const OnbPosterFrame({super.key, this.bytes, this.url, required this.fallback});
+
+  final Uint8List? bytes;
+  final String? url;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = bytes;
+    final u = url;
+    final Widget image;
+    if (b != null && b.isNotEmpty) {
+      image = Image.memory(b, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    } else if (u != null && u.isNotEmpty) {
+      image = Image.network(u, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    } else {
+      return fallback;
+    }
+    return Semantics(
+      image: true,
+      label: 'Your intro video',
+      excludeSemantics: true,
+      child: Container(
+        key: const ValueKey('onb-sent-poster'),
+        width: 124,
+        height: 204,
+        decoration: BoxDecoration(
+          color: const Color(0xFF6B2468),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: IO.yellow, width: 4),
+          boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 20, spreadRadius: -6, offset: Offset(0, 10))],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(fit: StackFit.expand, children: [
+            image,
+            const Center(child: Icon(Icons.play_arrow_rounded, size: 56, color: IO.white, shadows: [Shadow(color: Color(0x88000000), blurRadius: 8)])),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// Step 7 (design "Sent for approval").
 class OnbSentScreen extends StatelessWidget {
-  const OnbSentScreen({super.key, required this.onHome});
+  const OnbSentScreen({super.key, required this.onHome, this.posterBytes, this.posterUrl});
 
   final VoidCallback onHome;
+
+  /// The still taken when she recorded in this visit, else the server's poster of her video; neither shows the icon badge.
+  final Uint8List? posterBytes;
+  final String? posterUrl;
 
   @override
   Widget build(BuildContext context) {
     return _ResultPage(
-      badge: const _Badge(icon: Icons.mark_email_read_rounded, fill: IO.white, shadow: IO.yellow),
+      badge: OnbPosterFrame(
+        bytes: posterBytes,
+        url: posterUrl,
+        fallback: const _Badge(icon: Icons.mark_email_read_rounded, fill: IO.white, shadow: IO.yellow),
+      ),
       eyebrow: 'All done',
       title: 'Sent for approval',
       body: 'A person from our team will watch your video and check your profile. Once approved, you can receive calls. We’ll tell you on WhatsApp.',

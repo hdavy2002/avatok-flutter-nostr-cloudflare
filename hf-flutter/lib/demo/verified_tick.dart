@@ -19,6 +19,7 @@ class VerifiedTick extends StatefulWidget {
     this.phone = false,
     this.size = 22,
     this.interactive = true,
+    this.color,
   });
 
   final String name;
@@ -35,6 +36,10 @@ class VerifiedTick extends StatefulWidget {
 
   /// False where the tick sits inside something already tappable (a row that opens the profile).
   final bool interactive;
+
+  /// [HF-DESI-GAPS] Fixed tick colour for the beside-the-name dot (the intro Reels overlay and its "Verified owner of" sheet use
+  /// the verified green #3FA868 for every approved influencer). Null keeps the green / lavender rule above.
+  final Color? color;
 
   /// True when this creator earns a tick at all.
   static bool earns({required bool videoKyc, required bool channel}) => videoKyc || channel;
@@ -58,7 +63,7 @@ class _VerifiedTickState extends State<VerifiedTick> {
   Widget _dot(double size) => Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(color: widget.videoKyc ? C.kycGreen : C.lav, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: widget.color ?? (widget.videoKyc ? C.kycGreen : C.lav), shape: BoxShape.circle),
         child: Icon(Icons.check_rounded, size: size * .72, color: C.white),
       );
 

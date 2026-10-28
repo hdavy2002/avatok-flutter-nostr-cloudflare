@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -44,6 +45,9 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
   OnbMe? _me;
   OnbApplication? _app;
   OnbVideo? _video;
+
+  /// [HF-DESI-GAPS] The still of the video recorded in this visit (shown on "Sent for approval"); the server poster is used otherwise.
+  Uint8List? _posterBytes;
 
   List<String> _cats = <String>[];
   String _lang = 'hi';
@@ -379,6 +383,7 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
     );
     if (!mounted || r == null) return;
     _video = r.video;
+    _posterBytes = r.poster;
     _retakeN = r.retakes;
     _goto(_V.profile);
   }
@@ -656,7 +661,11 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
       case _V.rules:
         return OnbRulesStep(onBack: _back, onAgreed: () => unawaited(_submit()), busy: _busy, error: _error);
       case _V.sent:
-        return OnbSentScreen(onHome: () => context.go('/reels'));
+        return OnbSentScreen(
+          onHome: () => context.go('/reels'),
+          posterBytes: _posterBytes,
+          posterUrl: _video?.posterUrl ?? _me?.video?.posterUrl,
+        );
       case _V.rejected:
         return OnbRejectedScreen(
           reasons: _app?.rejectReasons ?? const <OnbReason>[],

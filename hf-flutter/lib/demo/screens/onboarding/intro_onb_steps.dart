@@ -454,6 +454,19 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
           ),
           const SizedBox(height: 14),
         ],
+        // [HF-DESI-GAPS] Design App3Aadhaar "How it works", written for what this form really does (Aadhaar OTP, not DigiLocker).
+        const OnbSection(
+          key: ValueKey('onb-aadhaar-how'),
+          title: 'How it works',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            OnbNumberedStep(n: '1', text: 'Type your 12-digit Aadhaar number and tick the box to agree'),
+            SizedBox(height: 8),
+            OnbNumberedStep(n: '2', text: 'We send a 6-digit code to the phone linked to your Aadhaar'),
+            SizedBox(height: 8),
+            OnbNumberedStep(n: '3', text: 'Type that code here and tap Verify. That’s it'),
+          ]),
+        ),
+        const SizedBox(height: 12),
         OnbSection(
           title: 'Your Aadhaar',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -507,12 +520,14 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
               Text('♀ Women-to-Women', style: t(17, color: IO.pinkInk, w: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(
-                'Women-to-Women is only for women. If your Aadhaar doesn’t show Female, we’ll untick that category and you can carry on with the others.',
+                'Your Aadhaar must say Female. Only verified women fans can call you. If it doesn’t, we’ll untick Women-to-Women and you can carry on with the others.',
                 style: t(14, color: IO.pinkInk, w: FontWeight.w700, h: 1.5),
               ),
             ]),
           ),
         ],
+        const SizedBox(height: 14),
+        Text('🔒 We never show your Aadhaar number to anyone.', key: const ValueKey('onb-aadhaar-lock'), style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.4)),
       ]),
     );
   }

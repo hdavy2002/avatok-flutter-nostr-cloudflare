@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/intro_flags.dart';
+import '../data/call_flags.dart';
 import '../data/presence_store.dart';
+import '../data/repos/bookings_repo.dart';
 import '../data/repos/intro_home_repo.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
@@ -97,7 +99,19 @@ class _IntroHomeSectionState extends State<IntroHomeSection> {
           ),
           const SizedBox(height: 12),
         ],
-        if (IntroFlags.callOption) CallOptionCard(store: CallOptionStore.instance, presence: PresenceStore.instance) else widget.fallback,
+        if (IntroFlags.callOption) ...[
+          CallOptionCard(store: CallOptionStore.instance, presence: PresenceStore.instance),
+          // [HF-DESI-GAPS] design App8Home: in queue / bookings today / per min, under the call-option card
+          const SizedBox(height: 12),
+          ListenableBuilder(
+            listenable: Listenable.merge([CallOptionStore.instance, PresenceStore.instance]),
+            builder: (context, _) => IntroHomeTiles(
+              presence: PresenceStore.instance,
+              showQueue: CallFlags.queue && PresenceStore.instance.loaded && (CallOptionStore.instance.active ?? 'B') == 'B',
+            ),
+          ),
+        ] else
+          widget.fallback,
       ],
     );
   }
@@ -373,4 +387,101 @@ class CallOptionCard extends StatelessWidget {
           child: Text('Open Availability', style: t(15, color: C.rani, w: FontWeight.w800)),
         ),
       ];
+}
+
+// ---------------------------------------------------------------------------------------------- Home tiles
+
+/// [HF-DESI-GAPS] The three small tiles under "How do you take calls?" (design App8Home): fans waiting in her queue
+/// (`PresenceStore.queueWaiting`, from `GET /api/hosts/me/presence`), her bookings today (`GET /api/hf/bookings?role=host&day=`
+/// for today in India), and her rate (`GET /api/hf/hosts/me/rate`). A tile whose number cannot be read is hidden, never faked.
+class IntroHomeTiles extends StatefulWidget {
+  const IntroHomeTiles({super.key, required this.presence, required this.showQueue, this.bookings});
+
+  final PresenceStore presence;
+
+  /// The queue only exists with Bookings + live and the queue feature on.
+  final bool showQueue;
+
+  /// Tests inject this; the app uses [Services].
+  final BookingsRepo? bookings;
+
+  /// Today's date in India as `YYYY-MM-DD` (the server's booking day).
+  static String istToday([DateTime? now]) {
+    final d = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 5, minutes: 30));
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  @override
+  State<IntroHomeTiles> createState() => _IntroHomeTilesState();
+}
+
+class _IntroHomeTilesState extends State<IntroHomeTiles> {
+  int? _today;
+  int? _rate;
+
+  BookingsRepo get _repo => widget.bookings ?? Services.instance.bookingsRepo;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final repo = _repo;
+    final results = await Future.wait<int?>([
+      () async {
+        try {
+          final list = await repo.hostBookings(day: IntroHomeTiles.istToday());
+          return list.where((b) => !b.isCancelled && b.status != 'failed').length;
+        } catch (_) {
+          return null;
+        }
+      }(),
+      () async {
+        try {
+          final r = await repo.rate();
+          return r.ratePerMin > 0 ? r.ratePerMin : null;
+        } catch (_) {
+          return null;
+        }
+      }(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _today = results[0];
+      _rate = results[1];
+    });
+  }
+
+  Widget _tile(String value, String label, Color fill, Key key) => Container(
+        key: key,
+        constraints: const BoxConstraints(minHeight: 88),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(22), boxShadow: desiShadow),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          FittedBox(fit: BoxFit.scaleDown, child: Text(value, maxLines: 1, style: t(26, color: C.deep, w: FontWeight.w800, h: 1.1))),
+          const SizedBox(height: 2),
+          Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.deep, w: FontWeight.w800, h: 1.25)),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = <Widget>[
+      if (widget.showQueue) _tile('${widget.presence.queueWaiting}', 'in queue', const Color(0xFFE4DAFC), const ValueKey('home-tile-queue')),
+      if (_today != null) _tile('$_today', _today == 1 ? 'booking today' : 'bookings today', const Color(0xFFCFE9EB), const ValueKey('home-tile-bookings')),
+      if (_rate != null) _tile('₹$_rate', 'per min', const Color(0xFFF8D3E2), const ValueKey('home-tile-rate')),
+    ];
+    if (tiles.isEmpty) return const SizedBox.shrink();
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < tiles.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: tiles[i]),
+        ],
+      ]),
+    );
+  }
 }

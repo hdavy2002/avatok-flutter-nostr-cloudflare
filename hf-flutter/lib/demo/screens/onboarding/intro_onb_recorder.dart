@@ -18,10 +18,14 @@ import 'intro_onb_kit.dart';
 
 /// What the recorder answers when the video was recorded AND sent: the server's draft video, and how many times she pressed Redo.
 class IntroRecorderResult {
-  const IntroRecorderResult({required this.video, required this.retakes});
+  const IntroRecorderResult({required this.video, required this.retakes, this.poster});
 
   final OnbVideo video;
   final int retakes;
+
+  /// [HF-DESI-GAPS] The JPEG still taken when recording stopped (the same bytes sent as the poster), or null. The "Sent for
+  /// approval" screen shows it in the gold frame.
+  final Uint8List? poster;
 }
 
 /// [HF-INTRO-A1] Step 5 (designs "Recording", "Hold your phone upright"): live camera + microphone only (there is no gallery or file picker
@@ -524,7 +528,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
         }
       }
       if (!mounted) return;
-      Navigator.of(context).pop(IntroRecorderResult(video: video, retakes: _retakes));
+      Navigator.of(context).pop(IntroRecorderResult(video: video, retakes: _retakes, poster: poster));
     } on ApiException catch (e) {
       Telemetry.event('hf_intro_upload', {'bytes': size, 'ms': sw.elapsedMilliseconds, 'ok': false, 'reason': e.code});
       if (!mounted) return;

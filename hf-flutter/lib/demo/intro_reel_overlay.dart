@@ -223,6 +223,7 @@ class IntroReelOverlay extends StatelessWidget {
                   surface: 'intro_reel',
                   size: 20,
                   interactive: false,
+                  color: C.onlineDot, // [HF-DESI-GAPS] verified tick is green #3FA868 on intro reels
                 ),
                 for (final s in reel.socials) _socialIcon(s),
                 if (reel.womenOnly)
@@ -301,7 +302,7 @@ Future<ReelSocial?> showIntroInfoSheet(BuildContext context, {required FeedReel 
                     Row(children: [
                       Flexible(child: Text(reel.host.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(20, color: C.deep, w: FontWeight.w800))),
                       const SizedBox(width: 6),
-                      VerifiedTick(name: reel.host.name, videoKyc: reel.greenTick, channel: reel.socials.isNotEmpty, surface: 'intro_info', size: 20, interactive: false),
+                      VerifiedTick(name: reel.host.name, videoKyc: reel.greenTick, channel: reel.socials.isNotEmpty, surface: 'intro_info', size: 20, interactive: false, color: C.onlineDot),
                     ]),
                     Text('Approved by our team', style: t(14, color: C.muted, w: FontWeight.w700)),
                   ]),
