@@ -70,7 +70,7 @@ function makeEnv() {
   return e;
 }
 
-const flags = (over = {}) => vi.mocked(config.readConfig).mockResolvedValue({ hfCallsEnabled: true, hfCallQueueEnabled: true, hfBookingsEnabled: false, ...over } as never);
+const flags = (over = {}) => vi.mocked(config.readConfig).mockResolvedValue({ hfCallsEnabled: true, hfCallQueueEnabled: true, hfBookingsEnabled: false, hfQueueBreakSeconds: 60 /* [HF-INTRO-W2] default is now 120; these timings pin 60 */, ...over } as never);
 const sent = () => vi.mocked(sendWhatsAppText).mock.calls.map((c) => ({ to: c[1], text: c[2] as string }));
 const sentTo = (uid: string, re: RegExp) => sent().filter((s) => s.to === "+91" + uid && re.test(s.text));
 
@@ -165,7 +165,7 @@ describe("join gates (rules 1, 2, D2, D4)", () => {
     lot("fan-2", 1000); // Rs 10: below max(Rs 20, 5 min at Rs 20 = Rs 100)
     const low = await join("fan-2");
     expect(low.status).toBe(402); expect(low.body.error).toBe("low_balance"); expect(low.body.shortfallPaise).toBe(9000);
-    vi.mocked(config.readConfig).mockResolvedValue({ hfCallsEnabled: true, hfCallQueueEnabled: true, hfQueueMaxLength: 2 } as never);
+    vi.mocked(config.readConfig).mockResolvedValue({ hfCallsEnabled: true, hfCallQueueEnabled: true, hfQueueMaxLength: 2, hfQueueBreakSeconds: 60 } as never);
     expect((await join("fan-3")).status).toBe(200);
     expect((await join("fan-4")).status).toBe(200);
     db.prepare("DELETE FROM hf_blocks").run();

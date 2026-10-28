@@ -16,6 +16,8 @@ import { creatorSnapshotFor, isCreatorCategory, validCreatorRate, type CreatorSn
 import { pricingStd, readInfluencerRate } from "./hf_influencer_rate";
 import { isClosing } from "./hf_exit";
 import { isDemoHost } from "./hf_demo";
+import { womenLaneRequiredExtra } from "./hf_lanes"; // [HF-INTRO-W2]
+import { liveBlockedByOption } from "./hf_call_option"; // [HF-INTRO-W2]
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 
 // ── shared helpers (moved from routes/hf_calls.ts) ──────────────────────────────────────────────────────────────────────────────────────
@@ -189,11 +191,12 @@ export async function startInstantCall(env: Env, input: StartInstantCallInput): 
       .first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null; status: string }>();
     if (!host || host.status !== "live" || host.uid === uid) return { ok: false, error: "host_unavailable", status: 409 };
     if (await isDemoHost(env, host.uid)) return { ok: false, error: "demo_host", status: 409 };
+    if (await liveBlockedByOption(env, host.uid)) return { ok: false, error: "host_unavailable", status: 409 }; // [HF-INTRO-W2] option A: bookings only, never a live or queued call
     if (await isClosing(env, uid)) return { ok: false, error: "account_closing", status: 409 };
     if (await isClosing(env, host.uid) || await isBlockedEitherWay(env, uid, host.uid)) return { ok: false, error: "host_unavailable", status: 409 };
     if (!(await verifiedWhatsAppNumber(env, uid))) return { ok: false, error: "not_verified", status: 403 };
     if (!(await verifiedWhatsAppNumber(env, host.uid))) return { ok: false, error: "host_unavailable", status: 409 };
-    if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return { ok: false, error: "lane_required", status: 403 };
+    if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return { ok: false, error: "lane_required", status: 403, extra: await womenLaneRequiredExtra(env, uid) };
     if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return { ok: false, error: "lane_required", status: 403 }; // [HF-CREATOR-SPACES-1]
     if (await callerKycBlocked(env, uid, host)) return { ok: false, error: CALLER_KYC_ERROR, status: 403, message: CALLER_KYC_MESSAGE, extra: { level: "video_kyc" } }; // [HF-CREATOR-BADGES-1]
     const lane = host.women_lane === 1 ? "women" : host.lgbtq_lane === 1 ? "lgbtq" : null;

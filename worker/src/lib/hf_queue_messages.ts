@@ -22,9 +22,14 @@ const rupees = (paise: number) => {
 export const queueJoinedMsg = (name: string, position: number, slug: string) =>
   `${BRAND.name}: You're in ${name}'s queue, #${Math.max(1, Math.trunc(position))}. We'll WhatsApp you just before we call. Nothing is charged until you talk. Leave the queue: ${queueHostUrl(slug)}`;
 
-/** seconds = the wait before we ring (60 s after a call, 10 s after a skip). */
+/** seconds = the wait before we ring (hfQueueBreakSeconds, 120 s by default, after a call; 10 s after a skip). [HF-INTRO-W2] the copy follows the configured value. */
+export const queueWaitPhrase = (seconds: number): string => {
+  if (seconds < 45) return "in a few seconds";
+  const m = Math.round(seconds / 60);
+  return m <= 1 ? "in about 1 minute" : `in about ${m} minutes`;
+};
 export const queueNextMsg = (name: string, seconds: number) =>
-  `${BRAND.name}: You're next for ${name}. We'll call you ${seconds >= 45 ? "in about 1 minute" : "in a few seconds"} — keep your phone free. Your number stays hidden.`;
+  `${BRAND.name}: You're next for ${name}. We'll call you ${queueWaitPhrase(seconds)} — keep your phone free. Your number stays hidden.`;
 
 export const queueNoAnswerMsg = (name: string, slug: string) =>
   `${BRAND.name}: We called you for ${name} but couldn't reach you, so you've left the queue. Nothing was charged. Join again: ${queueHostUrl(slug)}`;

@@ -81,6 +81,17 @@ const LIVE_CALL_STATUSES = "'ringing_host','ringing_caller','connected','ending'
  */
 export async function claimHost(env: Env, hostUid: string, callId: string, opts: { booked?: boolean } = {}): Promise<boolean> {
   const f = await lineFlags(env);
+  // [HF-INTRO-W2] call option A takes no instant call (HF-INTRO-20). Atomic with the claim; a booked claim never gets here. The column is W1's
+  // migration: a DB without it has no option-A host, so a "no such column" error retries the exact old statement.
+  if (f.option && !opts.booked) {
+    const guard = " AND COALESCE(call_option,'B')<>'A'";
+    try { return await claimHostCore(env, hostUid, callId, opts, f, guard); }
+    catch (e) { if (!/no such column/i.test(String((e as Error)?.message ?? e))) throw e; }
+  }
+  return claimHostCore(env, hostUid, callId, opts, f, "");
+}
+
+async function claimHostCore(env: Env, hostUid: string, callId: string, opts: { booked?: boolean }, f: { modes: boolean; queue: boolean }, extra: string): Promise<boolean> {
   if (!f.modes) {
     if (opts.booked) { // [HF-CALL-MODES-INT] a BOOKED call rings in any presence (HF-REEL-16): take the line; an online host shows busy as today, an offline one stays offline
       const rb = await env.DB_META.prepare(
@@ -88,12 +99,12 @@ export async function claimHost(env: Env, hostUid: string, callId: string, opts:
       ).bind(Date.now(), hostUid, callId).run();
       return Number(rb.meta?.changes ?? 0) === 1;
     }
-    const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid, callId).run();
+    const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'" + extra).bind(Date.now(), hostUid, callId).run();
     return Number(r.meta?.changes ?? 0) === 1;
   }
   const waiters = f.queue ? " AND NOT EXISTS (SELECT 1 FROM hf_call_queue q WHERE q.host_uid=hf_hosts.uid AND q.status='waiting')" : "";
   const gate = opts.booked ? "" : ` AND call_mode='online'${waiters}`;
-  const r = await env.DB_META.prepare(`UPDATE hf_hosts SET presence_call_id=?3, presence_at=?1 WHERE uid=?2 AND status='live' AND presence_call_id IS NULL${gate}`).bind(Date.now(), hostUid, callId).run();
+  const r = await env.DB_META.prepare(`UPDATE hf_hosts SET presence_call_id=?3, presence_at=?1 WHERE uid=?2 AND status='live' AND presence_call_id IS NULL${gate}${extra}`).bind(Date.now(), hostUid, callId).run();
   return Number(r.meta?.changes ?? 0) === 1;
 }
 

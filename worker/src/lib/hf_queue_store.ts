@@ -21,6 +21,7 @@ import { sendHfPush } from "./hf_push";
 import { ACTIVE_STATUSES, HF_CALL_APP, isBlockedEitherWay, releaseHost } from "./hf_calls_store";
 import { isClosing } from "./hf_exit";
 import { publicCallState } from "./hf_host_status";
+import { BOOKINGS_ONLY_REASON, liveBlockedByOption } from "./hf_call_option"; // [HF-INTRO-W2]
 import { startInstantCall } from "./hf_call_start";
 import { availableLots } from "./hf_token_ledger";
 import { readMoneyRules, walletSpendablePaise } from "./hf_money_rules";
@@ -96,7 +97,7 @@ export async function readQueueCfg(env: Env): Promise<QueueCfg> {
   const n = (k: string, d: number) => { const v = Number(raw[k]); return Number.isFinite(v) && v > 0 ? Math.trunc(v) : d; };
   return {
     enabled: raw.hfCallsEnabled === true && raw.hfCallQueueEnabled === true,
-    maxLen: n("hfQueueMaxLength", 10), breakSec: n("hfQueueBreakSeconds", 60), maxWaitMin: n("hfQueueMaxWaitMinutes", 120),
+    maxLen: n("hfQueueMaxLength", 10), breakSec: n("hfQueueBreakSeconds", 120), maxWaitMin: n("hfQueueMaxWaitMinutes", 120),
     pauseExpireMin: n("hfQueuePauseExpireMinutes", 15), chunkMin: n("hfCallChunkMinutes", 5), bookingsOn: raw.hfBookingsEnabled === true, raw,
   };
 }
@@ -193,7 +194,7 @@ export async function queueGate(env: Env, hostUid: string, _state?: PublicCallSt
     const host = await loadHostByUid(env, hostUid);
     if (!host) return { waiting: 0, paused: false, open: false };
     const paused = Number(host.queue_paused ?? 0) === 1;
-    return { waiting: await waitingCount(env, hostUid), paused, open: (host.call_mode ?? "online") === "online" && !paused };
+    return { waiting: await waitingCount(env, hostUid), paused, open: (host.call_mode ?? "online") === "online" && !paused && !(await liveBlockedByOption(env, hostUid)) }; // [HF-INTRO-W2] option A: never open
   } catch { return { waiting: 0, paused: false, open: false }; }
 }
 
@@ -398,6 +399,7 @@ export async function joinQueue(env: Env, hostUid: string, fanUid: string, entry
   if (!cfg.enabled) return { ok: false, error: "queue_closed", reason: "feature_off" };
   const host = await loadHostByUid(env, hostUid);
   if (!host || host.status !== "live" || host.uid === fanUid) return { ok: false, error: "queue_closed", reason: "unavailable" };
+  if (await liveBlockedByOption(env, hostUid)) return { ok: false, error: "queue_closed", reason: BOOKINGS_ONLY_REASON }; // [HF-INTRO-W2] option A: no queue, ever
   const mine = await env.DB_META.prepare("SELECT h.slug AS slug FROM hf_call_queue q LEFT JOIN hf_hosts h ON h.uid=q.host_uid WHERE q.fan_uid=?1 AND q.status IN ('waiting','offered') LIMIT 1")
     .bind(fanUid).first<{ slug: string | null }>().catch(() => null);
   if (mine) return { ok: false, error: "already_queued", hostSlug: mine.slug ?? undefined };

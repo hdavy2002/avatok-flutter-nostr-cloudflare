@@ -15,6 +15,8 @@ import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit";
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo";
 import { HF_CALL_APP, hasLaneAccess } from "../lib/hf_calls_store";
+import { BOOKINGS_ONLY_MESSAGE, BOOKINGS_ONLY_REASON, liveBlockedByOption } from "../lib/hf_call_option"; // [HF-INTRO-W2]
+import { womenLaneRequiredExtra } from "../lib/hf_lanes"; // [HF-INTRO-W2]
 import { loadHostBySlug, myQueueEntry, pokeLine, readQueueCfg } from "../lib/hf_queue_store";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -63,6 +65,7 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
   if (host.uid === uid) return err(409, "queue_closed", JOIN_MESSAGE.queue_closed, { reason: "unavailable" });
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" });
+  if (await liveBlockedByOption(env, host.uid)) return err(409, "queue_closed", BOOKINGS_ONLY_MESSAGE, { reason: BOOKINGS_ONLY_REASON, canQueue: false, canBook: cfg.bookingsOn }); // [HF-INTRO-W2] option A takes bookings only
   if (!(await verifiedWhatsAppNumber(env, uid))) return err(403, "not_verified", JOIN_MESSAGE.not_verified);
   const limited = await rateLimit(env, `hfqueue:${uid}`, 10, 600);
   if (limited) return limited;
@@ -70,7 +73,7 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   let lane: { women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null } | null = null;
   try {
     lane = await env.DB_META.prepare("SELECT women_lane, lgbtq_lane, caller_level, creator_kind FROM hf_hosts WHERE uid=?1").bind(host.uid).first<{ women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null }>().catch(() => null);
-    if (lane?.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
+    if (lane?.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", await womenLaneRequiredExtra(env, uid));
     if (lane?.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/hf/hosts/:slug/queue", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_queue", step: "lane" } }).catch(() => undefined);
@@ -86,6 +89,7 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
     ...(code === "low_balance" ? { shortfallPaise: r.shortfallPaise ?? 0 } : {}),
     ...(code === "already_queued" && r.hostSlug ? { hostSlug: r.hostSlug } : {}),
     ...(code === "queue_closed" && r.reason ? { reason: r.reason } : {}),
+    ...(code === "queue_closed" && r.reason === BOOKINGS_ONLY_REASON ? { canQueue: false, canBook: cfg.bookingsOn } : {}), // [HF-INTRO-W2]
     ...(code === "queue_full" ? { waiting: r.waiting } : {}),
   });
 }

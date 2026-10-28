@@ -15,7 +15,8 @@ export type PublicCallState = "available" | "on_call" | "connecting" | "queue_on
 export type LegacyPresence = "online" | "busy" | "offline";
 
 /** Why a fan's "Call now" was refused (the non-available PublicCallStates). */
-export type CallRefusalReason = Exclude<PublicCallState, "available">;
+/** [HF-INTRO-W2] adds "bookings_only": the host chose call option A, so no live call / queue spot exists (only bookings). */
+export type CallRefusalReason = Exclude<PublicCallState, "available"> | "bookings_only";
 
 /** GET/PUT /api/hosts/me/presence (PUT accepts {mode} or legacy {online:boolean}: true -> online, false -> bookings_only). */
 export interface HostPresenceResponse {

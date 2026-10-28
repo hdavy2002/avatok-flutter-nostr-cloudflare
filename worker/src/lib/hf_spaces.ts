@@ -7,7 +7,7 @@ import type { Env } from "../types";
 import { isPhoneVerified } from "./hf_public_verification";
 import { trackException } from "../hooks";
 import { BRAND } from "./brand";
-import { latestLaneSelfie, type LaneSelfieStatus } from "./hf_lanes";
+import { latestLaneSelfie, womenAadhaarOnlyOn, type LaneSelfieStatus } from "./hf_lanes";
 
 export type CreatorKind = "channel" | "women" | "lgbtq";
 export type SpaceName = "women" | "lgbtq";
@@ -97,6 +97,7 @@ export async function hostVerification(env: Env, uid: string): Promise<{ videoKy
 /** True when this caller must be refused because the host takes only video-KYC customers and the caller has no full video KYC. */
 export async function callerKycBlocked(env: Env, callerUid: string, host: HostSpaceCols): Promise<boolean> {
   if (effectiveCallerLevel(host) !== "video_kyc") return false;
+  if (host.women_lane === 1 && (await womenAadhaarOnlyOn(env))) return false; // [HF-INTRO-W2] women-only channel: the lane gate (Aadhaar Female, no selfie) is the whole caller rule
   return !(await videoKycVerified(env, callerUid));
 }
 export const CALLER_KYC_ERROR = "video_kyc_required_caller";

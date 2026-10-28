@@ -16,6 +16,7 @@ import { parseHostList, buildListSql, listCacheKey } from "../lib/hf_hosts_list"
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
 import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { canBook } from "../lib/hf_host_status";
+import { canBookFor } from "../lib/hf_call_option"; // [HF-INTRO-W2]
 import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
@@ -38,7 +39,8 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
       const status = h.presence === "online" || h.presence === "busy" ? h.presence : "offline";
       const line = (await lineFieldsForUids(env, [h.uid]))?.get(h.uid);
       if (!line) return json({ ok: true, slug: h.slug, status }, 200, NO_STORE);
-      return json({ ok: true, slug: h.slug, status, mode: line.mode, callState: line.callState, queue: line.queue, canQueue: line.queue.open, canBook: canBook(line.callState) }, 200, NO_STORE);
+      return json({ ok: true, slug: h.slug, status, mode: line.mode, callState: line.callState, queue: line.queue, canQueue: line.queue.open, canBook: line.mainAction ? canBookFor(line.callState, line.callOption ?? null) : canBook(line.callState),
+        ...(line.mainAction ? { callOption: line.callOption ?? null, mainAction: line.mainAction } : {}) }, 200, NO_STORE); // [HF-INTRO-W2] option fields only while hfCallOptionEnabled is on
     } catch (e) {
       await trackException(env, e, { route: p, method: "GET", handled: true, app_name: BRAND.slug, extra: { area: "hf_hosts_list" } });
       return err(500, "internal_error");

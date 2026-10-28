@@ -12450,5 +12450,23 @@
         "note": "A viewer opened a profile from the reel rail photo or Call bar on the new build."
       }
     ]
+  },
+  "HF-INTRO-W2": {
+    "description": "Backend lane W2 of HF-INTRO-VIDEO-1: call option A (bookings only) / B (bookings + live), callOption + mainAction in public JSON, 2-minute queue break, Women-to-Women fan = Aadhaar Female only. Ships dark behind hfCallOptionEnabled and hfWomenAadhaarOnlyEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallOptionEnabled",
+      "hfWomenAadhaarOnlyEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_host_call_option_changed",
+        "property": "to",
+        "exists": true,
+        "min_events": 1,
+        "note": "An influencer chose call option A or B through PUT /api/hosts/me/call-option (flag hfCallOptionEnabled)."
+      }
+    ]
   }
 }

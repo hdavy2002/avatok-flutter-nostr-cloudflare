@@ -5,6 +5,7 @@
 //   POST /api/hosts/me/presence/beat       bumps presence_at
 //   PUT  /api/hosts/me/presence/nudges     {paused}  [HF-PRESENCE-NUDGE-1]
 //   GET|PUT /api/hosts/me/queue            {paused} -> {ok, waiting, paused, entries:[{position, firstName, joinedAt}]} (first names only; needs modes + queue flags)
+//   GET|PUT /api/hosts/me/call-option      [HF-INTRO-W2] {option:'A'|'B'} -> {ok, callOption, changed}. A = bookings only, B = bookings + live (D9). Needs hfCallOptionEnabled (else 404 not_enabled).
 // Wiring: routes/hf_calls.ts (Lane C) calls hfHostModeRoute(req, env, p, ctx) in place of its old presence block.
 import type { Env } from "../types";
 import { json } from "../util";
@@ -18,6 +19,7 @@ import { HF_CALL_APP } from "../lib/hf_calls_store";
 import { closeQueue, hostQueueView, pokeLine, setQueuePaused } from "../lib/hf_queue_store"; // [HF-CALL-MODES-INT] Lane B's real functions
 import { derivePresence } from "../lib/hf_host_status";
 import { lineFlags, waitingCounts } from "../lib/hf_host_line_view";
+import { callOptionOn, hostCallOption, liveBlockedByOption, parseCallOption, setCallOption } from "../lib/hf_call_option"; // [HF-INTRO-W2]
 import { HOST_MODES, type HostMode, type HfHostLineMessage } from "../lib/hf_call_contracts";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -54,7 +56,7 @@ async function presenceView(env: Env, uid: string, queueOn: boolean) {
   return {
     presence: (r?.presence ?? derivePresence(mode, r?.on_call_since)) as string,
     mode, onCall: r?.on_call_since != null,
-    queue: { waiting, paused, open: queueOn && mode === "online" && !paused },
+    queue: { waiting, paused, open: queueOn && mode === "online" && !paused && !(await liveBlockedByOption(env, uid)) }, // [HF-INTRO-W2] option A: never open
     bookedCalls: await countBookedCalls(env, uid),
   };
 }
@@ -62,11 +64,12 @@ async function presenceView(env: Env, uid: string, queueOn: boolean) {
 export async function hfHostModeRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
   const isPresence = p === "/api/hosts/me/presence" || p === "/api/hosts/me/presence/beat" || p === "/api/hosts/me/presence/nudges";
   const isQueue = p === "/api/hosts/me/queue";
-  if (!isPresence && !isQueue) return null;
+  const isOption = p === "/api/hosts/me/call-option"; // [HF-INTRO-W2]
+  if (!isPresence && !isQueue && !isOption) return null;
   const m = req.method;
-  if (p === "/api/hosts/me/presence" ? !(m === "GET" || m === "PUT") : p === "/api/hosts/me/queue" ? !(m === "GET" || m === "PUT") : p.endsWith("/beat") ? m !== "POST" : m !== "PUT") return null;
+  if (isOption ? !(m === "GET" || m === "PUT") : p === "/api/hosts/me/presence" ? !(m === "GET" || m === "PUT") : p === "/api/hosts/me/queue" ? !(m === "GET" || m === "PUT") : p.endsWith("/beat") ? m !== "POST" : m !== "PUT") return null;
   try {
-    return isQueue ? await queueRoute(req, env, p) : await presenceRoute(req, env, p, ctx);
+    return isOption ? await optionRoute(req, env) : isQueue ? await queueRoute(req, env, p) : await presenceRoute(req, env, p, ctx);
   } catch (e) {
     await trackException(env, e, { route: p, method: m, handled: true, app_name: HF_CALL_APP, extra: { area: "hf_host_mode" } });
     return err(500, "internal_error", "Try again in a little while.");
@@ -171,4 +174,27 @@ async function queueRoute(req: Request, env: Env, _p: string): Promise<Response>
   const cur = Number((await env.DB_META.prepare("SELECT queue_paused FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ queue_paused: number }>())?.queue_paused ?? 0) === 1;
   if (cur !== b.paused) await setQueuePaused(env, u.uid, b.paused, "host");
   return json(await hostQueueView(env, u.uid));
+}
+
+/** [HF-INTRO-W2] GET|PUT /api/hosts/me/call-option. The influencer (auth = the host) picks A (bookings only) or B (bookings + live). Any host row may set it
+ *  (onboarding sets it before approval); only a live host is ever shown or called. Switching to A closes a running queue exactly like going Offline. */
+async function optionRoute(req: Request, env: Env): Promise<Response> {
+  if (!(await callOptionOn(env))) return NOT_ENABLED();
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error, u.error);
+  const host = await env.DB_META.prepare("SELECT uid, status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ uid: string; status: string }>();
+  if (!host) return err(409, "not_host", "You are not an influencer yet.");
+  if (req.method === "GET") return json({ ok: true, callOption: await hostCallOption(env, u.uid) }, 200, NO_STORE);
+  const b = await readJson(req);
+  const option = parseCallOption(b.option);
+  if (!option) return err(400, "invalid_field", "option must be A or B.");
+  const r = await setCallOption(env, u.uid, option);
+  if (!r.ok) return err(503, "unavailable", "Try again in a little while.");
+  const changed = r.prev !== option;
+  if (changed && option === "A") await closeQueue(env, u.uid, "host_offline").catch(() => 0); // waiters are told once and the 'q:' lock is released
+  if (changed) {
+    const surface = b.surface === "web" || b.surface === "app" || b.surface === "onboarding" ? b.surface : "unknown";
+    void track(env, u.uid, "hf_host_call_option_changed", HF_CALL_APP, { area: "hf_call", from: r.prev, to: option, surface }).catch(() => undefined);
+  }
+  return json({ ok: true, callOption: option, changed });
 }

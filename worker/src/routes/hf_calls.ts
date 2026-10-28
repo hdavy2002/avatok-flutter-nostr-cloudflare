@@ -49,9 +49,11 @@ import { hasPositiveCallDuration } from "../lib/hf_reviews_pure";
 import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { instantBookingOverlapGuardSql, nextBookingCutoff, startTokenCall, chunkSettingsFrom, pickPricing, type StartTokenResult } from "../lib/hf_call_start"; // [HF-CALL-MODES-C]
-import { publicCallState, canQueue as stateCanQueue, canBook as stateCanBook } from "../lib/hf_host_status";
+import { publicCallState, canQueue as stateCanQueue } from "../lib/hf_host_status";
 import { queueGate } from "../lib/hf_queue_store";
+import { womenLaneRequiredExtra } from "../lib/hf_lanes"; // [HF-INTRO-W2]
 import { hfHostModeRoute } from "./hf_host_mode"; // [HF-CALL-MODES-INT]
+import { BOOKINGS_ONLY_MESSAGE, BOOKINGS_ONLY_REASON, canBookFor, hostCallOption, liveBlockedByOption } from "../lib/hf_call_option"; // [HF-INTRO-W2]
 import type { PublicCallState, CallRefusalReason } from "../lib/hf_call_contracts";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -67,6 +69,9 @@ async function lineRefusal(env: Env, hostUid: string): Promise<Response> {
     try { row = await env.DB_META.prepare("SELECT presence, call_mode, on_call_since, presence_call_id, queue_paused FROM hf_hosts WHERE uid=?1").bind(hostUid).first<LineRow>(); }
     catch { row = await env.DB_META.prepare("SELECT presence FROM hf_hosts WHERE uid=?1").bind(hostUid).first<LineRow>().catch(() => null); } // migration not applied yet
     if (!row) return UNAVAILABLE();
+    // [HF-INTRO-W2] call option A (flag on): bookings only, whatever her presence is. The fan can book; there is no live call or queue.
+    const option = cfg.hfCallOptionEnabled === true ? await hostCallOption(env, hostUid) : null;
+    if (option === "A") return err(409, "host_unavailable", BOOKINGS_ONLY_MESSAGE, { reason: BOOKINGS_ONLY_REASON, canQueue: false, canBook: cfg.hfBookingsEnabled === true, queueWaiting: 0 });
     const modesOn = cfg.hfCallModesEnabled === true && row.call_mode != null;
     const gate = await queueGate(env, hostUid).catch(() => ({ waiting: 0, paused: false, open: false }));
     const state: PublicCallState = modesOn
@@ -75,7 +80,7 @@ async function lineRefusal(env: Env, hostUid: string): Promise<Response> {
     if (state === "available") return UNAVAILABLE(); // refused for another reason: no line reason to add
     const reason: CallRefusalReason = state;
     const canQueue = modesOn && cfg.hfCallQueueEnabled === true && stateCanQueue(state, row.queue_paused === 1 || gate.paused);
-    const canBook = cfg.hfBookingsEnabled === true && stateCanBook(state);
+    const canBook = cfg.hfBookingsEnabled === true && canBookFor(state, option); // [HF-INTRO-W2] option B Offline still takes bookings
     return err(409, "host_unavailable", "This host isn't available right now.", { reason, canQueue, canBook, queueWaiting: Math.max(0, gate.waiting) });
   } catch { return UNAVAILABLE(); }
 }
@@ -148,12 +153,12 @@ async function startCall(req: Request, env: Env): Promise<Response> {
     .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; caller_level: string | null; creator_kind: string | null; presence: string | null; status: string }>();
   if (host && (await isDemoHost(env, host.uid))) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" }); // [HF-WIRE-14] HF-REEL-34
   if (!host || host.status !== "live" || host.uid === uid) return UNAVAILABLE();
-  if (host.presence !== "online" || (await queueHoldsLine(env, host.uid))) return lineRefusal(env, host.uid); // [HF-CALL-MODES-C] adds reason / canQueue / canBook / queueWaiting
+  if (host.presence !== "online" || (await liveBlockedByOption(env, host.uid)) || (await queueHoldsLine(env, host.uid))) return lineRefusal(env, host.uid); // [HF-CALL-MODES-C] adds reason / canQueue / canBook / queueWaiting
   if (await isClosing(env, host.uid)) return UNAVAILABLE(); // [HF-WALLET-EXIT-1] a host who is closing their account takes no calls
   if (await isBlockedEitherWay(env, uid, host.uid)) return UNAVAILABLE();
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return UNAVAILABLE();
 
-  if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", { lane: "women" });
+  if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", "This host takes calls from verified women only.", await womenLaneRequiredExtra(env, uid));
   if (laneIn === "lgbtq" && host.lgbtq_lane !== 1) return UNAVAILABLE();
   if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", "This LGBTQ+ channel needs a full video KYC.", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
   if (await callerKycBlocked(env, uid, host)) return err(403, CALLER_KYC_ERROR, CALLER_KYC_MESSAGE, { level: "video_kyc" }); // [HF-CREATOR-BADGES-1]
@@ -1059,7 +1064,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (end && m === "POST") return await endCall(req, env, end[1]);
     if (p === "/api/hf/wallet" && m === "GET") return await walletGet(req, env);
     if (p === "/api/hf/wallet/estimate" && m === "GET") return await walletEstimate(req, env);
-    if (p === "/api/hosts/me/presence" || p === "/api/hosts/me/presence/beat" || p === "/api/hosts/me/presence/nudges" || p === "/api/hosts/me/queue") { // [HF-CALL-MODES-INT] Lane A's routes (presence, beat, nudges [HF-PRESENCE-NUDGE-1], queue pause)
+    if (p === "/api/hosts/me/presence" || p === "/api/hosts/me/presence/beat" || p === "/api/hosts/me/presence/nudges" || p === "/api/hosts/me/queue" || p === "/api/hosts/me/call-option") { // [HF-INTRO-W2] call-option; [HF-CALL-MODES-INT] Lane A's routes (presence, beat, nudges [HF-PRESENCE-NUDGE-1], queue pause)
       const r = await hfHostModeRoute(req, env, p, ctx);
       if (r) return r;
     }

@@ -99,7 +99,7 @@ function makeEnv() {
   return e;
 }
 
-const ALL_ON = { hfCallsEnabled: true, hostsPublicEnabled: true, hfTokensEnabled: true, hfCallModesEnabled: true, hfCallQueueEnabled: true, hfCallChunkBillingEnabled: true, hfBookingLengthsEnabled: true, hfBookingsEnabled: false };
+const ALL_ON = { hfCallsEnabled: true, hostsPublicEnabled: true, hfTokensEnabled: true, hfCallModesEnabled: true, hfCallQueueEnabled: true, hfCallChunkBillingEnabled: true, hfBookingLengthsEnabled: true, hfBookingsEnabled: false, hfQueueBreakSeconds: 60 /* [HF-INTRO-W2] default is now 120; this run pins the old 60 s timings */ };
 const cfg = (over = {}) => vi.mocked(config.readConfig).mockResolvedValue({ ...ALL_ON, ...over } as never);
 const OFF = { hfCallModesEnabled: false, hfCallQueueEnabled: false, hfCallChunkBillingEnabled: false, hfBookingLengthsEnabled: false };
 

@@ -141,6 +141,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     hostStatus: row?.host_status ?? null,
     presence: row?.host_status ? (row.host_presence ?? "offline") : null,
     ...(hostLine ? { mode: hostLine.mode, callState: hostLine.callState, queue: hostLine.queue } : {}),
+    ...(hostLine?.mainAction ? { callOption: hostLine.callOption ?? null, mainAction: hostLine.mainAction } : {}), // [HF-INTRO-W2] only while hfCallOptionEnabled is on
     walletPaise,
     prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true, reelAlerts: prefs ? Number(prefs.reel_alerts ?? 1) !== 0 : true },
   };

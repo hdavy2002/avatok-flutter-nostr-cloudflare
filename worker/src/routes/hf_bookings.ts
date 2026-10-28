@@ -10,6 +10,7 @@ import { readConfig } from "./config";
 import { rateLimit } from "../money";
 import { isClosing } from "../lib/hf_exit";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
+import { womenAadhaarOnlyOn, womenLaneRequiredExtra } from "../lib/hf_lanes"; // [HF-INTRO-W2]
 import { hasLaneAccess, isBlockedEitherWay, releaseHost, claimHost, callsConfigured } from "../lib/hf_calls_store";
 import { chunkSettingsFrom } from "../lib/hf_call_start"; // [HF-CALL-MODES-INT]
 import { readHfTokenConfig, readHfStdPlan } from "../lib/hf_token_config";
@@ -267,19 +268,23 @@ export function parseUtcIso(value: unknown): number | null {
   return Number.isFinite(ms) && new Date(ms).toISOString() === new Date(value).toISOString() ? ms : null;
 }
 
-export function laneGuardSql(customerParam: number, hostParam: number, lane: string | null): string {
+export function laneGuardSql(customerParam: number, hostParam: number, lane: string | null, womenAadhaarOnly = false): string {
   // [HF-CREATOR-SPACES-1] women host: customer joined + Aadhaar F + latest selfie approved. LGBTQ+ host (or an lgbtq booking): declared + Aadhaar verified + latest selfie approved.
   void lane;
   const selfieOk = `(SELECT s.review_status FROM hf_selfie s WHERE s.uid=?${customerParam} ORDER BY s.created_at DESC, s.id DESC LIMIT 1)='approved'`;
-  return [
-    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND women_lane=1) OR (EXISTS (` +
+  // [HF-INTRO-W2] hfWomenAadhaarOnlyEnabled: a women-lane host needs only a verified Aadhaar showing Female (no lane row, no selfie), and its caller_level=video_kyc column is ignored.
+  const womenClause = womenAadhaarOnly
+    ? `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND women_lane=1) OR EXISTS (SELECT 1 FROM hf_kyc k WHERE k.uid=?${customerParam} AND k.verified_at IS NOT NULL AND k.gender='F'))`
+    : `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND women_lane=1) OR (EXISTS (` +
       `SELECT 1 FROM hf_lane_access la JOIN hf_kyc k ON k.uid=la.uid AND k.verified_at IS NOT NULL ` +
-      `WHERE la.uid=?${customerParam} AND la.lane='women' AND k.gender='F') AND ${selfieOk}))`,
+      `WHERE la.uid=?${customerParam} AND la.lane='women' AND k.gender='F') AND ${selfieOk}))`;
+  return [
+    womenClause,
     `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND lgbtq_lane=1) OR (EXISTS (` +
       `SELECT 1 FROM hf_lane_access la JOIN hf_kyc k ON k.uid=la.uid AND k.verified_at IS NOT NULL ` +
       `WHERE la.uid=?${customerParam} AND la.lane='lgbtq' AND la.declared_at IS NOT NULL) AND ${selfieOk}))`,
     // [HF-CREATOR-BADGES-1] "Who can call you" = video_kyc (spaces are always video_kyc): the customer needs a full video KYC.
-    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND caller_level='video_kyc') OR ${videoKycSql("?" + customerParam)})`,
+    `(NOT EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?${hostParam} AND caller_level='video_kyc'${womenAadhaarOnly ? " AND women_lane<>1" : ""}) OR ${videoKycSql("?" + customerParam)})`,
   ].join(" AND ");
 }
 
@@ -301,7 +306,7 @@ async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow,
   if (await isClosing(env, uid) || await isClosing(env, host.uid)) return err(409, "account_closing");
   if (!(await verifiedWhatsAppNumber(env, uid)) || !(await verifiedWhatsAppNumber(env, host.uid))) return err(403, "not_verified");
   if (await isBlockedEitherWay(env, uid, host.uid)) return err(409, "host_unavailable");
-  if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", { lane: "women" });
+  if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", await womenLaneRequiredExtra(env, uid));
   if (lane === "lgbtq" && host.lgbtq_lane !== 1) return err(409, "host_unavailable");
   if (lane != null && lane !== "women" && lane !== "lgbtq") return err(400, "invalid_lane");
   if (host.lgbtq_lane === 1 && !(await hasLaneAccess(env, uid, "lgbtq"))) return err(403, "lane_required", { lane: "lgbtq" }); // [HF-CREATOR-SPACES-1]
@@ -409,7 +414,7 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
     "AND NOT EXISTS (SELECT 1 FROM hf_blocks WHERE (blocker_uid=?2 AND blocked_uid=?3) OR (blocker_uid=?3 AND blocked_uid=?2)) " +
     "AND NOT EXISTS (SELECT 1 FROM hf_exit_requests WHERE uid IN (?2,?3) AND status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready')) " +
     "AND NOT EXISTS (SELECT 1 FROM hf_calls WHERE (caller_uid IN (?2,?3) OR host_uid IN (?2,?3)) AND status IN ('ringing_host','ringing_caller','connected')) " +
-    "AND " + laneGuardSql(2, 3, lane) + " AND " + conflict,
+    "AND " + laneGuardSql(2, 3, lane, await womenAadhaarOnlyOn(env)) + " AND " + conflict,
   ).bind(quoteId, auth.uid, host.uid, slot.startAt, slot.endAt, duration, schedule.version, expiresAt,
     reservedPaise, JSON.stringify(priceSnapshot), JSON.stringify(policySnapshot), now, schedule.bufferMinutes, ...(lengthCfg.on ? [seconds] : [])).run();
   if (Number(result.meta?.changes ?? 0) !== 1) {
@@ -514,6 +519,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   insertParams.push(reserveOp);
   const holdIndex = insertParams.length + 1;
   if (hasHold) insertParams.push(Number(quote.hold_seconds));
+  const womenOnly = await womenAadhaarOnlyOn(env); // [HF-INTRO-W2]
   const bookingInsert = env.DB_META.prepare(
     "INSERT INTO hf_bookings (id,host_uid,customer_uid,starts_at,ends_at,host_timezone,schedule_version,quote_id,idempotency_key,status,duration_min," +
     "reserved_paise,expected_host_net_paise,expected_host_paid_net_paise,expected_host_test_net_paise,price_snapshot_json,policy_snapshot_json,reservation_snapshot_json,call_id,settlement_status,created_at,updated_at" + (hasHold ? ",hold_seconds" : "") + ") " +
@@ -529,7 +535,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
     "AND NOT EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?" + reserveOpIndex + ") " +
     "AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?3 AND cv.phone_verified=1 AND p.status='verified') " +
     "AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?2 AND cv.phone_verified=1 AND p.status='verified') " +
-    "AND " + laneGuardSql(3, 2, policy.lane ?? null) + " AND (" + lotGuards.join(" AND ") + ") AND " + conflict,
+    "AND " + laneGuardSql(3, 2, policy.lane ?? null, womenOnly) + " AND (" + lotGuards.join(" AND ") + ") AND " + conflict,
   ).bind(...insertParams);
   const reserveStatements = buildReservationStatements(env, {
     uid: auth.uid, callId, plan: spend, now, nonce,
@@ -757,7 +763,7 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   const conferenceName = `hf_${callId.replace(/-/g, "")}`;
   try {
     await env.DB_META.batch([
-      env.DB_META.prepare(`UPDATE hf_bookings SET status='starting',updated_at=?1 WHERE id=?2 AND status='confirmed' AND settlement_status='held' AND starts_at<=?3+300000 AND ends_at>?3 AND NOT EXISTS (SELECT 1 FROM hf_exit_requests WHERE uid IN (?4,?5) AND status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready')) AND NOT EXISTS (SELECT 1 FROM hf_blocks WHERE (blocker_uid=?4 AND blocked_uid=?5) OR (blocker_uid=?5 AND blocked_uid=?4)) AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?4 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?5 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?5 AND status='live' AND presence_call_id=?6) AND ${laneGuardSql(4,5,policy.lane ?? null)}`)
+      env.DB_META.prepare(`UPDATE hf_bookings SET status='starting',updated_at=?1 WHERE id=?2 AND status='confirmed' AND settlement_status='held' AND starts_at<=?3+300000 AND ends_at>?3 AND NOT EXISTS (SELECT 1 FROM hf_exit_requests WHERE uid IN (?4,?5) AND status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready')) AND NOT EXISTS (SELECT 1 FROM hf_blocks WHERE (blocker_uid=?4 AND blocked_uid=?5) OR (blocker_uid=?5 AND blocked_uid=?4)) AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?4 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?5 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?5 AND status='live' AND presence_call_id=?6) AND ${laneGuardSql(4,5,policy.lane ?? null,await womenAadhaarOnlyOn(env))}`)
         .bind(now, bookingId, now, row.customer_uid, row.host_uid, callId),
       env.DB_META.prepare("INSERT INTO hf_calls(id,caller_uid,host_uid,rate_paise,status,lane,created_at,conference_name,call_cost_paise_per_min,host_share_bps,tax_mode,split_rule_version,pricing_snapshot,booking_id) " +
         "SELECT ?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12,?13 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?13 AND status='starting' AND call_id=?1)")

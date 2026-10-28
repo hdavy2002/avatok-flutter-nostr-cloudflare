@@ -2198,7 +2198,7 @@ export interface PlatformConfig {
   hfCallChunkMinutes: number; // [HF-CALL-MODES-P0] chunk size in minutes (default 5). Numeric -> in numericKeys.
   hfCallMaxMinutes: number; // [HF-CALL-MODES-P0] hard call cap with chunk billing, minutes (default 300). Numeric -> in numericKeys.
   hfQueueMaxLength: number; // [HF-CALL-MODES-P0] max waiting fans per host (default 10). Numeric -> in numericKeys.
-  hfQueueBreakSeconds: number; // [HF-CALL-MODES-P0] pause between a call ending and the next queued call (default 60). Numeric -> in numericKeys.
+  hfQueueBreakSeconds: number; // [HF-CALL-MODES-P0] pause between a call ending and the next queued call (default 120 since HF-INTRO-9; was 60). Numeric -> in numericKeys.
   hfQueueMaxWaitMinutes: number; // [HF-CALL-MODES-P0] a waiting entry expires after this (default 120). Numeric -> in numericKeys.
   hfQueuePauseExpireMinutes: number; // [HF-CALL-MODES-P0] entries of a paused queue expire after this (default 15). Numeric -> in numericKeys.
   hfBookingHoldMinutes: number; // [HF-CALL-MODES-P0] minutes of the booking price held at booking time (default 15). Numeric -> in numericKeys.
@@ -2221,6 +2221,8 @@ export interface PlatformConfig {
   hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 20 [HF-CREATOR-SPACES-1]
   hfInfluencerMinViews: number; // [HF-CREATOR-SPACES-1] NUMERIC (numericKeys): total channel views needed on a YouTube channel (Instagram has no total views); default 1000
   hfCreatorSpacesEnabled: boolean; // [HF-CREATOR-SPACES-1] kill switch: Women-only / LGBTQ+ creator spaces + video KYC (off -> 404 not_enabled on /api/hf/spaces/*)
+  hfCallOptionEnabled: boolean; // [HF-INTRO-W2] call option A (bookings only) / B (bookings + live) per influencer + callOption / mainAction in public JSON (HF-INTRO-8/15/16). Public. Default off. Boolean -> NOT in numericKeys.
+  hfWomenAadhaarOnlyEnabled: boolean; // [HF-INTRO-W2] Women-to-Women: a fan qualifies with a verified Aadhaar showing Female, no selfie (HF-INTRO-18). Public. Default off. Boolean -> NOT in numericKeys.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -3008,7 +3010,7 @@ const DEFAULTS: PlatformConfig = {
   hfCallChunkMinutes: 5,
   hfCallMaxMinutes: 300,
   hfQueueMaxLength: 10,
-  hfQueueBreakSeconds: 60,
+  hfQueueBreakSeconds: 120, // [HF-INTRO-W2] owner 2026-10-28 (HF-INTRO-9): 2 minutes between queued calls (was 60)
   hfQueueMaxWaitMinutes: 120,
   hfQueuePauseExpireMinutes: 15,
   hfBookingHoldMinutes: 15,
@@ -3030,6 +3032,8 @@ const DEFAULTS: PlatformConfig = {
   hfInfluencerMinFollowers: 20, // [HF-WIRE-1B] owner 2026-10-19; raised 10 -> 20 by [HF-CREATOR-SPACES-1] 2026-10-24
   hfInfluencerMinViews: 1000, // [HF-CREATOR-SPACES-1] owner 2026-10-24: >= 1,000 total views on a YouTube channel
   hfCreatorSpacesEnabled: true, // [HF-CREATOR-SPACES-1] kill switch
+  hfCallOptionEnabled: false, // [HF-INTRO-W2] dark until the owner flips it (Specs/HF-INTRO-VIDEO-1.md)
+  hfWomenAadhaarOnlyEnabled: false, // [HF-INTRO-W2] dark until the owner flips it
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
   hfTopupPacks: "100,200,500,1000",

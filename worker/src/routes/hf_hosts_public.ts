@@ -68,6 +68,7 @@ export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan 
     videoKycVerified: Number(r.video_kyc) === 1, space: spaceOfRow(r), callerLevel: effectiveCallerLevel(r), channelVerified: Number(r.channel_verified) === 1, // [HF-CREATOR-BADGES-1] [HF-CREATOR-SPACES-1] green "Video KYC verified" + Women-only / LGBTQ+ tag; space hosts are visible to everyone
     ...intro(env, r), status: (r.presence === "online" || r.presence === "busy" ? r.presence : "offline") as "online" | "busy" | "offline",
     ...(line ? { mode: line.mode, callState: line.callState, queue: line.queue } : {}), // [HF-CALL-MODES-A] only while hfCallModesEnabled is on
+    ...(line?.mainAction ? { callOption: line.callOption ?? null, mainAction: line.mainAction } : {}), // [HF-INTRO-W2] only while hfCallOptionEnabled is on
   };
 }
 
