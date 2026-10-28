@@ -251,14 +251,19 @@ void main() {
       await tester.pump();
       expect(lastSearch()!['platform'], 'instagram');
 
-      // [HF-APP-CACHE-1] "All" was already read a moment ago, so it is answered from the saved copy: no new request, and the
-      // cache key holds the whole query so it is not the YouTube/Instagram answer.
-      final before = api.queries.length;
+      // [HF-APP-CACHE-1] A filter already read is answered from the saved copy: no new request, and the cache key holds the
+      // whole query. [HF-SEARCH-FILTERS-1] The very first read goes out filter-shaped (the server's kind is not known yet), so the
+      // cache check uses YouTube, read a moment ago, and counts only search requests (the category catalogue is its own read).
+      int searches() => api.queries.where((q) => q != null && q.containsKey('q')).length;
       await tester.tap(find.byKey(const ValueKey('platform-all')));
       await tester.pump();
       await tester.pump();
-      expect(api.queries.length, before, reason: 'served from the cache');
-      expect(api.queries.where((q) => q != null && q.containsKey('q') && !q.containsKey('platform')).length, 1);
+      expect(lastSearch()!.containsKey('platform'), isFalse);
+      final before = searches();
+      await tester.tap(find.byKey(const ValueKey('platform-youtube')));
+      await tester.pump();
+      await tester.pump();
+      expect(searches(), before, reason: 'served from the cache');
     });
 
     testWidgets('results show a small platform icon', (tester) async {
