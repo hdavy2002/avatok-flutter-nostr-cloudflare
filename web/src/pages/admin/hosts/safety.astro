@@ -1,0 +1,10 @@
+---
+// [HF-CALL-SAFETY-WEB] Admin "Call safety": AI-flagged calls, appeals, fan reports, paused accounts. Safety reviewers only (the API enforces it).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import CallSafety from '../../../islands/admin2/hosts/CallSafety.tsx';
+---
+
+<Admin2 title="Call safety" heading="Admin · Safety reviewers only" active="host-safety" subtitle="Calls the AI wasn't sure about, appeals, fan reports and paused accounts. Oldest first.">
+  <CallSafety client:load />
+</Admin2>

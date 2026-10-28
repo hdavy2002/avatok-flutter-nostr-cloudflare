@@ -9,6 +9,8 @@ import { callModeFlags, holdLine, lengthLabel, offeredLengths } from '../../lib/
 import '../../styles/hf-bookings.css';
 import '../../styles/hf-channel.css';
 import Sticker from '../channel/Sticker';
+import { useSafetyNotice } from '../../components/safety/SafetyNotice'; // [HF-CALL-SAFETY-WEB]
+import SafetyBlockNote from '../../components/safety/SafetyBlockNote';
 import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
@@ -42,6 +44,8 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [laneNeed, setLaneNeed] = useState<'women' | 'lgbtq' | 'kyc' | null>(null); // [HF-CREATOR-SPACES-1] [HF-CREATOR-BADGES-1]
+  const [blockCode, setBlockCode] = useState(''); // [HF-CALL-SAFETY-WEB] 403 account_paused while quoting or booking
+  const notice = useSafetyNotice();
   const key = useRef('');
   const authEpoch = useRef(0);
   const quoteAuthEpoch = useRef(0);
@@ -66,7 +70,7 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
         setDurations(offered); setDuration(offered[0]); syncUrl(nextDate, offered[0]);
         return loadSlots(nextDate, offered[0], keepMessage, true);
       }
-      const issue = bookingError(error); setMessage(issue.message); setLaneNeed(issue.lane ?? null); setPhase('error');
+      const issue = bookingError(error); setMessage(issue.message); setLaneNeed(issue.lane ?? null); setBlockCode(issue.code === 'account_paused' ? issue.code : ''); setPhase('error');
     }
   };
   useEffect(() => {
@@ -125,7 +129,7 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
       const fresh = await createQuote(host, slot.startUtc, duration);
       if (authEpoch.current !== quoteEpoch) { setQuote(null); setSelected(null); setMessage('Your signed-in account changed. Choose the time again to get a fresh quote.'); return; }
       setQuote(fresh); quoteAuthEpoch.current = quoteEpoch; key.current = randomKey(); setMessage('');
-    } catch (error) { const issue = bookingError(error); setLaneNeed(issue.lane ?? null); setMessage(issue.code === 'age_confirmation_required' ? await recoverAgeConfirmation() : issue.message); setSelected(null); }
+    } catch (error) { const issue = bookingError(error); setLaneNeed(issue.lane ?? null); setBlockCode(issue.code === 'account_paused' ? issue.code : ''); setMessage(issue.code === 'age_confirmation_required' ? await recoverAgeConfirmation() : issue.message); setSelected(null); }
     finally { setBusy(false); }
   };
 
@@ -135,7 +139,9 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
     if (!Number.isFinite(Date.parse(quote.expiresAt)) || Date.parse(quote.expiresAt) <= Date.now()) {
       setQuote(null); setSelected(null); setMessage('This price quote expired. Choose a time again to get a fresh quote.'); await loadSlots(date, duration, true); return;
     }
-    setBusy(true); setMessage('');
+    // [HF-CALL-SAFETY-WEB] the recorded-for-safety notice before every booking, until "Don't show this again" (only while hfCallRecordingEnabled is on)
+    if (!(await notice.ask({ name: hostInfo?.name ? hostInfo.name.split(/\s+/)[0] : 'this influencer', verb: 'Before you book', cta: 'OK, reserve this time', surface: 'book' }))) return;
+    setBusy(true); setMessage(''); setBlockCode('');
     try {
       const booking = await confirmBooking(quote.id, key.current || (key.current = randomKey()));
       sessionStorage.removeItem('hf_booking_intent');
@@ -143,6 +149,7 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
     } catch (error) {
       const issue = bookingError(error);
       setLaneNeed(issue.lane ?? null);
+      if (issue.code === 'account_paused') setBlockCode(issue.code);
       capture('hf_booking_confirm_failed', { feature: 'hf_booking', quote_id: quote.id, status: issue.status, code: issue.code });
       if (issue.code === 'age_confirmation_required') {
         setMessage(await recoverAgeConfirmation());
@@ -220,7 +227,7 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
             <p className="nun" style={{ marginBottom: 12 }}>{dayFmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
             {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
             {phase === 'loading' && <p className="cal-msg" role="status">Finding open times…</p>}
-            {phase === 'error' && <div className="cal-msg" role="alert"><p>{message}</p><button className="btn btn-o bk-retry" type="button" onClick={() => void loadSlots()}>Try again</button></div>}
+            {phase === 'error' && <div className="cal-msg" role="alert">{blockCode ? <SafetyBlockNote code={blockCode} audience="fan" surface="book" /> : <p>{message}</p>}<button className="btn btn-o bk-retry" type="button" onClick={() => void loadSlots()}>Try again</button></div>}
             {phase === 'ready' && slots.length === 0 && <p className="cal-msg" role="status">No open times on this day. Try another day.</p>}
             {phase === 'ready' && slots.length > 0 && <div className="slots" role="group" aria-label="Pick a time">
               {slots.map(slot => <button type="button" key={slot.startUtc} className={`slot${selected?.startUtc === slot.startUtc ? ' on' : ''}`} aria-pressed={selected?.startUtc === slot.startUtc} onClick={() => void choose(slot)} disabled={busy} title={`${slot.hostLocalLabel} for ${first} (${slot.offsetLabel})`}>{timeFmt(slot.startUtc)}</button>)}
@@ -251,7 +258,8 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
               {held && <p className="bk-fine">{holdLine(money(quote.holdPaise!), quote.holdMinutes ?? 15)}</p>}
               <p className="bk-fine">Either of you can cancel before the call starts, and nothing is charged for cancelling. Once you are talking, you pay only for the time you actually talk. This price is kept for you until {new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' }).format(new Date(quote.expiresAt))}.</p>
               <label className="ck"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><i aria-hidden="true">✓</i><span>I understand how booking and cancelling work.</span></label>
-              {message && <p role="status" className="bk-msg">{message}</p>}
+              {message && !blockCode && <p role="status" className="bk-msg">{message}</p>}
+              {blockCode && <SafetyBlockNote code={blockCode} audience="fan" surface="book" />}
               {laneNeed && <SpaceLock lane={laneNeed} missing="server_403" />}
               <div className="bk-act">
                 <button type="button" className="btn btn-r" onClick={() => void confirm()} disabled={busy || !policyAccepted}>{busy ? 'Confirming…' : 'Confirm and reserve'}</button>
@@ -263,5 +271,6 @@ export default function CustomerBooking({ hostInfo }: { hostInfo?: BookingHostIn
         </div>
       </>}
     </div>
+    {notice.node}
   </main>;
 }

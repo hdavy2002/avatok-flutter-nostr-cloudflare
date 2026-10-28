@@ -8,6 +8,8 @@ import { rateCardLines } from '../../../lib/hfStdPlan';
 import { capture, captureException } from '../../../lib/analytics';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { blockFromCall, reviewCall, useDash } from './data';
+import PostCallReport from '../../../components/safety/PostCallReport'; // [HF-CALL-SAFETY-WEB]
+import { recordingEnabled } from '../../../lib/hfSafetyApi';
 import { Avatar, Card, Dialog, Empty, Failed, Ic, PageHead, Skel, Sticker, durationText, fmtInt, istDay, istTime, minutes, useToast } from './ui';
 
 type Role = 'caller' | 'host';
@@ -129,7 +131,9 @@ const REASONS: [string, string][] = [['rude', 'They were rude'], ['money_or_otp'
 function CallSheet({ id, role, canRate, onClose, onDone }: { id: string | null; role: Role; canRate: boolean; onClose: () => void; onDone: (msg: string) => void }) {
   const [info, setInfo] = useState<CallInfo | null>(null);
   const [failed, setFailed] = useState(false);
-  const [mode, setMode] = useState<'view' | 'rate' | 'block'>('view');
+  const [mode, setMode] = useState<'view' | 'rate' | 'block' | 'report'>('view');
+  const [recOn, setRecOn] = useState(false); // [HF-CALL-SAFETY-WEB] "Report this call" only while calls are recorded and checked
+  useEffect(() => { let live = true; void recordingEnabled().then(v => { if (live) setRecOn(v); }); return () => { live = false; }; }, []);
   const [stars, setStars] = useState(0);
   const [text, setText] = useState('');
   const [reason, setReason] = useState('rude');
@@ -168,6 +172,11 @@ function CallSheet({ id, role, canRate, onClose, onDone }: { id: string | null; 
       <textarea rows={3} maxLength={500} placeholder="Kuch accha laga? Likh do (optional)" value={text} onChange={e => setText(e.target.value)} />
       {err && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{err}</p>}
       <div className="acts"><button type="button" className="h3-btn rani" disabled={busy} onClick={sendRating}>{busy ? 'Sending…' : 'Send'}</button><button type="button" className="h3-btn ghost" onClick={() => setMode('view')}>Later</button></div>
+    </div> : mode === 'report' && id ? <div>
+      <h2 style={{ marginBottom: 8 }}>Report this call</h2>
+      <p className="small muted" style={{ marginBottom: 12 }}>Tell us what went wrong with {name}. A person checks every report.</p>
+      <PostCallReport callId={id} hostName={name} startOpen surface="call_record" />
+      <div className="acts"><button type="button" className="h3-btn ghost" onClick={() => setMode('view')}>Back</button></div>
     </div> : mode === 'block' ? <div style={{ textAlign: 'center' }}>
       <Sticker name="nazar" w={110} rot={-4} /><h2 style={{ marginTop: 10 }}>Block {name}?</h2>
       <p className="muted small">They won’t be able to call you or reach you again, and our team will look at what happened. You can unblock from your Profile.</p>
@@ -185,6 +194,7 @@ function CallSheet({ id, role, canRate, onClose, onDone }: { id: string | null; 
       <div className="acts">
         {canRate && <button type="button" className="h3-btn gold" onClick={() => setMode('rate')}>★ Rate this call</button>}
         {role === 'caller' && info.hostSlug && <a className="h3-btn rani" href={`/h/${info.hostSlug}`}><Ic name="phone" className="" />Call again</a>}
+        {role === 'caller' && recOn && info.status === 'completed' && <button type="button" className="h3-btn ghost" onClick={() => setMode('report')}>Report this call</button>}
         <button type="button" className="h3-btn ghost" onClick={() => setMode('block')}>Block & report</button>
       </div>
     </>}

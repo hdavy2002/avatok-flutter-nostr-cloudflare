@@ -186,6 +186,7 @@ export function bookingError(error: unknown): { status: number; code: string; me
       host_unavailable: 'This influencer can’t take bookings right now. (You can’t book your own page.)',
       slot_taken: 'Someone just took that time. Please pick another.',
       slot_unavailable: 'That time is no longer free. Please pick another.',
+      account_paused: 'Your account is paused while a person checks it, so you can’t book right now.', // [HF-CALL-SAFETY-WEB]
     };
     const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : KNOWN[error.error] ?? 'Something went wrong. Please try again.';
     if (error.error === 'lane_required') { // [HF-CREATOR-SPACES-1]

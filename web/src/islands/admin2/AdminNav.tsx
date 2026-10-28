@@ -202,6 +202,43 @@ function IntroDot() {
   return <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{n}</span>;
 }
 
+/** [HF-CALL-SAFETY-WEB] Count of calls waiting for a safety reviewer. The page announces it (`hf-safety-admin:pending`); other pages show the last
+ * known number for the tab and refresh it once per tab with one small admin GET (a 403 for non-reviewers just leaves the badge off). */
+const SAFETY_KEY = 'admin2:hf-safety-pending';
+function useSafetyPending(): number {
+  const [n, setN] = useState(() => {
+    try { return Number(sessionStorage.getItem(SAFETY_KEY)) || 0; } catch { return 0; }
+  });
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<number>).detail;
+      if (typeof d !== 'number') return;
+      setN(d);
+      try { sessionStorage.setItem(SAFETY_KEY, String(d)); } catch { /* storage blocked */ }
+    };
+    window.addEventListener('hf-safety-admin:pending', on);
+    let seen = false;
+    try { seen = sessionStorage.getItem(SAFETY_KEY) !== null; } catch { /* storage blocked */ }
+    if (!seen && !/\/admin\/hosts\/safety/.test(window.location.pathname)) {
+      adminApi<{ waiting?: number }>('/api/admin/hf/safety/summary')
+        .then((r) => on(new CustomEvent('x', { detail: Number(r.waiting) || 0 })))
+        .catch(() => { /* badge is a hint only; the page itself reports errors */ });
+    }
+    return () => window.removeEventListener('hf-safety-admin:pending', on);
+  }, []);
+  return n;
+}
+function SafetyBadge({ className }: { className?: string }) {
+  const n = useSafetyPending();
+  if (!n) return null;
+  return <span className={cn('hf-admin-navpill relative ml-auto rounded-full bg-grand-gold px-[7px] py-[3px] font-dash text-[14px] font-black leading-none text-foreground', className)}>{n}</span>;
+}
+function SafetyDot() {
+  const n = useSafetyPending();
+  if (n <= 0) return null;
+  return <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{n}</span>;
+}
+
 function useToPrint(_ready: boolean, _active: AdminKey): number {
   const [n, setN] = useState(() => {
     try { return Number(sessionStorage.getItem(TO_PRINT_KEY)) || 0; } catch { return 0; }
@@ -272,6 +309,7 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
               {it.key === 'merch-products' && <NeedsBadge />}
               {it.key === 'host-intro' && <IntroBadge />}
+              {it.key === 'host-safety' && <SafetyBadge />}
               <NavPill label={it.pill} />
               {on && <span className="hf-admin-flw" aria-hidden="true"><Marigold size={22} tone={1} /></span>}
             </a>
@@ -334,6 +372,7 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                     {on && <span aria-hidden className="pointer-events-none absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
                     {it.key === 'merch-products' && <NeedsDot />}
                     {it.key === 'host-intro' && <IntroDot />}
+                    {it.key === 'host-safety' && <SafetyDot />}
                     {it.key === 'shop-orders' && toPrint > 0 && (
                       <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{toPrint}</span>
                     )}
@@ -389,6 +428,7 @@ function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | nul
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
                   {it.key === 'merch-products' && <NeedsBadge />}
               {it.key === 'host-intro' && <IntroBadge />}
+                  {it.key === 'host-safety' && <SafetyBadge />}
                   <NavPill label={it.pill} />
                 </a>
               </Fragment>

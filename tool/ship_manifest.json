@@ -12560,5 +12560,22 @@
         "note": "A strike was given (employee-confirmed, or automatic once hfAutoStrikeEnabled is on)."
       }
     ]
+  },
+  "HF-CALL-SAFETY-WEB": {
+    "description": "HF-CALL-SAFETY web UI: admin Call safety page, influencer Safety page + rules gate, fan pre-call notice and post-call report, friendly account_paused / call_rules_required handling. Ships dark behind hfCallRecordingEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallRecordingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_safety_notice_shown",
+        "property": "surface",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan saw the pre-call safety notice (flag hfCallRecordingEnabled)."
+      }
+    ]
   }
 }

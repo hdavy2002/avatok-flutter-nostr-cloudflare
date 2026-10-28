@@ -3,7 +3,7 @@
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
   | 'orders' | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
-  | 'support' | 'close' | 'become' | 'profile-photo' | 'verifications';
+  | 'support' | 'close' | 'become' | 'profile-photo' | 'verifications' | 'safety';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
 
@@ -41,6 +41,8 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'profile-photo', path: '/dashboard/profile-photo', label: 'Profile photo', icon: 'profile', group: 'host', title: 'Profile photo' },
   // [HF-CREATOR-BADGES-1] Trust badges: phone, channel, video KYC, special space, who can call.
   { section: 'verifications', path: '/dashboard/verifications', label: 'My verifications', icon: 'shield', group: 'host', title: 'My verifications' },
+  // [HF-CALL-SAFETY-WEB] Strikes, appeals, paused state and the call rules. Open to every signed-in account (a paused fan sees their status here too).
+  { section: 'safety', path: '/dashboard/host/safety', label: 'Safety', icon: 'shield', group: 'host', title: 'Safety' },
   // [HF-DASH-V3-1] For people who are not influencers yet: perks, live onboarding progress and an earnings estimate.
   { section: 'become', path: '/dashboard/become', label: 'Become an influencer', icon: 'star', group: 'account', title: 'Become an influencer' },
   { section: 'support', path: '/dashboard/support', label: 'Support', icon: 'help', group: 'account', title: 'Support' },

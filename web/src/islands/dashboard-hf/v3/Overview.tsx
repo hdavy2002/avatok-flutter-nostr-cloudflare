@@ -13,6 +13,8 @@ import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
+import { RulesGate, SafetyHomeCard, rulesNeeded, useSafetyMe } from './Safety'; // [HF-CALL-SAFETY-WEB]
+import SafetyBlockNote from '../../../components/safety/SafetyBlockNote';
 import { Avatar, Card, Empty, Failed, FlowerCluster, Ic, Marigold, Pill, Skel, Sticker, durationText, fmtInt, istDay, istTime, minutes } from './ui';
 
 /* [HF-FIX-TICKER-1] Evergreen lines make NO live claim; they only follow the real headlines built from the person's own data. */
@@ -114,6 +116,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     {hostLive && <IntroBanner />}
     {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
     {hostLive && <ShareMyPage slug={account.host?.slug} />}
+    {hostLive && <HomeSafety />}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>
@@ -280,6 +283,8 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
   const [presence, setPresence] = useState<HostPresence>('offline');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [blk, setBlk] = useState(''); // [HF-CALL-SAFETY-WEB] 403 account_paused / call_rules_required from going Online
+  const safety = useSafetyMe().me;
   // [HF-CALL-MODES-E1] flags off (or unknown) = the old Online/Offline toggle below, unchanged
   const [flags, setFlags] = useState<CallModeFlags>(NO_FLAGS);
   useEffect(() => { let l = true; void callModeFlags().then(f => { if (l) setFlags(f); }); return () => { l = false; }; }, []);
@@ -311,7 +316,8 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
     setBusy(true); setMsg('');
     const r = await hfCall<{ ok: boolean; presence: string }>('PUT', '/api/hosts/me/presence', { online: !onlineNow });
     setBusy(false);
-    if (r.ok) setPresence(r.data.presence === 'online' || r.data.presence === 'busy' ? r.data.presence : 'offline');
+    if (r.ok) { setBlk(''); setPresence(r.data.presence === 'online' || r.data.presence === 'busy' ? r.data.presence : 'offline'); }
+    else if (r.status === 403 && (r.code === 'account_paused' || r.code === 'call_rules_required')) setBlk(r.code);
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
   const toggleCard = (
@@ -321,19 +327,24 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
       </div>
       <p className="small muted" style={{ marginTop: 8 }}>{!on ? 'Calling isn’t switched on yet.' : onlineNow ? 'Callers can call you now. Switch off when you’re done.' : 'Switch on when you’re ready. People who asked to be told get a WhatsApp.'}</p>
       {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}
+      {blk && <SafetyBlockNote code={blk} surface="go_online" />}
     </section>
   );
   const optA = co.enabled && co.option === 'A', optB = co.enabled && co.option === 'B';
+  // [HF-CALL-SAFETY-WEB] Existing influencers accept the call rules once before the Online switch shows again; a paused account has no switch.
+  const safetyLeft = !safety ? null : safety.status !== 'active'
+    ? <section className="h3-card hsf"><h2><Marigold size={20} />{safety.status === 'paused' ? 'Account paused' : 'Account closed'}</h2><p className="small muted" style={{ marginTop: 6 }}>Going online, the queue and new bookings are off{safety.status === 'paused' ? ' while a person checks your calls' : ''}.</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host/safety">See why and what to do</a></section>
+    : rulesNeeded(safety) ? <RulesGate me={safety} /> : null;
   return <section className="h3-row c2">
-    {co.enabled && on && host ? <div style={{ display: 'grid', gap: 16, alignContent: 'start', minWidth: 0 }}>
+    {safetyLeft ?? (co.enabled && on && host ? <div style={{ display: 'grid', gap: 16, alignContent: 'start', minWidth: 0 }}>
       <CallOptionCard st={co} />
       {optB && flags.modes ? <HostModes twoState queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} />
         : optB ? <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}><label className="h3-toggle"><input type="checkbox" role="switch" checked={onlineNow} disabled={busy || !on || !host} onChange={toggle} /><b>{onlineNow ? (presence === 'busy' ? 'On a call' : 'Online') : 'Offline'}</b></label></div>
-          {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}</section>
+          {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}{blk && <SafetyBlockNote code={blk} surface="go_online" />}</section>
         : !optA ? (flags.modes ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> : toggleCard) : null}
     </div> :
-    flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> : toggleCard}
+    flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> : toggleCard)}
     <section className="h3-card"><h2><Marigold size={20} tone={1} />Today as an influencer</h2>
       <div className="h3-kpis" style={{ marginTop: 10 }}>
         <div><div className="small muted">Calls received today</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.callsToday.received ?? '—'}</div></div>
@@ -348,4 +359,10 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
       <a className="h3-link" href="/dashboard/host/earnings">Earnings →</a>
     </section>
   </section>;
+}
+
+/** [HF-CALL-SAFETY-WEB] Small safety standing card on the influencer's home; nothing while the worker has no answer yet. */
+function HomeSafety() {
+  const { me } = useSafetyMe();
+  return me ? <SafetyHomeCard me={me} /> : null;
 }

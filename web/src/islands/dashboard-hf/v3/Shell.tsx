@@ -9,6 +9,7 @@ import type { DashboardAccount } from '../../../components/account/DashboardNav'
 import type { DashSection } from '../../../lib/dashboardRoutes';
 import { useDash, spendablePaise } from './data';
 import { Avatar, Dialog, Ic, Marigold, Mogra, Sticker, istDay, istTime } from './ui';
+import { useSafetyMe, activeOf } from './Safety'; // [HF-CALL-SAFETY-WEB]
 
 interface Item { key: DashSection | 'signout'; href: string; label: string; icon: string; badge?: number | null; badgeTone?: 'gold' | ''; disabled?: string }
 
@@ -24,6 +25,10 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
   const bal = spendablePaise(wallet.data);
   const firstName = profile.data?.firstName || account.displayName || '';
   const handle = profile.data?.username;
+  const safety = useSafetyMe().me; // [HF-CALL-SAFETY-WEB] strike count on the Safety item; null until the worker answers (or while the flag is off)
+  const strikes = safety ? activeOf(safety).length : 0;
+  const safetyItem: Item = { key: 'safety', href: '/dashboard/host/safety', label: 'Safety', icon: 'shield', badge: strikes || null };
+  const showSafety = !!account.host || (!!safety && (strikes > 0 || safety.status !== 'active'));
 
   const groups: { title: string; items: Item[] }[] = [
     { title: 'Mera space', items: [
@@ -38,6 +43,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
     { title: 'Influencer', items: account.host ? [
       { key: 'host', href: '/dashboard/host', label: 'Influencer profile', icon: 'star' },
       { key: 'verifications', href: '/dashboard/verifications', label: 'My verifications', icon: 'shield' }, // [HF-CREATOR-BADGES-1]
+      safetyItem, // [HF-CALL-SAFETY-WEB]
       { key: 'host-calendar', href: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'cal', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'availability', href: '/dashboard/host/availability', label: 'Availability', icon: 'clock', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'earnings', href: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', disabled: !hostReady ? 'When your profile is live' : undefined },
@@ -51,6 +57,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       { key: 'profile-photo', href: '/dashboard/profile-photo', label: 'Profile photo', icon: 'user' },
     ] : [] },
     { title: 'Account', items: [
+      ...(!account.host && showSafety ? [safetyItem] : []), // [HF-CALL-SAFETY-WEB] paused or struck fans
       { key: 'support', href: '/dashboard/support', label: 'Support', icon: 'help' },
       { key: 'close', href: '/dashboard/close', label: 'Close my account', icon: 'trash' },
       { key: 'signout', href: '/sign-out', label: 'Sign out', icon: 'out' },

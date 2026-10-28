@@ -21,6 +21,9 @@ import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import QueueSheet from './QueueSheet'; // [HF-CALL-MODES-E1]
 import SpaceLock from '../../components/hosts/SpaceLock'; // [HF-CREATOR-SPACES-1]
 import { LOCK_TEXT, gateFromError, gateOf, trackGate, useSpaceGate } from '../../lib/hfSpaces';
+import { useSafetyNotice } from '../../components/safety/SafetyNotice'; // [HF-CALL-SAFETY-WEB]
+import PostCallReport from '../../components/safety/PostCallReport';
+import { safetyBlock } from '../../lib/hfSafetyApi';
 import { NO_FLAGS, callModeFlags, deriveCallState, fanButtons, minutesLeft, refusalText, type CallModeFlags, type PublicCallState } from '../../lib/hfCallModes';
 
 /** [HF-STD-PLAN-1] pricePerMin may be fractional (3.99); pricePaisePerMin / priceTiers come from the worker's host card. */
@@ -98,6 +101,7 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
   const [cancelling, setCancelling] = useState(false);
   const firstSeen = useRef<number | null>(null);
   const name = firstName(host.displayName);
+  const notice = useSafetyNotice(); // [HF-CALL-SAFETY-WEB]
 
   const terminal = !!info && isTerminal(info.status);
   const connected = info?.status === 'connected';
@@ -160,6 +164,8 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
   useEffect(() => { if (terminal) void loadWallet(); }, [terminal, loadWallet]);
 
   const start = async () => {
+    // [HF-CALL-SAFETY-WEB] the recorded-for-safety notice, until the fan ticks "Don't show this again" (only while hfCallRecordingEnabled is on)
+    if (!(await notice.ask({ name, cta: `OK, call now · ${hostRateLabel(host)}`, surface: 'call' }))) return;
     setPhase('starting'); setProblem(null);
     const r = await hfCall<{ ok: boolean; callId: string; status: string; rate: number; maxMinutes: number }>('POST', '/api/hf/calls', { hostSlug: host.slug });
     if (r.ok) {
@@ -181,6 +187,7 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
       const short = typeof r.body.shortfallRupees === 'string' ? r.body.shortfallRupees : typeof r.body.shortfallPaise === 'number' ? formatPaise(r.body.shortfallPaise) : '';
       p = { text: short ? `You need ${short} more to start this call.` : (r.message || 'You need more money in your wallet to start this call.'), addMoney: true };
     }
+    else if (r.code === 'account_paused') { const sb = safetyBlock(r.code, 'fan')!; p = { text: sb.text, link: { href: sb.href, label: sb.label } }; }
     else if (r.code === 'debt_open') p = { text: r.message || 'Please clear the amount owed before calling' };
     else if (r.code === 'low_balance') { const b = Number(r.body.balance); if (Number.isFinite(b)) setBalance(b); p = { text: `You need at least ${inr(Number(r.body.needed) || rate * 2)} to start a call.`, balance: true }; }
     else if (r.code === 'host_unavailable' && flags.modes && typeof r.body.reason === 'string') {
@@ -219,6 +226,7 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
   const mins = info?.billedMinutes ?? 0;
 
   return (
+    <>
     <dialog ref={ref} className="hfc-dialog" aria-labelledby="hfc-title">
       <div className="hfc-head">
         <h2 id="hfc-title">{phase === 'live' && st === 'completed' ? 'Call ended' : `Call ${name}`}</h2>
@@ -296,6 +304,7 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
             )}
             {info.canReview && !rating && <button type="button" className="hfc-btn hfc-primary" onClick={() => setRating(true)}><Icon name="star" size={22} />Rate your call</button>}
             {info.canReview && rating && <ReviewForm mode="call" callId={info.id} hostName={name} />}
+            {(info.billableSeconds ?? mins * 60) > 0 && <PostCallReport callId={info.id} hostName={name} surface="call_ended" />}
           </>}
           {(st === 'host_declined' || st === 'no_answer') && <>
             <p className="hfc-status">{name} can’t take a call right now.</p>
@@ -327,6 +336,8 @@ export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = f
         </div>
       )}
     </dialog>
+    {notice.node}
+    </>
   );
 }
 

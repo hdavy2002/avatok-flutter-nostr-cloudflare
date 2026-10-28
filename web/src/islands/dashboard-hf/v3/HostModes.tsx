@@ -9,6 +9,7 @@ import {
 } from '../../../lib/hfCallModes';
 import type { HostPresence } from '../../../lib/hfCallsApi';
 import { Marigold } from './ui';
+import SafetyBlockNote from '../../../components/safety/SafetyBlockNote'; // [HF-CALL-SAFETY-WEB]
 
 const POLL_MS = 10_000;
 
@@ -24,6 +25,7 @@ export default function HostModes({ queueOn, bookedCount, onPresence, onMode, tw
   const [queue, setQueue] = useState<HostQueueView | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [blk, setBlk] = useState(''); // [HF-CALL-SAFETY-WEB] 403 account_paused / call_rules_required
   const [confirmOff, setConfirmOff] = useState(false);
   const [failed, setFailed] = useState(false);
   const live = useRef(true);
@@ -46,11 +48,12 @@ export default function HostModes({ queueOn, bookedCount, onPresence, onMode, tw
       if (!pres || busy || mode === cur) return;
     } else if (!pres || busy || mode === pres.mode) return;
     if (!twoState && mode === 'offline' && !confirmed && offlineWarning(bookedCount)) { setConfirmOff(true); return; }
-    setConfirmOff(false); setBusy(true); setMsg('');
+    setConfirmOff(false); setBusy(true); setMsg(''); setBlk('');
     const from = pres.mode;
     const r = await setMyMode(mode);
     setBusy(false);
     if (r.ok) { setPres(r.data); onPresence?.(r.data.presence); onMode?.(r.data.mode); capture('hf_web_mode_changed', { from, to: r.data.mode }); if (queueOn) void getHostQueue().then(q => { if (live.current && q.ok) setQueue(q.data); }); }
+    else if (r.status === 403 && (r.code === 'account_paused' || r.code === 'call_rules_required')) setBlk(r.code);
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
   const togglePause = async () => {
@@ -82,6 +85,7 @@ export default function HostModes({ queueOn, bookedCount, onPresence, onMode, tw
         </div>
       </div>}
       {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}
+      {blk && <SafetyBlockNote code={blk} surface="go_online" />}
     </section>
     {queueOn && <section className="h3-card h3-queue"><h2><Marigold size={20} tone={1} />Your queue</h2>
       <div className="num" style={{ fontSize: '1.8rem', marginTop: 8 }}>{waiting} <span className="small muted" style={{ fontSize: '1rem' }}>{waiting === 1 ? 'person waiting' : 'people waiting'}</span></div>

@@ -6,6 +6,8 @@ import Icon from '../host-onboarding/Icon';
 import SessionBridge from './SessionBridge';
 import { capture } from '../../lib/analytics';
 import { firstName, looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
+import { useSafetyNotice } from '../../components/safety/SafetyNotice'; // [HF-CALL-SAFETY-WEB]
+import { safetyBlock } from '../../lib/hfSafetyApi';
 import { QUEUE_PROMISE, joinQueue, leaveQueue, myQueue, queueJoinProblem, type MyQueueResponse } from '../../lib/hfCallModes';
 
 type Variant = 'card' | 'rail' | 'bar';
@@ -25,6 +27,7 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
   const [entry, setEntry] = useState<Entry | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
+  const notice = useSafetyNotice();
   const joinedAt = useRef<number | null>(null);
   const wasMine = useRef(false);
   const wasCalled = useRef(false); // the last status we saw was 'offered': the entry leaving the queue then means the call was placed, not that we dropped out
@@ -72,6 +75,8 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
     setBridge(true); setProblem(null); if (phase !== 'waiting') setPhase('confirm'); setOpen(true);
   };
   const join = async () => {
+    // [HF-CALL-SAFETY-WEB] same recorded-for-safety notice as the call button
+    if (!(await notice.ask({ name, cta: 'OK, join the queue', surface: 'queue' }))) return;
     setBusy(true); setPhase('joining'); setProblem(null);
     const r = await joinQueue(host.slug);
     setBusy(false);
@@ -81,7 +86,8 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
       setPhase('waiting'); capture('hf_web_queue_joined', { host: host.slug, position: r.data.position, waiting: r.data.waiting }); return;
     }
     if (r.status === 401) { window.location.assign(signInUrl()); return; }
-    const p = queueJoinProblem(r.code, r.body, name, r.message);
+    const sb = safetyBlock(r.code, 'fan');
+    const p = sb ? { text: sb.text, link: { href: sb.href, label: sb.label } } : queueJoinProblem(r.code, r.body, name, r.message);
     setProblem({ ...p, book: r.code === 'queue_closed' || r.code === 'queue_full' });
     setPhase('error'); capture('hf_web_queue_failed', { host: host.slug, code: r.code || 'unknown', status: r.status });
   };
@@ -138,5 +144,6 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
         <div className="hfc-actions"><button type="button" className="hfc-btn" onClick={onClose}>Close</button></div>
       </div>}
     </dialog>
+    {notice.node}
   </>;
 }

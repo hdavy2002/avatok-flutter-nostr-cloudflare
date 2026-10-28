@@ -1,0 +1,12 @@
+---
+// [HF-CALL-SAFETY-WEB] Dashboard screen "safety": strikes, appeals, paused state, call rules (lib/dashboardRoutes.ts).
+export const prerender = false;
+import Base from '../../../layouts/Base.astro';
+import DashboardLoading from '../../../components/DashboardLoading.astro';
+import DashboardApp from '../../../islands/dashboard-hf/DashboardApp';
+import { BRAND } from '../../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<Base title={`Safety | ${BRAND.name}`} description="Your strikes, appeals and the call rules." noindex keywords="">
+  <DashboardApp client:only="react" section="safety" ><div slot="fallback"><DashboardLoading /></div></DashboardApp>
+</Base>
