@@ -493,6 +493,7 @@ class _RealFeedState extends State<RealFeed> with WidgetsBindingObserver {
                 real: items[i],
                 active: i == _index && ReelGate.visible.value,
                 preload: i == _index + 1,
+                prefetch: i == _index ? items.skip(i + 1).take(12).toList() : const [], // [HF-INTRO-P]
                 keepAlive: (i - _index).abs() <= 1,
                 onUnplayable: (reason) {
                   _dropUnplayable(items[i].id);
@@ -557,6 +558,7 @@ class ReelPage extends StatefulWidget {
     this.real,
     this.preload = false,
     this.keepAlive = false,
+    this.prefetch = const [],
     this.onUnplayable,
     this.searchRepo,
     this.creatorReels,
@@ -578,6 +580,9 @@ class ReelPage extends StatefulWidget {
   /// The real reel (HF-WIRE-4). When set, the picture is the real video instead of the stand-in.
   final FeedReel? real;
   final bool preload;
+
+  /// [HF-INTRO-P] The reels after this one (the player pre-downloads the start of the next intro videos).
+  final List<FeedReel> prefetch;
 
   /// [HF-REEL-WARM-1] Keep this page (and its player) alive while it is next to the one on screen, so scrolling back
   /// up plays instantly from where it was instead of loading again.
@@ -722,6 +727,7 @@ class _ReelPageState extends State<ReelPage>
                 reel: widget.real!,
                 active: widget.active && !_covered,
                 preload: widget.preload,
+                prefetch: widget.prefetch,
                 onUnplayable: widget.onUnplayable,
                 onOpenLink: _openLinkInApp,
               )

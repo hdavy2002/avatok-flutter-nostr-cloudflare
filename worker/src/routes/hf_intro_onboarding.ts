@@ -7,6 +7,7 @@
 // Contract: Specs/HF-INTRO-VIDEO-1-API.md. Nobody is live until a person approves (routes/hf_intro_admin.ts). No AI check of the video (D1).
 import type { Env } from "../types";
 import { json } from "../util";
+import { faststartMp4 } from "../lib/mp4_faststart";
 import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { trackUser, trackException } from "../hooks";
@@ -144,17 +145,19 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
     emit("hf_intro_upload", { ok: false, reason: chk.error, bytes: bytes?.byteLength ?? 0, ms: Date.now() - t0 });
     return err(chk.status, chk.error, { message: chk.message });
   }
+  // [HF-INTRO-P] phones write moov at the END; move it first so Range prefetch can start playback.
+  const body: Uint8Array = chk.mime === "video/mp4" ? faststartMp4(bytes!) : bytes!;
   const id = newIntroVideoId();
   const key = `intro-video/${uid}/${id}.${chk.ext}`;
   const now = Date.now();
   let replaced: { r2_key: string; poster_key: string | null }[] = [];
   try {
     replaced = (await env.DB_META.prepare("SELECT r2_key, poster_key FROM hf_intro_videos WHERE uid=?1 AND status='draft'").bind(uid).all<{ r2_key: string; poster_key: string | null }>()).results ?? [];
-    await env.BLOBS.put(key, bytes!, { httpMetadata: { contentType: chk.mime, cacheControl: IMMUTABLE } });
+    await env.BLOBS.put(key, body, { httpMetadata: { contentType: chk.mime, cacheControl: IMMUTABLE } });
     await env.DB_META.batch([
       env.DB_META.prepare("UPDATE hf_intro_videos SET status='replaced', updated_at=?2 WHERE uid=?1 AND status='draft'").bind(uid, now),
       env.DB_META.prepare("INSERT INTO hf_intro_videos (id,uid,r2_key,poster_key,mime,bytes,duration_ms,width,height,lang,topic,views,status,created_at,updated_at) VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,0,'draft',?11,?11)")
-        .bind(id, uid, key, chk.mime, bytes!.byteLength, chk.durationMs, chk.width, chk.height, lang || null, topic || null, now),
+        .bind(id, uid, key, chk.mime, body.byteLength, chk.durationMs, chk.width, chk.height, lang || null, topic || null, now),
     ]);
   } catch (e) {
     await env.BLOBS.delete(key).catch(() => undefined);

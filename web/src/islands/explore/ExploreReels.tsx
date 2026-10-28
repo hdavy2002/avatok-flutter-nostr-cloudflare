@@ -11,6 +11,7 @@ import { hfCall } from '../../lib/hfCallsApi';
 import { capture } from '../../lib/analytics';
 import { brandUrl } from '../../lib/brand';
 import { GATE_COPY, compactCount, isIntro, mainActionOf, playable, playerFor, signInHref, sizeFor, tapClipPath, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
+import { prefetchIntros, wasPrefetched } from '../../lib/introPrefetch'; // [HF-INTRO-P]
 import { IntroOverlay, IntroVideo, SoundIcon, InfoIcon } from './IntroReel'; // [HF-INTRO-B3]
 
 const YT_ORIGIN = 'https://www.youtube-nocookie.com';
@@ -465,9 +466,10 @@ function Reels({ initial, nextCursor, preview = false }: Props) {
                 <IntroVideo item={it} active={act} paused={paused}
                   register={el => { vids.current[it.id] = el; }}
                   onPlaying={() => {
+                    if (act) prefetchIntros(live.current.items.slice(live.current.idx + 1, live.current.idx + 13)); // [HF-INTRO-P]
                     if (!act || started.current.has(it.id)) return;
                     started.current.add(it.id);
-                    capture('hf_reel_start', { source: 'intro', reel_id: it.id, ms: Date.now() - curSince.current, index: live.current.idx });
+                    capture('hf_reel_start', { source: 'intro', reel_id: it.id, ms: Date.now() - curSince.current, index: live.current.idx, prefetched: wasPrefetched(it.videoUrl) });
                   }}
                   onTap={tap} />
               </div>;

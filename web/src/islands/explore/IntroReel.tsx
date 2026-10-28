@@ -61,7 +61,7 @@ export function IntroVideo({ item, active, paused, register, onPlaying, onTap }:
 }) {
   return <>
     <video ref={register} className="ex-vid" src={item.videoUrl ?? undefined} poster={item.posterUrl ?? undefined}
-      muted loop playsInline preload="auto" disablePictureInPicture onPlaying={onPlaying} aria-label={`Intro video of ${item.host?.name ?? 'this creator'}`} />
+      muted loop playsInline preload={active ? 'auto' : 'metadata'} disablePictureInPicture onPlaying={onPlaying} aria-label={`Intro video of ${item.host?.name ?? 'this creator'}`} />
     {active && <div className="ex-vtap" role="button" tabIndex={0} aria-label={paused ? 'Play' : 'Pause'} onClick={onTap}
       onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onTap(); } }} />}
   </>;

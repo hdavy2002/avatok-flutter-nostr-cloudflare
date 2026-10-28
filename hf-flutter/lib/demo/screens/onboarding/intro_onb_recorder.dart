@@ -226,7 +226,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
 
   Future<void> _openCamera(CameraDescription desc) async {
     await _closeCamera();
-    final c = CameraController(desc, ResolutionPreset.high, enableAudio: true, fps: 30, videoBitrate: 3500000, audioBitrate: 96000);
+    final c = CameraController(desc, ResolutionPreset.high, enableAudio: true, fps: 30, videoBitrate: 2000000, audioBitrate: 64000); // [HF-INTRO-P] ~5 MB per 20 s
     await c.initialize();
     if (!mounted) {
       await c.dispose();

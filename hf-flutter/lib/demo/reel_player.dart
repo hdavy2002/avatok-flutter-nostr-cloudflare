@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert' show HtmlEscape, HtmlEscapeMode;
+import 'dart:convert' show HtmlEscape, HtmlEscapeMode, jsonEncode;
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -114,7 +114,39 @@ class ReelPlayer extends StatefulWidget {
     this.muted = false,
     this.onUnplayable,
     this.onOpenLink,
+    this.prefetch = const [],
   });
+
+  /// [HF-INTRO-P] The next reels in the feed (nearest first). When this intro reel starts playing, the first ~1.5 MB (about
+  /// 5 s) of the next 5 intro videos and their posters is fetched with a Range request from inside the page, so the shared
+  /// Chromium HTTP cache already holds it when their own players start.
+  final List<FeedReel> prefetch;
+
+  /// [HF-INTRO-P] Intro URLs already handed to a page this session (deduped across WebViews).
+  static final Set<String> _prefetched = <String>{};
+
+  /// [HF-INTRO-P] Was [url] already queued for pre-download (telemetry `prefetched` on `hf_reel_start`)?
+  static bool wasPrefetched(String? url) => url != null && _prefetched.contains(url);
+
+  /// [HF-INTRO-P] The JS call that pre-downloads the not-yet-fetched URLs of up to 5 upcoming intro reels, or null when
+  /// there is nothing new. Marks them as prefetched.
+  @visibleForTesting
+  static String? prefetchScript(List<FeedReel> next) {
+    final videos = <String>[];
+    final posters = <String>[];
+    var reels = 0;
+    for (final r in next) {
+      if (reels >= 5) break;
+      if (!r.isIntro) continue;
+      reels++;
+      final v = introSource(r);
+      if (v != null && _prefetched.add(v)) videos.add(v);
+      final pu = Uri.tryParse(r.posterUrl ?? '');
+      if (pu != null && pu.scheme == 'https' && pu.host.isNotEmpty && _prefetched.add(pu.toString())) posters.add(pu.toString());
+    }
+    if (videos.isEmpty && posters.isEmpty) return null;
+    return 'window.hfPrefetch&&window.hfPrefetch(${jsonEncode(videos)},${jsonEncode(posters)})';
+  }
 
   /// [HF-REEL-RAW-APP-1] A link the viewer tapped inside the player (YouTube title / channel / logo, Instagram profile ...).
   /// The player never lets it load; the feed decides how to show it (with its Call / Invite bar). Without it the plain
@@ -230,6 +262,16 @@ window.hfSet=function(b){want=!!b;apply()};
 window.hfToggle=function(){want=v.paused;apply()};
 window.hfMute=function(m){MUTED=!!m;v.muted=MUTED||!SOUND};
 window.hfRestart=function(){want=true;try{v.currentTime=0}catch(e){}apply()};
+var PF={},PFN=0,PFA=0,PFQ=[];
+function pfNext(){while(PFA<5&&PFQ.length){var e=PFQ.shift();PFA++;pfOne(e[0],e[1])}}
+function pfDone(){PFA--;pfNext()}
+function pfOne(u,isVideo){var o={priority:"low",cache:"default"};if(isVideo)o.headers={Range:"bytes=0-1499999"};
+fetch(u,o).then(function(r){if(!r.body||!r.body.getReader)return r.arrayBuffer();var rd=r.body.getReader(),n=0;
+function pump(){return rd.read().then(function(x){if(x.done)return;n+=x.value.length;if(isVideo&&n>=1500000){rd.cancel();return}return pump()})}return pump()})
+.then(pfDone,function(){o.mode="no-cors";fetch(u,o).then(pfDone,pfDone)})}
+window.hfPrefetch=function(vs,ps){var c=navigator.connection||{};if(c.saveData||/^(slow-)?2g\$/.test(c.effectiveType||""))return;
+(vs||[]).slice(0,5).forEach(function(u){if(!PF[u]&&PFN<10){PF[u]=1;PFN++;PFQ.push([u,true])}});
+(ps||[]).slice(0,5).forEach(function(u){if(!PF[u]&&PFN<10){PF[u]=1;PFN++;PFQ.push([u,false])}});pfNext()};
 v.addEventListener("loadedmetadata",ready);v.addEventListener("canplay",ready);
 v.addEventListener("playing",function(){post("playing")});
 v.addEventListener("pause",function(){post("paused")});
@@ -776,7 +818,13 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           'ms': DateTime.now().difference(shown).inMilliseconds,
           'warmed': _shownWarm,
           if (widget.reel.isIntro) 'source': 'intro', // [HF-INTRO-A2]
+          if (widget.reel.isIntro) 'prefetched': ReelPlayer.wasPrefetched(widget.reel.videoUrl), // [HF-INTRO-P]
         });
+        // [HF-INTRO-P] it is playing: pre-download the start of the next intro reels from this page (low priority)
+        if (widget.reel.isIntro) {
+          final js = ReelPlayer.prefetchScript(widget.prefetch);
+          if (js != null) _run(js);
+        }
       }
       // [HF-REEL-YT-POSTER-1] first on-screen play of a YouTube reel: keep the poster up while YouTube shows its buttons
       if (!_isIg && widget.active && _fg && _coverArmed && youtubeChromeCover > Duration.zero) {
