@@ -1535,3 +1535,17 @@ Web only (`web/src/lib/scrollStoryHero.ts`). CTA clicks reuse `homepage_cta_clic
 | `home_scroll_hero_scene` | `scene`, `index` (1–6), `layout` | A scene's message became fully visible (once per page view). Scene 6 = the visitor reached the end. |
 | `home_scroll_hero_fallback` | `reason` (`video_error`, `metadata_timeout`, `reduced_motion_changed`) | Switched to the static version. |
 | `$exception` | `surface: home-scroll-hero`, `step`/`reason` | Film or in-memory fetch failed. |
+
+## [HF-INTRO-A1] Influencer intro-video onboarding (app)
+
+| Event | Props | Meaning |
+|---|---|---|
+| `hf_onb_step_view` | `step` (`categories`, `social`, `aadhaar`, `prep`, `record`, `profile`, `option`, `sent`, `rejected`, `approved`) | A step of the onboarding showed. |
+| `hf_onb_categories` | `n`, `has_sensitive` | She pressed Next on the categories step. Category names are not sent. |
+| `hf_onb_social_login` | `platform` (`youtube`, `instagram`, `facebook`), `ok` | A social login finished. |
+| `hf_intro_record` | `duration_ms`, `retake_n` | A take was recorded. |
+| `hf_intro_upload` | `bytes`, `ms`, `ok`, `reason?` | The video upload finished (`reason` = error code when `ok` is false). |
+| `hf_onb_submitted` | `n_categories`, `has_sensitive`, `call_option` (`A`/`B`), `lang` | Application sent for approval. |
+| `hf_onb_submit_refused` | `reason` (server error code) | The server refused the submit. |
+
+No Aadhaar number, gender, name, handle or video content is ever sent.

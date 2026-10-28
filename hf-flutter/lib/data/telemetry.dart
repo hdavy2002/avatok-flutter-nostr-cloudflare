@@ -25,6 +25,14 @@ abstract final class Telemetry {
 
   /// Every event the app may send. Keep in step with the telemetry catalog.
   static const Set<String> catalogEvents = {
+    // [HF-INTRO-A1] influencer intro-video onboarding (never carries a name, the description, Aadhaar details or the video)
+    'hf_onb_step_view', // {step}
+    'hf_onb_categories', // {n, has_sensitive}
+    'hf_intro_record', // {duration_ms, retake_n}
+    'hf_intro_upload', // {bytes, ms, ok, reason?}
+    'hf_onb_submitted', // {n_categories, has_sensitive, call_option, lang}
+    'hf_onb_submit_refused', // {reason}
+    'hf_onb_social_login', // {platform, ok}
     // [HF-CHANNEL-APP-1] channel page, bag and profile photo (same names as the web)
     'channel_viewed',
     'merch_filter_used',

@@ -16,6 +16,9 @@ import 'screens/call.dart';
 import 'screens/favourites.dart';
 import 'screens/feed.dart';
 import 'screens/influencer.dart';
+import 'screens/onboarding/intro_onb_flow.dart'; // [HF-INTRO-A1]
+import '../data/call_flags.dart'; // [HF-INTRO-A1]
+import '../data/demo_mode.dart'; // [HF-INTRO-A1]
 import 'screens/my_verifications.dart'; // [HF-CREATOR-BADGES-1]
 import 'screens/intro.dart';
 import 'screens/me.dart';
@@ -240,9 +243,12 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/influencer/join',
-      builder: (_, s) => InfluencerJoinScreen(
-        initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0,
-      ),
+      // [HF-INTRO-A1] Behind hfIntroOnboardingEnabled the join route is the intro-video onboarding; flag off = the old screen, unchanged.
+      builder: (_, s) => (!DemoMode.on && CallFlags.introOnboarding)
+          ? const IntroOnboardingFlow()
+          : InfluencerJoinScreen(
+              initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0,
+            ),
     ),
     // [HF-CREATOR-SPACES-1] Video KYC for Women-only / LGBTQ+ channels (customers and creators).
     GoRoute(

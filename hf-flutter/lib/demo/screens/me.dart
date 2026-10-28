@@ -21,6 +21,7 @@ import 'call_real.dart';
 import 'merch_me.dart'; // [HF-MERCH-APP-1]
 import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import 'sheets.dart';
+import 'onboarding/intro_onb_kit.dart'; // [HF-INTRO-A1]
 import 'call_records_real.dart';
 import 'settings_real.dart';
 import '../../ui/strings/help_strings.dart';
@@ -150,7 +151,7 @@ class _Dashboard extends StatelessWidget {
               DesiKpi(label: 'Bookings', value: '${demo.bookings.length}', sub: 'coming up', tone: DesiTone.rani, icon: Icons.event_rounded, onTap: () => context.push('/bookings')),
               DesiKpi(label: 'My Fraands', value: '${demo.favs.length}', sub: 'saved', tone: DesiTone.gold, icon: Icons.favorite_rounded, onTap: () => context.go('/favourites')),
               DesiKpi(label: 'Influencer', value: isInfluencer ? (demo.online ? 'Online' : 'Offline') : 'Join', sub: isInfluencer ? 'your status' : 'free to join', tone: DesiTone.tea, icon: Icons.star_rounded,
-                  onTap: () => isInfluencer ? context.go('/inf/home') : context.push('/influencer/join')),
+                  onTap: () => (isInfluencer && !IntroOnbEntry.pending) ? context.go('/inf/home') : context.push('/influencer/join')),
             ]),
           ],
           const SizedBox(height: 16),
@@ -165,7 +166,7 @@ class _Dashboard extends StatelessWidget {
               label: isInfluencer ? 'Influencer dashboard' : 'Join as an influencer',
               meta: live ? (isInfluencer ? '' : 'Free') : (demo.influencerJoined ? (demo.online ? 'Online' : 'Offline') : 'Free'),
               tone: DesiTone.rani,
-              onTap: () => isInfluencer ? context.go('/inf/home') : context.push('/influencer/join'),
+              onTap: () => (isInfluencer && !IntroOnbEntry.pending) ? context.go('/inf/home') : context.push('/influencer/join'),
             ),
             // [HF-APP-ME-VERIF-1] owner: My verifications also in the Me tab's Influencer list
             if (isInfluencer)

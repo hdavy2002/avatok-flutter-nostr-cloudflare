@@ -23,7 +23,14 @@ class AppConfig {
     this.callQueueEnabled = false,
     this.callChunkBillingEnabled = false,
     this.bookingLengthsEnabled = false,
+    this.introOnboardingEnabled = false,
+    this.facebookLoginEnabled = false,
   });
+
+  /// [HF-INTRO-A1] `hfIntroOnboardingEnabled` (the in-app intro-video onboarding) and `hfFacebookLoginEnabled` ("Log in with Facebook").
+  /// Each is true only when the server says exactly `true`.
+  final bool introOnboardingEnabled;
+  final bool facebookLoginEnabled;
 
   /// [HF-CALL-MODES-E2] `hfCallModesEnabled`, `hfCallQueueEnabled`, `hfCallChunkBillingEnabled`, `hfBookingLengthsEnabled`.
   /// Each is true only when the server says exactly `true`.
@@ -46,6 +53,8 @@ class AppConfig {
         callQueueEnabled: j['hfCallQueueEnabled'] == true,
         callChunkBillingEnabled: j['hfCallChunkBillingEnabled'] == true,
         bookingLengthsEnabled: j['hfBookingLengthsEnabled'] == true,
+        introOnboardingEnabled: j['hfIntroOnboardingEnabled'] == true,
+        facebookLoginEnabled: j['hfFacebookLoginEnabled'] == true,
       );
 
   static int _int(Object? v) {

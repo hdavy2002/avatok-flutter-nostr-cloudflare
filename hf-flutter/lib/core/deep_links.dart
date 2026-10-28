@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../data/models/booking.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
+import '../demo/screens/onboarding/intro_onb_kit.dart'; // [HF-INTRO-A1]
 import 'brand.dart';
 
 /// A link the app understands, as the screen to open plus the anonymised path for telemetry.
@@ -133,6 +134,8 @@ abstract final class DeepLinks {
   }
 
   static void _handle(Uri uri, String launch) {
+    // [HF-INTRO-A1] A social login that finishes while the influencer onboarding is open goes back to it, not to Channels.
+    if (IntroOnbSession.handleSocialReturn(uri)) return;
     final target = linkTargetFor(uri);
     if (target == null) return;
     _dispatch(target, uri.scheme == 'https' ? 'link' : 'scheme', launch);

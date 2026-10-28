@@ -16,7 +16,15 @@ abstract final class CallFlags {
   /// `hfBookingLengthsEnabled`: booking length picker (15 min to 5 h) and the 15-minute hold copy.
   static bool bookingLengths = false;
 
+  /// [HF-INTRO-A1] `hfIntroOnboardingEnabled`: "Become an influencer" opens the in-app intro-video onboarding.
+  static bool introOnboarding = false;
+
+  /// [HF-INTRO-A1] `hfFacebookLoginEnabled`: "Log in with Facebook" under Social media verification.
+  static bool facebookLogin = false;
+
   static void apply(AppConfig c) {
+    introOnboarding = c.introOnboardingEnabled;
+    facebookLogin = c.facebookLoginEnabled;
     modes = c.callModesEnabled;
     queue = c.callQueueEnabled;
     chunkBilling = c.callChunkBillingEnabled;
@@ -25,6 +33,8 @@ abstract final class CallFlags {
 
   /// Tests: back to the all-off state.
   static void reset() {
+    introOnboarding = false;
+    facebookLogin = false;
     modes = false;
     queue = false;
     chunkBilling = false;
