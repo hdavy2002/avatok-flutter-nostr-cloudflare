@@ -28,6 +28,9 @@ const VERDICT: Record<Verdict, string> = {
   clean: 'Clean', selling: 'Selling', outside_payment: 'Outside payment', contact_sharing: 'Contact sharing', abuse: 'Abusive or rude', sexual: 'Sexual talk', danger: 'Danger',
 };
 const WHO: Record<Who, string> = { fan: 'Fan', influencer: 'Influencer' };
+/** The backend may say 'unknown' (or nothing): that is shown as 'Not sure', never guessed as Influencer. */
+const whoOf = (s: string | null | undefined): Who | null => (s === 'fan' || s === 'influencer' ? s : null);
+const whoLabel = (s: string | null | undefined): string => { const w = whoOf(s); return w ? WHO[w] : 'Not sure'; };
 const track = (e: string, p: Record<string, unknown> = {}) => { try { capture(e, p as never); } catch { /* telemetry must never break the page */ } };
 
 const waitText = (ms: number | null | undefined) => {
@@ -253,7 +256,7 @@ function useDetail(api: SafetyAdminApi, id: string | null | undefined) {
 }
 
 /** Flagged line ±2 on bahi-khata paper, the 15 s clip, and the full transcript (asks for a typed reason; the server logs every open). */
-function Evidence({ api, reviewId, detail, speaker, speakerScore }: { api: SafetyAdminApi; reviewId: string; detail: SafetyDetail; speaker: Who | null; speakerScore: number | null }) {
+function Evidence({ api, reviewId, detail, speaker, speakerScore }: { api: SafetyAdminApi; reviewId: string; detail: SafetyDetail; speaker: string | null; speakerScore: number | null }) {
   const [lines, setLines] = useState<TranscriptLine[]>(detail.lines ?? []);
   const [full, setFull] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -284,7 +287,7 @@ function Evidence({ api, reviewId, detail, speaker, speakerScore }: { api: Safet
       <div className="hsa-kicker">{full ? 'Full transcript · this open is logged' : 'Flagged line · 2 lines each side'}</div>
       <div className="hsa-bahi" tabIndex={0} aria-label="Call lines">
         {lines.length ? lines.map((l, i) => (
-          <div key={i} className={l.flagged ? 'hit' : undefined}><b>{l.t} {WHO[l.speaker] ?? l.speaker}</b> · {l.text}</div>
+          <div key={i} className={l.flagged ? 'hit' : undefined}><b>{l.t} {whoLabel(l.speaker)}</b> · {l.text}</div>
         )) : <div className="gap">No lines were kept for this call.</div>}
       </div>
       <div className="hsa-line">
@@ -293,7 +296,7 @@ function Evidence({ api, reviewId, detail, speaker, speakerScore }: { api: Safet
         </button>
         {!full && <button type="button" className="hfa-btn ghost hsa-b" onClick={() => setAsking((a) => !a)} aria-expanded={asking}>Full transcript (reason needed)</button>}
         <span>
-          {speaker ? <>Said by <b>{WHO[speaker]}</b>{speakerScore != null ? ` (AI ${score(speakerScore)} sure)` : ''}</> : 'Speaker not clear'}
+          {whoOf(speaker) ? <>Said by <b>{whoLabel(speaker)}</b>{speakerScore != null ? ` (AI ${score(speakerScore)} sure)` : ''}</> : 'Not sure who said it'}
           {' · '}{audioUntil ? `audio kept till ${safetyDay(audioUntil)}` : 'audio already deleted'}
         </span>
       </div>
@@ -314,8 +317,9 @@ function Evidence({ api, reviewId, detail, speaker, speakerScore }: { api: Safet
 /* ── expanded: a call to decide (review, danger, fan report) ──────────── */
 function CaseCard({ api, row, onBan, onDone }: { api: SafetyAdminApi; row: SafetyRow; onBan: () => void; onDone: (r: SafetyRow, m: string) => void }) {
   const { detail, err, retry } = useDetail(api, row.id);
-  const sure = (row.speakerScore ?? 0) >= 0.9;
-  const [target, setTarget] = useState<Who>(row.speaker ?? row.role);
+  const spk = whoOf(row.speaker);
+  const sure = spk !== null && (row.speakerScore ?? 0) >= 0.9;
+  const [target, setTarget] = useState<Who | null>(spk);
   const [reason, setReason] = useState<string>(STRIKE_REASONS.some((r) => r.key === row.verdict) ? (row.verdict as string) : STRIKE_REASONS[0].key);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -326,7 +330,7 @@ function CaseCard({ api, row, onBan, onDone }: { api: SafetyAdminApi; row: Safet
   const decide = async (action: 'confirm_strike' | 'dismiss' | 'pause') => {
     setBusy(true); setMsg('');
     try {
-      await api.decide(row.id, { action, target, reason: action === 'dismiss' ? 'not_a_problem' : reason, note: note.trim() || undefined });
+      await api.decide(row.id, { action, target: target ?? row.role, reason: action === 'dismiss' ? 'not_a_problem' : reason, note: note.trim() || undefined });
       track('hf_safety_admin_decision', { action, target, reason, kind: row.kind, verdict: row.verdict, score: row.score, waited_h: Math.round((row.waitingMs ?? 0) / 3600000) });
       onDone(row, action === 'confirm_strike' ? 'Strike given. They are told on WhatsApp.' : action === 'pause' ? 'Account paused.' : 'Marked as not a problem.');
     } catch (e) {
@@ -347,9 +351,9 @@ function CaseCard({ api, row, onBan, onDone }: { api: SafetyAdminApi; row: Safet
             : <Evidence api={api} reviewId={row.id} detail={detail} speaker={row.speaker} speakerScore={row.speakerScore} />}
         </div>
         <div className="hsa-right">
-          {(!sure || !row.speaker) && (
+          {!sure && (
             <>
-              <span className="hsa-lab" id={`tg-${row.id}`}>Who said it?</span>
+              <span className="hsa-lab" id={`tg-${row.id}`}>Who said it?{target === null ? ' Not sure. Pick one.' : ''}</span>
               <div className="hfa-pills" role="group" aria-labelledby={`tg-${row.id}`}>
                 {(['fan', 'influencer'] as Who[]).map((w) => <button key={w} type="button" className="hfa-pill" aria-pressed={target === w} onClick={() => setTarget(w)}>{WHO[w]}</button>)}
               </div>
@@ -361,10 +365,10 @@ function CaseCard({ api, row, onBan, onDone }: { api: SafetyAdminApi; row: Safet
           </select>
           <label htmlFor={`note-${row.id}`} className="hsa-lab">Note (optional)</label>
           <textarea id={`note-${row.id}`} className="hsa-field" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="Please take all payments through the app." />
-          <button type="button" className="hfa-btn gold hsa-b wide" disabled={busy} onClick={() => void decide('confirm_strike')}>{busy ? 'Please wait…' : 'Confirm strike'}</button>
+          <button type="button" className="hfa-btn gold hsa-b wide" disabled={busy || target === null} onClick={() => void decide('confirm_strike')}>{busy ? 'Please wait…' : 'Confirm strike'}</button>
           <div className="hsa-trio">
             <button type="button" className="hfa-btn ghost hsa-b" disabled={busy} onClick={() => void decide('dismiss')}>Not a problem</button>
-            <button type="button" className={`hfa-btn hsa-b ${armed ? 'armed' : 'amber'}`} disabled={busy} onClick={() => (armed ? void decide('pause') : setArmed(true))}>{armed ? 'Tap again to pause' : 'Pause now'}</button>
+            <button type="button" className={`hfa-btn hsa-b ${armed ? 'armed' : 'amber'}`} disabled={busy || target === null} onClick={() => (armed ? void decide('pause') : setArmed(true))}>{armed ? 'Tap again to pause' : 'Pause now'}</button>
             <button type="button" className="hfa-btn red hsa-b" disabled={busy} onClick={onBan}>Ban…</button>
           </div>
           {msg && <div className="hsa-err" role="alert">{msg}</div>}

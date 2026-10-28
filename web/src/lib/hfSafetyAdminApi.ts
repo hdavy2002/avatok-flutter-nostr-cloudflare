@@ -12,13 +12,13 @@ export type Who = 'fan' | 'influencer';
 
 export interface SafetyRow {
   id: string; kind: RowKind; uid: string; role: Who; name: string | null; photo: string | null;
-  verdict: Verdict | null; score: number | null; speaker: Who | null; speakerScore: number | null;
+  verdict: Verdict | null; score: number | null; speaker: Who | 'unknown' | null; speakerScore: number | null;
   callAt: number | null; durationSec: number | null; activeStrikes: number; waitingMs: number; summary: string | null; womenLane: boolean | 0 | 1;
   /** Open extras (strike rows and access-log rows): shown when present. */
-  at?: number; by?: string | null; action?: string | null; reviewId?: string | null; reason?: string | null; expiresAt?: number | null;
+  at?: number; by?: string | null; action?: string | null; reviewId?: string | null; strikeId?: string | null; reason?: string | null; expiresAt?: number | null;
 }
 export interface SafetySummary { checkedToday: number; flaggedToday: number; strikesToday: number; waiting: number; oldestWaitingMs: number }
-export interface TranscriptLine { t: string; speaker: Who; text: string; flagged: boolean }
+export interface TranscriptLine { t: string; speaker: Who | 'unknown'; text: string; flagged: boolean }
 export interface HistoryItem { at?: number; kind?: string; reason?: string; reasonText?: string; text?: string; expiresAt?: number; appeal?: string | null }
 export interface SafetyDetail extends SafetyRow { lines: TranscriptLine[]; audioUntil: number | null; history: (HistoryItem | string)[] }
 

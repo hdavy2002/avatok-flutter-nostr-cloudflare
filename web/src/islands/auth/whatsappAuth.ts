@@ -23,6 +23,7 @@
  * `proof` is short-lived (server-side) and is kept in sessionStorage here so
  * it survives the redirect through Clerk's own email flow.
  */
+import { BRAND } from '../../lib/brand';
 import { capture, captureException } from '../../lib/analytics';
 import { request, ApiError } from '../../lib/apiClient';
 import { PasswordlessError } from './passwordless';
@@ -65,6 +66,8 @@ export function waApiCode(e: unknown): string {
 /** The human sentence from the Worker's error body, else `fallback`. */
 export function waApiMessage(e: unknown, fallback: string): string {
   if (e instanceof ApiError) {
+    // A banned WhatsApp number (HF-CALL-SAFETY): one clear sentence, whatever the server wrote.
+    if (e.error === 'number_blocked') return `This number can’t be used on ${BRAND.name}.`;
     const b = e.body as { message?: unknown } | null;
     if (b && typeof b === 'object' && typeof b.message === 'string' && b.message.trim()) return b.message;
   }
