@@ -9,7 +9,7 @@ import { savedReelItems } from "./hf_reels";
 const headers = { "cache-control": "private, no-store" };
 const error = (status: number, code: string) => json({ ok: false, error: code }, status, headers);
 export async function hfReelBookmarksRoute(req: Request, env: Env, path: string): Promise<Response | null> {
-  const match = path.match(/^\/api\/hf\/reel-bookmarks(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?$/);
+  const match = path.match(/^\/api\/hf\/reel-bookmarks(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}|hfin_[a-f0-9]{20}))?$/);
   if (!match) return null;
   const id = match[1];
   if (id ? !["PUT", "DELETE"].includes(req.method) : req.method !== "GET") return error(405, "method_not_allowed");

@@ -6,6 +6,8 @@ import { introStatusOf, INTRO_MEDIA_KIND } from "./hf_intro";
 export interface HostRow {
   uid: string; slug: string | null; status: string;
   category?: string; creator_kind?: string; private_phone_enc?: string | null; listing_revision?: number;
+  // [HF-INTRO-W1] intro-video onboarding (migration 2026-10-28-hf-intro-video-alters.sql); written only by the admin approval
+  categories_json?: string | null; call_option?: string | null; intro_video_id?: string | null; intro_approved_at?: number | null;
   display_name: string | null; about: string | null; tagline: string | null; quote: string | null; about_polished: string | null;
   languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;

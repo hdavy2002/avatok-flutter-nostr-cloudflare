@@ -30,6 +30,7 @@ import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-
 import { videoKycSql, channelVerifiedSql, spaceOfRow } from "../lib/hf_spaces"; // [HF-VERIFIED-BLIP-1]
 import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 import { enrichItems, prefetchFeedComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
+import { introReelsOn, introReelItems, isIntroReelId } from "../lib/hf_intro_reels"; // [HF-INTRO-W1] hfIntroReelsEnabled: approved intro videos only
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -156,6 +157,12 @@ async function inviteItems(env: Env, offset: number, take: number, ids?: string[
 /** Resolve saved IDs against current visibility; never persist a stale snapshot of a creator. */
 export async function savedReelItems(env: Env, ids: string[], cfg: Record<string, unknown>, uid?: string | null): Promise<unknown[]> {
   if (!ids.length || cfg.hfReelsEnabled !== true) return [];
+  if (introReelsOn(cfg)) { // [HF-INTRO-W1] the old embed reels are retired while the intro feed is on; a deep link / saved intro reel plays even when option B is offline
+    const intro = ids.filter(isIntroReelId);
+    const out = intro.length ? (await introReelItems(env, { ids: intro, limit: 30, ignoreVisibility: true })).items : [];
+    await enrichItems(env, cfg, out, uid);
+    return out;
+  }
   const network = ids.filter((id) => REEL_ID.test(id));
   const invites = ids.filter((id) => /^hfiv_[a-z0-9]{8,40}$/.test(id));
   const rows = network.length ? (await env.DB_META.prepare(
@@ -174,6 +181,11 @@ export async function optionalUid(req: Request, env: Env): Promise<string | null
 
 /** [HF-REEL-ENGAGE-API-1] One publicly visible reel (same rules as the feed) with the platform numbers and the id the platform knows it by, or null. */
 export async function visibleReel(env: Env, cfg: Record<string, unknown>, id: string): Promise<{ id: string; platform: string; videoId: string; likes: number; comments: number; publishedAt: number | null } | null> {
+  if (isIntroReelId(id)) { // [HF-INTRO-W1] likes / comments / share on an approved intro video (ours: no platform numbers)
+    if (!introReelsOn(cfg)) return null;
+    const r = (await introReelItems(env, { ids: [id], limit: 1, ignoreVisibility: true })).items[0];
+    return r ? { id, platform: "intro", videoId: id, likes: 0, comments: 0, publishedAt: (r.publishedAt as number) ?? null } : null;
+  }
   const hideAt = unplayableHideAt(cfg);
   if (REEL_ID.test(id)) {
     const r = await env.DB_META.prepare(`SELECT r.platform, r.platform_video_id, r.likes, r.comments, r.published_at ${FROM} WHERE r.id=?1 AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false, hideAt)}`).bind(id).first<{ platform: string; platform_video_id: string; likes: number; comments: number; published_at: number | null }>();
@@ -190,6 +202,16 @@ export async function visibleReel(env: Env, cfg: Record<string, unknown>, id: st
 /** Visible reels of one host for the public profile (GET /api/hosts/public/:slug). Returns null when the flag is off or the tables are missing. */
 export async function profileReels(env: Env, hostUid: string, cfg: Record<string, unknown>, uid?: string | null): Promise<{ reels: unknown[]; followers: number; handle: string | null } | null> {
   if (cfg.hfReelsEnabled !== true) return null;
+  if (introReelsOn(cfg)) { // [HF-INTRO-W1] the host's approved intro video is their profile reel
+    try {
+      const { items } = await introReelItems(env, { hostUid, limit: 5, ignoreVisibility: true });
+      await enrichItems(env, cfg, items, uid);
+      return { reels: items.map(({ host: _h, ...rest }) => rest), followers: 0, handle: null };
+    } catch (e) {
+      await trackException(env, e, { route: "profileReels", handled: true, app_name: APP, extra: { area: "hf_reels", step: "intro_profile" } });
+      return null;
+    }
+  }
   try {
     const demoVisible = cfg.hfDemoInfluencersVisible !== false;
     const rows = (await env.DB_META.prepare(
@@ -211,7 +233,7 @@ export async function isHiddenDemoHost(env: Env, hostUid: string, cfg: Record<st
 }
 
 export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
-  const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?(?:\/(view|unplayable))?$/);
+  const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}|hfin_[a-f0-9]{20}))?(?:\/(view|unplayable))?$/);
   const mine = p === "/api/hf/hosts/me/reels";
   if (!m && !mine) return null;
   const id = m?.[1] ?? null;
@@ -251,6 +273,13 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     }
 
     // ── POST view counter ──────────────────────────────────────────────────────────────────────────────────────
+    if (id && action === "view" && isIntroReelId(id)) { // [HF-INTRO-W1]
+      const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "anon";
+      const lim = await rateLimit(env, `hfview:${id}:${ip}`, 3, 3600);
+      if (lim) return lim;
+      await env.DB_META.prepare("UPDATE hf_intro_videos SET views=views+1 WHERE id=?1 AND status='approved'").bind(id).run();
+      return json({ ok: true }, 200, NO_STORE);
+    }
     if (id && action === "view") {
       if (!REEL_ID.test(id)) return err(405, "method_not_allowed");
       const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "anon";
@@ -297,6 +326,12 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     const url = new URL(req.url);
     const limit = Math.min(PAGE_MAX, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 10)) || 10));
     const rawCursor = url.searchParams.get("cursor") ?? "";
+    if (introReelsOn(cfg)) { // [HF-INTRO-W1] HF-INTRO-13 / 16: ONLY approved intro videos; option A always, option B only while Online
+      if (rawCursor && !/^\d{1,15}_hfin_[a-f0-9]{20}$/.test(rawCursor)) return err(400, "invalid_field", "Bad page marker.");
+      const r = await introReelItems(env, { limit, cursor: rawCursor || null });
+      if (cfg.hfReelEngageEnabled === true) await enrichItems(env, cfg, r.items, await optionalUid(req, env));
+      return json({ ok: true, items: r.items, nextCursor: r.nextCursor }, 200, NO_STORE); // liveness (Online / Busy) changes by the second: never shared-cached
+    }
     const inv = rawCursor.match(/^i:(\d{1,6})$/);
     const cur = rawCursor.match(/^(\d{1,15})_(hfrl_[a-z0-9]{8,40})$/);
     if (rawCursor && !cur && !inv) return err(400, "invalid_field", "Bad page marker.");

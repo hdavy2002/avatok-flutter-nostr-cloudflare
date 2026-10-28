@@ -24,7 +24,7 @@ const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status, NO_STORE);
 const PAGE = 20;
-const RE_REEL = /^\/api\/hf\/reels\/((?:hfrl|hfiv)_[a-z0-9]{8,40})\/(like|comments)$/;
+const RE_REEL = /^\/api\/hf\/reels\/((?:hfrl|hfiv)_[a-z0-9]{8,40}|hfin_[a-f0-9]{20})\/(like|comments)$/; // [HF-INTRO-W1] hfin_ = our own intro video
 const RE_DEL = /^\/api\/hf\/reels\/comments\/(hfrc_[a-f0-9]{20})$/;
 const RE_REPORT = /^\/api\/hf\/reels\/comments\/(hfrc_[a-f0-9]{20}|youtube:[A-Za-z0-9_.-]{8,80}|instagram:[0-9]{5,30})\/report$/;
 const OURS_ID = /^hfrc_[a-f0-9]{20}$/;

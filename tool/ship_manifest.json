@@ -12468,5 +12468,30 @@
         "note": "An influencer chose call option A or B through PUT /api/hosts/me/call-option (flag hfCallOptionEnabled)."
       }
     ]
+  },
+  "HF-INTRO-W1": {
+    "description": "HF-INTRO-VIDEO-1 backend: recorded intro video upload, onboarding submission rules (Aadhaar / sensitive / Women-to-Women), human admin approve or reject with WhatsApp, and the Reels feed of approved intro videos. Ships dark.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfIntroOnboardingEnabled",
+      "hfIntroReelsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_onb_submitted",
+        "property": "call_option",
+        "exists": true,
+        "min_events": 1,
+        "note": "A real influencer sent a profile for approval (server telemetry from POST /api/hf/onboarding/submit)."
+      },
+      {
+        "event": "hf_admin_review",
+        "property": "decision",
+        "exists": true,
+        "min_events": 1,
+        "note": "A person on the team approved or rejected a submission."
+      }
+    ]
   }
 }

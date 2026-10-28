@@ -343,6 +343,8 @@ import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
 import { hfDemoAdminRoute } from "./routes/hf_demo_admin"; // [HF-WIRE-14] demo influencers from pasted YouTube links
 import { hfReelsRoute } from "./routes/hf_reels"; // [HF-WIRE-4] reels feed (flag hfReelsEnabled)
+import { hfIntroOnboardingRoute } from "./routes/hf_intro_onboarding"; // [HF-INTRO-W1] recorded intro video + submission (flag hfIntroOnboardingEnabled)
+import { hfIntroAdminRoute } from "./routes/hf_intro_admin"; // [HF-INTRO-W1] admin review of submissions
 import { hfReelEngageRoute } from "./routes/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1] likes + comments (flag hfReelEngageEnabled)
 import { hfInviteAdminRoute } from "./routes/hf_invite_admin"; // [HF-WIRE-22]
 import { refreshInviteCreators } from "./lib/hf_invite_reels"; // [HF-WIRE-22]
@@ -1174,6 +1176,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const bookingResponse = (await hfBookingsAppRoute(req, env, ctx)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
+      if (p.startsWith("/api/hf/onboarding/")) { const r = await hfIntroOnboardingRoute(req, env, p, ctx); if (r) return r; } // [HF-INTRO-W1]
+      if (p === "/api/admin/hf/intro-applications" || p.startsWith("/api/admin/hf/intro-applications/")) { const r = await hfIntroAdminRoute(req, env, p); if (r) return r; } // [HF-INTRO-W1]
       if (p.startsWith("/api/hf/spaces/")) { const r = await hfSpacesRoute(req, env, p, ctx); if (r) return r; } // [HF-CREATOR-SPACES-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/merch/")) { const r = await hfMerchRoute(req, env, p, ctx); if (r) return r; } // [HF-MERCH-CORE-1]
