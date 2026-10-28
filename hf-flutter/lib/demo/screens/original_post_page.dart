@@ -40,8 +40,11 @@ class OriginalPostPage extends StatefulWidget {
         on('cdninstagram.com');
   }
 
-  static String nameFor(Uri u) =>
-      u.host.contains('instagram') ? 'Instagram' : 'YouTube';
+  static String nameFor(Uri u) => u.host.contains('instagram')
+      ? 'Instagram'
+      : u.host.contains('facebook')
+          ? 'Facebook' // [HF-INTRO-A2] the verified Facebook page of an intro-video influencer
+          : 'YouTube';
 
   @override
   State<OriginalPostPage> createState() => _OriginalPostPageState();

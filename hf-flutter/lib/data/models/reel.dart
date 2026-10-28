@@ -153,6 +153,42 @@ class InviteCreator {
       );
 }
 
+/// [HF-INTRO-A2] One verified social account of an intro-video influencer (`socials[]` of a reel). [platform] is
+/// `youtube`, `instagram` or `facebook`; [followers] is null when the server did not say.
+class ReelSocial {
+  const ReelSocial({required this.platform, required this.handle, required this.url, this.followers});
+
+  final String platform;
+  final String handle;
+  final String url;
+  final int? followers;
+
+  /// Null when [v] is not a map or has no platform / address.
+  static ReelSocial? tryParse(Object? v) {
+    if (v is! Map) return null;
+    final p = _str(v['platform'])?.toLowerCase();
+    final u = _str(v['url']);
+    if (p == null || u == null) return null;
+    final f = v['followers'];
+    return ReelSocial(platform: p, handle: _str(v['handle']) ?? '', url: u, followers: f is num ? f.toInt() : null);
+  }
+}
+
+/// [HF-INTRO-A2] A category chip on an intro reel (`categories[]`).
+class ReelCategory {
+  const ReelCategory({required this.id, required this.label});
+
+  final String id;
+  final String label;
+
+  static ReelCategory? tryParse(Object? v) {
+    if (v is! Map) return null;
+    final label = _str(v['label']);
+    if (label == null) return null;
+    return ReelCategory(id: _str(v['id']) ?? label, label: label);
+  }
+}
+
 /// One reel in the feed or on a profile.
 class FeedReel {
   const FeedReel({
@@ -170,10 +206,73 @@ class FeedReel {
     this.likeCounts,
     this.commentCounts,
     this.likedByMe = false,
+    this.kind = 'embed',
+    this.videoUrl,
+    this.posterUrl,
+    this.description = '',
+    this.ratePaise = 0,
+    this.callOption,
+    this.mainAction,
+    this.womenOnly = false,
+    this.socials = const [],
+    this.categories = const [],
+    this.shareUrl,
+    this.greenTick = false,
   });
 
   final String id;
   final ReelHost host;
+
+  /// [HF-INTRO-A2] `intro` for an approved intro video (our own MP4), else `embed` (a YouTube / Instagram reel).
+  final String kind;
+
+  /// Intro video: the vertical MP4 and its poster.
+  final String? videoUrl;
+  final String? posterUrl;
+
+  /// Intro video: the one-line description and the rate (paise a minute) shown on the overlay.
+  final String description;
+  final int ratePaise;
+
+  /// `A` (bookings only) / `B` (bookings + live) / null.
+  final String? callOption;
+
+  /// `call` / `queue_or_book` / `book` / `none` when the server sent it (flag `hfCallOptionEnabled`); null otherwise.
+  final String? mainAction;
+
+  /// Women-to-Women channel: pink tag and the Aadhaar gate on Call / Queue / Book.
+  final bool womenOnly;
+  final List<ReelSocial> socials;
+  final List<ReelCategory> categories;
+
+  /// The public link that plays this video (`https://<brand>/r/<id>`).
+  final String? shareUrl;
+
+  /// Approved by our team: the green tick.
+  final bool greenTick;
+
+  /// An approved intro video with a file to play.
+  bool get isIntro => kind == 'intro' && videoUrl != null;
+
+  /// What the one main button does. The server's `mainAction` wins; without it the plan's button rule is applied to
+  /// [callOption] and the call state (A -> book; B available -> call; B busy -> queue_or_book; otherwise book).
+  String get effectiveMainAction {
+    final m = mainAction;
+    if (m == 'call' || m == 'queue_or_book' || m == 'book' || m == 'none') return m!;
+    if (callOption == 'A') return 'book';
+    switch (host.callState) {
+      case HostCallState.available:
+        return 'call';
+      case HostCallState.onCall:
+      case HostCallState.connecting:
+      case HostCallState.queueOnly:
+        return 'queue_or_book';
+      case HostCallState.appointments:
+      case HostCallState.offline:
+      case null:
+        return 'book';
+    }
+  }
 
   /// [HF-REEL-ENGAGE-APP-1] Null when the server has likes and comments off: the Like and Comment buttons are then hidden.
   final EngageCount? likeCounts;
@@ -198,26 +297,60 @@ class FeedReel {
   bool get isInvite => invite != null;
 
   /// Embeds only (HF-REEL-32): a reel plays from its official YouTube / Instagram embed, never from a file we hold.
-  bool get playable => embedUrl != null;
+  bool get playable => embedUrl != null || isIntro;
 
   FeedReel withHost(ReelHost h) => FeedReel(
       id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views, invite: invite,
-      likeCounts: likeCounts, commentCounts: commentCounts, likedByMe: likedByMe);
+      likeCounts: likeCounts, commentCounts: commentCounts, likedByMe: likedByMe,
+      kind: kind, videoUrl: videoUrl, posterUrl: posterUrl, description: description, ratePaise: ratePaise, callOption: callOption,
+      mainAction: mainAction, womenOnly: womenOnly, socials: socials, categories: categories, shareUrl: shareUrl, greenTick: greenTick);
 
   factory FeedReel.fromJson(Map<String, dynamic> j, {ReelHost? host}) {
     final inv = j['kind'] == 'invite' && j['creator'] is Map ? InviteCreator.fromJson(Map<String, dynamic>.from(j['creator'] as Map)) : null;
     return FeedReel._parse(j, host: host ?? (inv == null ? null : ReelHost(slug: '', name: inv.name, handle: inv.handle, avatar: inv.avatar, followers: inv.followers)), invite: inv);
   }
 
-  factory FeedReel._parse(Map<String, dynamic> j, {ReelHost? host, InviteCreator? invite}) => FeedReel(
+  factory FeedReel._parse(Map<String, dynamic> j, {ReelHost? host, InviteCreator? invite}) {
+    final intro = j['kind'] == 'intro' && _str(j['videoUrl']) != null;
+    final socials = [
+      for (final e in (j['socials'] is List ? j['socials'] as List : const []))
+        if (ReelSocial.tryParse(e) != null) ReelSocial.tryParse(e)!,
+    ];
+    final categories = [
+      for (final e in (j['categories'] is List ? j['categories'] as List : const []))
+        if (ReelCategory.tryParse(e) != null) ReelCategory.tryParse(e)!,
+    ];
+    final hostJson = j['host'] is Map ? Map<String, dynamic>.from(j['host'] as Map) : <String, dynamic>{};
+    if (intro) {
+      // [HF-INTRO-A2] the reel's own rate, call state and queue are the live ones; the socials give the small platform icons
+      if (hostJson['ratePaise'] == null && j['ratePaise'] != null) hostJson['ratePaise'] = j['ratePaise'];
+      if (j['callState'] != null) hostJson['callState'] = j['callState'];
+      if (j['queue'] is Map) hostJson['queue'] = j['queue'];
+      if (hostJson['platforms'] is! List) hostJson['platforms'] = [for (final x in socials) x.platform];
+    }
+    final posterUrl = _str(j['posterUrl']);
+    final description = _str(j['description']) ?? _str(j['caption']) ?? '';
+    return FeedReel(
         id: _str(j['id']) ?? '',
         invite: invite,
-        host: host ?? ReelHost.fromJson(j['host'] is Map ? Map<String, dynamic>.from(j['host'] as Map) : const {}),
+        host: host ?? ReelHost.fromJson(hostJson),
+        kind: intro ? 'intro' : 'embed',
+        videoUrl: intro ? _str(j['videoUrl']) : null,
+        posterUrl: posterUrl,
+        description: description,
+        ratePaise: _int(j['ratePaise'] ?? hostJson['ratePaise']),
+        callOption: (j['callOption'] == 'A' || j['callOption'] == 'B') ? j['callOption'] as String : null,
+        mainAction: _str(j['mainAction']),
+        womenOnly: j['womenOnly'] == true,
+        socials: socials,
+        categories: categories,
+        shareUrl: _str(j['shareUrl']),
+        greenTick: j['greenTick'] == true || (hostJson['greenTick'] == true),
         platform: _str(j['platform']) ?? 'youtube',
         url: _str(j['url']),
         embedUrl: _str(j['embedUrl']),
-        thumbUrl: _str(j['thumbUrl']),
-        caption: _str(j['caption']) ?? '',
+        thumbUrl: _str(j['thumbUrl']) ?? posterUrl,
+        caption: _str(j['caption']) ?? description,
         likes: _int(j['likes']),
         comments: _int(j['comments']),
         views: _int(j['views']),
@@ -225,6 +358,7 @@ class FeedReel {
         commentCounts: EngageCount.tryParse(j['commentCounts']) ?? (EngageCount.tryParse(j['likeCounts']) == null ? null : EngageCount(platform: _int(j['comments']))),
         likedByMe: j['likedByMe'] == true,
       );
+  }
 }
 
 /// One page of `GET /api/hf/reels`.

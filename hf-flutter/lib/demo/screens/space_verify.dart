@@ -94,6 +94,7 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
   /// A customer's membership is recorded before the selfie is approved; do it once the Aadhaar (and declaration) are in.
   Future<void> _afterLoad(SpaceStatus st) async {
     if (widget.creator || _joined || widget.lane == null) return;
+    if (widget.lane == SpaceLane.women && st.womenGranted) return; // [HF-INTRO-A2] already granted: nothing to join
     final s = _stepFor(st);
     if (s != _Step.selfie && s != _Step.review && s != _Step.done) return;
     try {
@@ -110,6 +111,8 @@ class _SpaceVerifyScreenState extends State<SpaceVerifyScreen> {
     if (!st.whatsappVerified) return _Step.whatsapp;
     if (!st.aadhaarVerified) return _otpSent ? _Step.otp : _Step.aadhaar;
     if (widget.lane == SpaceLane.women && st.gender != 'F') return _Step.wrongGender;
+    // [HF-INTRO-A2] A fan on the women's channel needs the Aadhaar only: once the server grants her (Aadhaar says Female) there is no selfie
+    if (!widget.creator && widget.lane == SpaceLane.women && st.womenGranted) return _Step.done;
     if (!widget.creator && widget.lane == SpaceLane.lgbtq && !st.declared) return _Step.declare;
     if (st.selfie.approved) return _Step.done;
     if (st.selfie.pending) return _Step.review;

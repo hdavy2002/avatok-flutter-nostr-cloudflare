@@ -165,6 +165,7 @@ class ReelPlayer extends StatefulWidget {
   /// Accept the original public link when the feed has no separate embed URL.
   /// Only official provider hosts can become a player source.
   static String? sourceFor(FeedReel reel) {
+    if (reel.isIntro) return introSource(reel); // [HF-INTRO-A2]
     for (final value in [reel.embedUrl, reel.url]) {
       final u = Uri.tryParse(value ?? '');
       if (u == null || u.scheme != 'https') continue;
@@ -196,6 +197,45 @@ class ReelPlayer extends StatefulWidget {
       }
     }
     return null;
+  }
+
+  /// [HF-INTRO-A2] The address of an approved intro video's MP4 (https only), or null.
+  @visibleForTesting
+  static String? introSource(FeedReel reel) {
+    final u = Uri.tryParse(reel.videoUrl ?? '');
+    if (u == null || u.scheme != 'https' || u.host.isEmpty) return null;
+    return u.toString();
+  }
+
+  /// [HF-INTRO-A2] A tiny page with one HTML5 `<video>` (vertical, cover, loop, muted until shown) for an intro video. There is no
+  /// native video player package in the app, so the MP4 plays inside the same WebView the embeds use and speaks the same
+  /// `HFPlayer` channel (`ready`, `playing`, `paused`, `error:media|blocked`) and the same `hfSet` / `hfToggle` / `hfMute` /
+  /// `hfRestart` calls. The poster shows until the first frame.
+  @visibleForTesting
+  static String introHtml(String videoUrl, {String? poster, bool sound = true, bool start = true}) {
+    const esc = HtmlEscape(HtmlEscapeMode.attribute);
+    final src = esc.convert(videoUrl);
+    final posterAttr = (poster == null || poster.isEmpty) ? '' : ' poster="${esc.convert(poster)}"';
+    return '''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}
+video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;background:#000}</style></head>
+<body><video id="v" playsinline webkit-playsinline loop muted preload="auto"$posterAttr src="$src"></video><script>
+var v=document.getElementById("v"),want=$start,SOUND=$sound,MUTED=${!start},readied=false;
+function post(m){try{HFPlayer.postMessage(m)}catch(e){}}
+function ready(){if(readied)return;readied=true;post("ready")}
+function apply(){v.muted=MUTED||!SOUND;
+if(want){var r=v.play();if(r&&r.catch)r.catch(function(){v.muted=true;var q=v.play();if(q&&q.catch)q.catch(function(){post("error:blocked")})})}
+else{v.pause()}}
+window.hfSet=function(b){want=!!b;apply()};
+window.hfToggle=function(){want=v.paused;apply()};
+window.hfMute=function(m){MUTED=!!m;v.muted=MUTED||!SOUND};
+window.hfRestart=function(){want=true;try{v.currentTime=0}catch(e){}apply()};
+v.addEventListener("loadedmetadata",ready);v.addEventListener("canplay",ready);
+v.addEventListener("playing",function(){post("playing")});
+v.addEventListener("pause",function(){post("paused")});
+v.addEventListener("error",function(){post("error:media")});
+if(v.readyState>=1)ready();
+</script></body></html>''';
   }
 
   /// The URL of the embed. YouTube: autoplay, inline, loop, related videos limited to the same channel.
@@ -496,7 +536,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   bool get _wantEmbed => _source != null;
   bool get _isIg =>
       (Uri.tryParse(_source ?? '')?.host ?? '').contains('instagram');
-  String get _platform => _isIg ? 'instagram' : 'youtube';
+  String get _platform => widget.reel.isIntro ? 'intro' : (_isIg ? 'instagram' : 'youtube');
   bool get _engine => ReelPlayer.testRunJs != null || _web != null;
 
   @override
@@ -649,11 +689,13 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         // cookies are a nicety: the embed still plays without them
       }
     }
-    final html = ReelPlayer.youtubeHtml(
-      embed,
-      sound: widget.sound,
-      start: widget.active,
-    );
+    final html = widget.reel.isIntro
+        ? ReelPlayer.introHtml(embed, poster: widget.reel.posterUrl ?? widget.reel.thumbUrl, sound: widget.sound, start: widget.active) // [HF-INTRO-A2]
+        : ReelPlayer.youtubeHtml(
+            embed,
+            sound: widget.sound,
+            start: widget.active,
+          );
     if (html != null) {
       c.loadHtmlString(html, baseUrl: ReelPlayer.youtubeOrigin);
     } else if (ig) {
@@ -733,6 +775,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           'platform': _platform,
           'ms': DateTime.now().difference(shown).inMilliseconds,
           'warmed': _shownWarm,
+          if (widget.reel.isIntro) 'source': 'intro', // [HF-INTRO-A2]
         });
       }
       // [HF-REEL-YT-POSTER-1] first on-screen play of a YouTube reel: keep the poster up while YouTube shows its buttons
@@ -840,7 +883,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         if (_wantEmbed && _engine && _fg)
           LayoutBuilder(
             builder: (context, box) {
-              final tiles = _isIg
+              final tiles = (_isIg || widget.reel.isIntro) // [HF-INTRO-A2] our own video: the whole page is the tap layer
                   ? [Offset.zero & box.biggest]
                   : ReelPlayer.youtubeTapTiles(ReelPlayer.playerBox(_page, box.biggest));
               var big = 0;
@@ -865,7 +908,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
             },
           ),
         // Instagram's own play control is hidden, so this is the ONE paused symbol the viewer sees (YouTube draws its own).
-        if (_isIg && _engine && _fg && !_isPlaying)
+        if ((_isIg || widget.reel.isIntro) && _engine && _fg && !_isPlaying)
           Positioned.fill(
             child: IgnorePointer(
               child: Center(

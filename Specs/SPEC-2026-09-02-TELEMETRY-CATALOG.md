@@ -1362,6 +1362,10 @@ Events go to PostHog (EU, project 139917) only in builds made with `--dart-defin
 | `app_crash` | `source: 'flutter' \| 'platform' \| 'zone'`, `fatal: boolean`, `error_type`, `library` (flutter source only), `stack_top` (first 6 stack lines) | Uncaught error: `FlutterError.onError` (`flutter`), `PlatformDispatcher.onError` (`platform`), `runZonedGuarded` (`zone`). The error MESSAGE is never sent (it can hold typed text). De-duplicated per run (same error type + top frame) and capped at 10 per run. **Success value:** arrives with `platform = android-app` after a forced error on a test build. |
 | `hf_signup_code_sent` | none | `[HF-WIRE-2]` The WhatsApp code request was accepted (`POST /api/auth/whatsapp/send` answered 200). |
 | `hf_reel_action` | `action: info/book/save/unsave`, `platform?` | Reel controls, no personal data. |
+| `hf_reel_start` | `platform`, `ms`, `warmed: boolean`, `source?: 'intro'` | `[HF-INTRO-A2]` A reel started playing (ms from on screen to playing). `source: 'intro'` = an approved intro video. No personal data. |
+| `hf_reel_share` | `source: 'intro'` | `[HF-INTRO-A2]` Share tapped on an intro reel (the link plays the video). |
+| `hf_social_link_open` | `platform: youtube/instagram/facebook`, `surface: overlay/sheet` | `[HF-INTRO-A2]` A verified social icon (or Open in the ⓘ sheet) opened that account inside the app. |
+| `hf_women_gate` | `result: blocked_aadhaar/blocked_female_only/allowed/verify_now/not_now/verified/verify_incomplete` | `[HF-INTRO-A2]` The Women-to-Women pop-up on Call / Join queue / Book. Never carries the gender. |
 | `reel_profile_tap` | `source: rail/callbar`, `kind: network/invite` | `[HF-REEL-CALL-2]` The influencer's photo (rail) or the Call bar on a reel opened that creator's profile. No personal data. |
 | `reel_deeplink_open` | `reel_id`, `cached: boolean` | `[HF-REEL-CALL-2]` A shared reel link (`/r/<id>`) opened the Reels tab on that reel; `cached` = the reel was already held locally (poster shown at once) rather than fetched. |
 | `hf_reel_bookmark_sync` | `outcome: synced/pending/rejected`, `reason?` | Account-scoped local bookmark sync outcome. |

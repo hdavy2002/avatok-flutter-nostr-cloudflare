@@ -20,8 +20,11 @@ import '../../data/telemetry.dart';
 import '../../data/share.dart';
 import '../../ui/async_view.dart';
 import '../data.dart';
+import '../intro_reel_overlay.dart'; // [HF-INTRO-A2]
 import '../presence_bridge.dart';
 import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
+import '../space_kit.dart' show womenGateThen; // [HF-INTRO-A2]
+import 'sheets.dart' show startCall; // [HF-INTRO-A2]
 import '../reel_player.dart';
 import '../reels_real.dart';
 import '../state.dart';
@@ -707,7 +710,8 @@ class _ReelPageState extends State<ReelPage>
         // [HF-REEL-OVERLAY-APP-1] (owner 2026-10-26) everything sits INSIDE the video, which fills the page: our buttons on the
         // right (Like and Share at the bottom), Call / Invite bottom-right, and for Instagram a name + caption bottom-left.
         final ig = widget.real != null && ReelPlayer.isInstagram(widget.real!);
-        final yt = widget.real != null && !ig;
+        final intro = widget.real?.isIntro ?? false; // [HF-INTRO-A2] an approved intro video: its own overlay below
+        final yt = widget.real != null && !ig && !intro;
         final pad = MediaQuery.paddingOf(context);
         return Stack(
           fit: StackFit.expand,
@@ -895,6 +899,7 @@ class _ReelPageState extends State<ReelPage>
               ),
             // Our buttons on the right, bottom edge just above the Call / Invite button. On YouTube they sit on a frosted patch
             // so YouTube's own like / share underneath are blurred (a platform-view WebView may not blur on every Android; the tint stays).
+            if (!intro)
             Positioned(
               right: 0,
               bottom: pad.bottom + 92,
@@ -991,6 +996,7 @@ class _ReelPageState extends State<ReelPage>
               ),
             ),
             // Call now (a creator on the app) or the invite vote (a creator who is not), inside the video, bottom-right
+            if (!intro)
             Positioned(
               right: 12,
               bottom: pad.bottom + 26,
@@ -998,11 +1004,137 @@ class _ReelPageState extends State<ReelPage>
                   ? SizedBox(width: 170, height: 52, child: InviteButton(creator: inviteOf, repo: widget.searchRepo, compact: true))
                   : _callNow(context, who),
             ),
+            // [HF-INTRO-A2] a stronger dark wash under the text of an intro video (the taps still fall through to the player)
+            if (intro)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 360,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [C.clear, C.cinema.withValues(alpha: 0.8)],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // [HF-INTRO-A2] Intro video: name + tick + socials, women tag, chips, status, one line, the one main button, and the
+            // rail (Like, Comment, Share, Info). Design: Specs/hf-intro-screens/Reel1Call, Reel2Busy, Reel3Women.
+            if (intro)
+              IntroReelOverlay(
+                reel: widget.real!,
+                who: who,
+                onProfile: () => _openProfile(context, 'rail'),
+                onSocial: (s) => _openSocial(s, 'overlay'),
+                onCall: () => _introGated(context, 'call', () => startCall(context, who)),
+                onQueue: () => _introGated(context, 'queue', () {
+                  final real = widget.real!;
+                  return _whileCovered(() => context.push<void>('/queue/${Uri.encodeComponent(real.host.slug)}?n=${real.host.queueWaiting}'));
+                }),
+                onBook: () => _introGated(context, 'book', () => _whileCovered(
+                      () => context.push<void>('/book/${Uri.encodeComponent(widget.real!.host.slug)}'),
+                    )),
+                rail: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (eState != null)
+                      _railBtn(
+                        eState.liked ? 'Unlike' : 'Like',
+                        eState.liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
+                        color: eState.liked ? C.rani : C.ivory,
+                        key: const ValueKey('reel-like'),
+                        text: compactCount(eState.likes.total),
+                        count: true,
+                      ),
+                    if (eState != null)
+                      _railBtn(
+                        'Comments',
+                        Icons.chat_bubble_outline_rounded,
+                        () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
+                        key: const ValueKey('reel-comment'),
+                        text: compactCount(eState.comments.total),
+                        count: true,
+                      ),
+                    _railBtn(
+                      'Share this reel',
+                      Icons.send_outlined,
+                      () => _shareIntro(context, widget.real!),
+                      key: const ValueKey('reel-share'),
+                      text: 'Share',
+                    ),
+                    _railBtn(
+                      'Verified accounts',
+                      Icons.info_outline_rounded,
+                      () => _openIntroInfo(context),
+                      key: const ValueKey('reel-info'),
+                      text: 'Info',
+                    ),
+                  ],
+                ),
+              ),
           ],
         );
         });
       },
     );
+  }
+
+  /// [HF-INTRO-A2] Call / Join queue / Book on an intro reel. On a Women-to-Women channel the viewer signs in first (a guest
+  /// gets the sign-up sheet), then the Aadhaar-only gate (Reel4Gate) runs; [go] only runs when she is let in.
+  Future<void> _introGated(BuildContext context, String action, FutureOr<void> Function() go) async {
+    Telemetry.event('hf_reel_action', {'action': 'intro_$action'});
+    final real = widget.real;
+    if (real == null) return;
+    if (!real.womenOnly) {
+      await go();
+      return;
+    }
+    final first = real.host.name.trim().split(RegExp(r'\s+')).first;
+    await requireAccount(
+      context,
+      () => unawaited(womenGateThen(context, () => unawaited(Future<void>.sync(go)))),
+      reason: first.isEmpty ? 'to talk to her' : 'to talk to $first',
+    );
+  }
+
+  /// [HF-INTRO-A2] A verified social icon (or Open in the info sheet): the account opens inside the app, the reel paused.
+  Future<void> _openSocial(ReelSocial s, String surface) => _whileCovered(() => _pushSocial(s, surface));
+
+  Future<void> _pushSocial(ReelSocial s, String surface) async {
+    final u = Uri.tryParse(s.url);
+    if (u == null || !OriginalPostPage.allowed(u)) {
+      if (mounted) toast(context, 'Could not open that account.');
+      return;
+    }
+    Telemetry.event('hf_social_link_open', {'platform': s.platform, 'surface': surface});
+    await OriginalPostPage.open(context, u, bottom: _linkBar());
+  }
+
+  /// [HF-INTRO-A2] The ⓘ sheet "Verified owner of" (Reel5Info).
+  Future<void> _openIntroInfo(BuildContext context) async {
+    final real = widget.real;
+    if (real == null) return;
+    Telemetry.event('hf_reel_action', {'action': 'info'});
+    await _whileCovered(() async {
+      final pick = await showIntroInfoSheet(context, reel: real, who: widget.reel.who);
+      if (pick != null && mounted) await _pushSocial(pick, 'sheet');
+    });
+  }
+
+  /// [HF-INTRO-A2] Share an intro reel: the system share sheet with the public link that plays this video.
+  Future<void> _shareIntro(BuildContext context, FeedReel r) async {
+    Telemetry.event('hf_reel_share', {'source': 'intro'});
+    try {
+      await ShareSheet.text('${r.host.name} on ${Brand.name}\n${r.shareUrl ?? reelShareUrl(r.id)}');
+    } catch (_) {
+      if (context.mounted) toast(context, 'Could not open sharing. Please try again.');
+    }
   }
 
   void _flash(String message) {

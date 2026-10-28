@@ -264,8 +264,127 @@ Future<bool> handleLaneRequired(BuildContext context, Object error) async {
     return true;
   }
   if (error.code != 'lane_required') return false;
-  await showSpaceLocked(context, lane: SpaceLane.parse(error.extra['lane']) ?? SpaceLane.women);
+  final lane = SpaceLane.parse(error.extra['lane']) ?? SpaceLane.women;
+  // [HF-INTRO-A2] With the Aadhaar-only rule on, the server says what is missing (`need`): the plain women-only pop-up.
+  final need = error.extra['need']?.toString() ?? '';
+  if (lane == SpaceLane.women && (need == 'aadhaar' || need == 'female_only')) {
+    await showWomenOnlyGate(context, need: need);
+    return true;
+  }
+  await showSpaceLocked(context, lane: lane);
   return true;
+}
+
+/// [HF-INTRO-A2] (D17) The pop-up for a Women-to-Women channel. [need] `aadhaar`: "Only Aadhaar-verified women can talk to
+/// her." with [Verify now] (the existing verification flow for the women lane) and [Not now]; `female_only`: a verified
+/// person who is not a woman, "Sorry, this channel is for women only." Returns true when the person verified here.
+/// Telemetry `hf_women_gate {result}`.
+Future<bool> showWomenOnlyGate(BuildContext context, {required String need}) async {
+  final aadhaar = need != 'female_only';
+  Telemetry.event('hf_women_gate', {'result': aadhaar ? 'blocked_aadhaar' : 'blocked_female_only'});
+  // Owner design Reel4Gate: white card, ink border, rose offset shadow, round rose symbol, title, body, Verify now / Not now.
+  final go = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => Dialog(
+      key: const ValueKey('women-gate-dialog'),
+      backgroundColor: C.clear,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        decoration: BoxDecoration(
+          color: C.white,
+          border: Border.all(color: C.deep, width: 3),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: const [BoxShadow(color: C.rani, offset: Offset(8, 8))],
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(
+            child: Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: C.blush, border: Border.all(color: C.rani, width: 3)),
+              child: Text('♀', style: t(34, color: C.tan, w: FontWeight.w900)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            aadhaar ? 'This is a women-only channel' : 'Sorry, this channel is for women only.',
+            key: const ValueKey('women-gate-title'),
+            textAlign: TextAlign.center,
+            style: t(aadhaar ? 24 : 20, color: C.deep, w: FontWeight.w900, h: 1.15),
+          ),
+          if (aadhaar) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Only Aadhaar-verified women can talk to her. It takes about a minute. Your Aadhaar number is never shown to anyone.',
+              textAlign: TextAlign.center,
+              style: t(15, color: C.deep, w: FontWeight.w600, h: 1.55),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              key: const ValueKey('women-gate-verify'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: C.marigold,
+                foregroundColor: C.deep,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: C.deep, width: 3)),
+              ),
+              onPressed: () => Navigator.of(dialog).pop(true),
+              child: Text('Verify now', style: t(18, color: C.deep, w: FontWeight.w900)),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextButton(
+            key: const ValueKey('women-gate-close'),
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            onPressed: () => Navigator.of(dialog).pop(false),
+            child: Text(aadhaar ? 'Not now' : 'OK', style: t(16, color: C.deep, w: FontWeight.w900)),
+          ),
+        ]),
+      ),
+    ),
+  );
+  if (!aadhaar) return false;
+  if (go != true || !context.mounted) {
+    Telemetry.event('hf_women_gate', {'result': 'not_now'});
+    return false;
+  }
+  Telemetry.event('hf_women_gate', {'result': 'verify_now'});
+  final ok = await openSpaceVerify(context, SpaceLane.women);
+  Telemetry.event('hf_women_gate', {'result': ok ? 'verified' : 'verify_incomplete'});
+  return ok;
+}
+
+/// [HF-INTRO-A2] The gate in front of Call / Join queue / Book on a Women-to-Women intro reel: runs [then] when the signed-in
+/// viewer is allowed in, else shows the pop-up that fits what is missing. A failed status read lets [then] run (the server
+/// answers 403 `lane_required` anyway and [handleLaneRequired] shows the same pop-up).
+Future<void> womenGateThen(BuildContext context, VoidCallback then) async {
+  SpaceStatus st;
+  try {
+    st = await Services.instance.spacesRepo.laneStatus();
+  } catch (_) {
+    then();
+    return;
+  }
+  if (st.womenGranted) {
+    Telemetry.event('hf_women_gate', {'result': 'allowed'});
+    then();
+    return;
+  }
+  if (!context.mounted) return;
+  if (!st.aadhaarVerified) {
+    if (await showWomenOnlyGate(context, need: 'aadhaar') && context.mounted) then();
+    return;
+  }
+  if (st.gender != null && st.gender != 'F') {
+    await showWomenOnlyGate(context, need: 'female_only');
+    return;
+  }
+  // Aadhaar done and Female, but the server still wants more (an older server asks for the selfie): the earlier prompt
+  final ok = await showSpaceLocked(context, lane: SpaceLane.women, status: st);
+  if (ok && context.mounted) then();
 }
 
 /// [HF-CREATOR-BADGES-1] The locked prompt for a creator who only takes video-KYC callers. Returns true if the person verified.

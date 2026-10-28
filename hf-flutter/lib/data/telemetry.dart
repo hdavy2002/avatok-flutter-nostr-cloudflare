@@ -82,6 +82,10 @@ abstract final class Telemetry {
     'hf_app_booking_length_picked', // [HF-CALL-MODES-E2] {minutes}
     'hf_app_call_topup_tapped', // [HF-CALL-MODES-E2] {surface}
     'hf_reel_action',
+    'hf_reel_start', // [HF-INTRO-A2] {platform, ms, warmed, source?: intro}
+    'hf_reel_share', // [HF-INTRO-A2] {source: intro}
+    'hf_social_link_open', // [HF-INTRO-A2] {platform: youtube|instagram|facebook, surface}
+    'hf_women_gate', // [HF-INTRO-A2] {result: blocked_aadhaar|blocked_female_only|allowed|verify_now|not_now|verified|verify_incomplete}
     'reel_profile_tap', // [HF-REEL-CALL-2] {source: rail|callbar, kind: network|invite}
     'reel_deeplink_open', // [HF-REEL-CALL-2] {reel_id, cached}
     'hf_reel_bookmark_sync',
