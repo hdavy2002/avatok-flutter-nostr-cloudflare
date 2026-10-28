@@ -23,12 +23,12 @@ import { HfCallDO } from "./hf_call";
 import { makeDb } from "../lib/hf_token_d1_shim";
 import { creditLot, getLots, reserveChunk, getReservation } from "../lib/hf_token_ledger";
 import { paiseToMicro, chargePaise } from "../lib/hf_token_math";
-import { LIMIT_WARNING_TEXT, NEUTRAL_ONE_MINUTE_TEXT } from "../lib/hf_call_math";
+import { LIMIT_WARNING_TEXT } from "../lib/hf_call_math";
 
 const callId = "33333333-3333-4333-8333-333333333333";
 const RATE = 1000; // Rs 10 / min -> Rs 50 per 300 s chunk
 let latched = 0;
-let db: any, env: any, object: HfCallDO, store: Map<string, any>, T: number, vobiz: { url: string; body: any }[], latch: { wait: Promise<void> | null };
+let db: any, env: any, object: HfCallDO, store: Map<string, any>, T: number, vobiz: { url: string; body: any; method: string }[], latch: { wait: Promise<void> | null };
 
 const speaks = () => vobiz.filter((v) => /Speak|Play/.test(v.url));
 const onMember = (m: string) => speaks().filter((v) => v.url.includes(`/Member/${m}/`));
@@ -71,7 +71,7 @@ async function advance(sec: number, step = 1) { let left = sec; while (left > 0)
 beforeEach(() => {
   T = 1_700_000_000_000; events.length = 0; vobiz = []; latch = { wait: null }; prov.n = 0;
   vi.spyOn(Date, "now").mockImplementation(() => T);
-  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => { vobiz.push({ url: String(url), body: JSON.parse(init?.body ?? "{}") }); return new Response("{}", { status: 200 }); }));
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => { vobiz.push({ url: String(url), body: JSON.parse(init?.body ?? "{}"), method: init?.method ?? "GET" }); return new Response("{}", { status: 200 }); }));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -94,20 +94,24 @@ describe("HfCallDO chunk billing", () => {
     expect(ended).toMatchObject({ source: "instant", funded_seconds: 1200, chunks: 4 });
   });
 
-  it("short funds: the CALLER is whispered the D5 line (never the host member), the host only gets the neutral one-minute line, the call ends 'balance'", async () => {
+  it("short funds: Vobiz mutes both legs, plays the same low-wallet warning to both, then restores speech", async () => {
     await setup({ rupees: 60 }); // chunk 0 = Rs 50, Rs 10 left = 60 s of the next chunk
     await connect();
     await advance(5);
     expect(state().tok.short).toBe(true);
     expect(state().tok.fundedSec).toBe(360);
-    expect(onMember("mh")).toHaveLength(0);
     expect(onMember("mc")).toHaveLength(1);
-    expect(onMember("mc")[0].body.text).toMatch(/wallet balance has run out.*about 5 minutes/);
+    expect(onMember("mh")).toHaveLength(1);
+    expect(onMember("mc")[0].body.text).toMatch(/caller's wallet balance is low.*about 5 minutes/i);
+    expect(onMember("mh")[0].body.text).toBe(onMember("mc")[0].body.text);
+    expect(vobiz.some((v) => /\/Member\/mh,mc\/Mute\/$/.test(v.url) && v.method === "POST")).toBe(true);
     expect(events.find((e) => e.event === "hf_call_funds_short")).toBeTruthy();
-    expect(events.find((e) => e.event === "hf_call_whisper")).toMatchObject({ kind: "low_funds", via: "member_speak", ok: true });
-    await advance(296); // t = 301 s: the one-minute whisper (limit 360 - 60)
-    expect(onMember("mh").map((v) => v.body.text)).toEqual([NEUTRAL_ONE_MINUTE_TEXT]);
-    expect(onMember("mh").some((v) => /wallet|top up|balance/i.test(v.body.text))).toBe(false);
+    expect(events.find((e) => e.event === "hf_call_shared_announcement")).toMatchObject({ kind: "low_funds", via: "member_speak", ok: true });
+    await advance(14);
+    expect(vobiz.some((v) => v.url.endsWith("/Member/mh,mc/Mute/") && v.method === "DELETE")).toBe(true);
+    await advance(282); // t = 301 s: the one-minute shared warning (limit 360 - 60)
+    expect(onMember("mh").map((v) => v.body.text)).toHaveLength(2);
+    expect(onMember("mh").every((v) => /wallet|top up|balance/i.test(v.body.text))).toBe(true);
     await advance(60);
     const s = state();
     expect(s.finalized).toBe(true);
@@ -117,16 +121,15 @@ describe("HfCallDO chunk billing", () => {
     expect(await sumLeft()).toBe(0);
   });
 
-  it("a whisper falls back to Call Speak on the caller leg when Member Speak is refused, and records the path", async () => {
+  it("a failed shared announcement immediately unmutes both legs", async () => {
     await setup({ rupees: 60 });
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => { vobiz.push({ url: String(url), body: JSON.parse(init?.body ?? "{}") }); return new Response("{}", { status: /\/Member\/.+\/Speak\//.test(String(url)) ? 404 : 200 }); }));
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => { vobiz.push({ url: String(url), body: JSON.parse(init?.body ?? "{}"), method: init?.method ?? "GET" }); return new Response("{}", { status: /\/Member\/.+\/Speak\//.test(String(url)) ? 404 : 200 }); }));
     await connect();
     await post("hangup-noop", {}).catch(() => undefined);
     state().callerLeg = "leg-caller"; store.set("s", { ...state(), callerLeg: "leg-caller", hostLeg: "leg-host" });
     await advance(5);
-    expect(events.find((e) => e.event === "hf_call_whisper")).toMatchObject({ via: "call_speak", ok: true });
-    expect(speaks().some((v) => v.url.includes("/Call/leg-caller/Speak/") && v.body.legs === "aleg")).toBe(true);
-    expect(speaks().some((v) => v.url.includes("leg-host"))).toBe(false);
+    expect(events.find((e) => e.event === "hf_call_shared_announcement")).toMatchObject({ kind: "low_funds", via: "none", ok: false });
+    expect(vobiz.some((v) => v.url.endsWith("/Member/mh,mc/Mute/") && v.method === "DELETE")).toBe(true);
   });
 
   it("a top-up while talking (POST /funds) reserves the next chunk and moves the end of the call", async () => {

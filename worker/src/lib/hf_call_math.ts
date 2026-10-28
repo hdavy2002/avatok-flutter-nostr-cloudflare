@@ -138,10 +138,10 @@ export const LIMIT_WARNING_TEXT = "One minute left on this call.";
 // ── [HF-CALL-MODES-C] chunk billing: spoken lines + schedule maths (pure; no I/O) ───────────────────────────────────────────────────────────
 // The brand name is never typed into these lines (rulebook / Specs brand-central-config); they say "your wallet" and nothing else.
 
-/** Spec D5, caller only. `minutes` = whole minutes left (at least 1). */
+/** Shared PSTN interruption for the caller and influencer. `minutes` = whole minutes left (at least 1). */
 export function lowFundsWhisperText(minutes: number): string {
   const m = Math.max(1, Math.trunc(minutes));
-  return `Your wallet balance has run out. This call will end in about ${m} ${m === 1 ? "minute" : "minutes"}. Please top up your wallet while you are speaking.`;
+  return `The caller's wallet balance is low. This call will end in about ${m} ${m === 1 ? "minute" : "minutes"}. Please top up in the app to continue.`;
 }
 /** Caller only, after a top-up while talking extended the call. */
 export const TOPPED_UP_WHISPER_TEXT = "Thanks, your wallet is topped up. Your call continues.";

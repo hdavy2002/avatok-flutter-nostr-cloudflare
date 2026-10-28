@@ -12,7 +12,7 @@ import { getTelephonyProvider } from "../lib/telephony_provider";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { track, trackException } from "../hooks";
 import { onCallCompleted } from "../lib/hf_reviews";
-import { speakIntoCall } from "../lib/hf_vobiz";
+import { pauseForSharedAnnouncement, resumeAfterSharedAnnouncement, speakIntoCall } from "../lib/hf_vobiz";
 import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger"; // [HF-VOBIZ-SPEND-1]
 import {
   HF_CALL_APP, webhookBase, releaseHost, markOnCall, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
@@ -79,7 +79,7 @@ interface S {
   hostPicked: boolean; hostAccepted: boolean; callerPicked: boolean; callerPickedAt: number | null;
   inRoom: Record<Role, boolean>; member: Partial<Record<Role, string>>; anyEnter: boolean;
   connectedAt: number | null; endedAt: number | null; endReason: string | null; finalStatus: string | null; hashBy: Role | null;
-  finalized: boolean; finishing?: FinishRequest; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess" | "disconnect" | "chunk" | "fundsRetry" | "whisper", number>>; bill: Bill;
+  finalized: boolean; finishing?: FinishRequest; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess" | "disconnect" | "chunk" | "fundsRetry" | "whisper" | "announcement", number>>; bill: Bill;
   source?: string; // [HF-CALL-MODES-C] instant | queue | booking
   tok?: TokenSnap; // present only for calls started with hfTokensEnabled on
 }
@@ -518,6 +518,7 @@ export class HfCallDO {
         await this.disconnectAndFinalize(s);
         return;
       }
+      if (due("announcement")) { await this.resumeSharedAnnouncement(s); return; }
       if (due("limit")) {
         // [HF-CALL-MODES-C] chunk billing: the call ended because the money (or the cap / booking end) ran out; say which in end_reason.
         const t = s.tok;
@@ -591,6 +592,31 @@ export class HfCallDO {
     this.emit(s.callerUid, "hf_call_whisper", { call_id: s.callId, kind, via: r.via, ok: r.ok });
   }
 
+  /** Mute both PSTN legs, play one shared warning, then always try to restore speech. */
+  private async sharedAnnouncement(s: S, kind: string, text: string, mp3Key: string): Promise<void> {
+    const memberIds = [s.member.host, s.member.caller].filter((id): id is string => typeof id === "string" && id.length > 0);
+    const r = await pauseForSharedAnnouncement(this.env, { room: this.room(s), memberIds, text, mp3Url: this.mp3(mp3Key) });
+    this.emit(s.callerUid, "hf_call_shared_announcement", { call_id: s.callId, kind, via: r.via, ok: r.ok });
+    if (!r.ok) return;
+    const latest = await this.load();
+    if (!latest || latest.finalized || latest.finishing) return;
+    // Vobiz queues media asynchronously and has no completion callback. Fourteen
+    // seconds safely covers the short recorded/TTS wallet announcement; the alarm
+    // also retries unmute after a transient provider failure.
+    latest.tasks.announcement = Date.now() + 14_000;
+    await this.save(latest);
+  }
+
+  private async resumeSharedAnnouncement(s: S): Promise<void> {
+    const memberIds = [s.member.host, s.member.caller].filter((id): id is string => typeof id === "string" && id.length > 0);
+    const ok = await resumeAfterSharedAnnouncement(this.env, { room: this.room(s), memberIds });
+    const latest = await this.load();
+    if (!latest || latest.finalized || latest.finishing) return;
+    if (ok) delete latest.tasks.announcement;
+    else latest.tasks.announcement = Date.now() + 2_000;
+    await this.save(latest);
+  }
+
   /**
    * Reserve the chunks the call now needs (money is taken ~5 min ahead). Idempotent per chunk (the ledger gate is keyed on the chunk number).
    * All I/O happens before the state is re-read: a hangup that landed meanwhile wins, and whatever we reserved is swept by settle.
@@ -639,7 +665,7 @@ export class HfCallDO {
     if (needWhisper) {
       this.emit(s.callerUid, "hf_call_funds_short", { call_id: s.callId, funded_seconds: t.fundedSec, remaining_sec: remaining, chunk_n: t.chunkN, reason });
       const m = whisperMinutes(remaining);
-      await this.whisperCaller(s, "low_funds", lowFundsWhisperText(m), `low_funds_${m}`);
+      await this.sharedAnnouncement(s, "low_funds", lowFundsWhisperText(m), `low_funds_${m}`);
     }
     if (topped || (reason === "topup" && added > 0)) {
       this.emit(s.callerUid, "hf_call_topup_extended", { call_id: s.callId, added_seconds: added, funded_seconds: t.fundedSec, reason });
@@ -665,12 +691,11 @@ export class HfCallDO {
       speakIntoCall(this.env, { room: this.room(s), memberId: s.member[r], callUuid: r === "host" ? s.hostLeg : s.callerLeg, text: LIMIT_WARNING_TEXT })));
   }
 
-  /** One minute before the funds run out: the caller hears the D5 line, the influencer a neutral one that never mentions money. */
+  /** One minute before funds run out, pause both legs for the same shared warning. */
   private async oneMinuteWhisper(): Promise<void> {
     const s = await this.load();
     if (!s || s.finalized || s.finishing || !s.connectedAt || s.tok?.short !== true) return;
-    await this.whisperCaller(s, "one_minute", lowFundsWhisperText(1), "low_funds_1");
-    await speakIntoCall(this.env, { room: this.room(s), memberId: s.member.host, callUuid: s.hostLeg, text: NEUTRAL_ONE_MINUTE_TEXT }).catch(() => undefined);
+    await this.sharedAnnouncement(s, "one_minute", lowFundsWhisperText(1), "low_funds_1");
   }
 
   // ── finish: hang up, record, free the host, bill, announce ───────────────────────────────────────────────────
