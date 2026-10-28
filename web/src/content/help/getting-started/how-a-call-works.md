@@ -12,7 +12,7 @@ faq:
   - q: "Why does the influencer's phone ring before mine?"
     a: "The influencer may say yes or no first. You only get a ring after the influencer says yes. So you do not wait for nothing."
   - q: "Does anyone listen to my call?"
-    a: "No. No human monitors your call."
+    a: "No one listens live. Calls are recorded for safety and checked by AI after the call."
 draft: false
 ---
 
@@ -46,7 +46,7 @@ You pay nothing. If the influencer declines, cancels or does not answer, nothing
 - You can report anyone. Our team reviews reports. They can give strikes or bans.
 - {{brand.name}} never asks for your OTP, PIN or password.
 
-No human monitors your call.
+Calls are recorded for safety. Nobody listens live. Read [Are calls recorded?](/help/safety-and-privacy/are-calls-recorded).
 
 ## The # key
 

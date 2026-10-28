@@ -31,7 +31,7 @@ You do not need to say anything first. You never owe an explanation for hanging 
 
 ## Our team reviews reports
 
-When a call is reported, our team reviews the report before any strike or ban is given. No person listens to your calls, so a report is based on what you and the other person tell us.
+When a call is reported, our team reviews the report before any strike or ban is given. Nobody listens live. Every call is recorded and checked by AI after the call, and a report also sends that call for a check.
 
 ## Scam awareness
 

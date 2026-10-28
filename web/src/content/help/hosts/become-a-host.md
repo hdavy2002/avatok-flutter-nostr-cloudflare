@@ -40,7 +40,8 @@ Becoming an influencer happens **in our app**. The website shows a button to dow
 3. **Social media verification (optional).** Log in with YouTube, Instagram or Facebook to show that the account is yours. No account? Verify with Aadhaar instead.
 4. **Record a short live video.** It is 10 to 20 seconds, with your phone held upright, and you say what fans can call you about. You cannot upload a video from your gallery. Your phone gives you simple ideas of what to say, in your language. For example: "Hi, I am Neha. I cook home-style food. Call me for easy recipes."
 5. **Set your rate and how you take calls.** Choose your price per minute. Then choose **Bookings only** or **Bookings + live** (see below).
-6. **Send it for approval.** A person from our team watches your video and checks your profile. We WhatsApp you when you are approved. If something needs fixing, we tell you what, and you can fix it and send it again.
+6. **Accept the call rules.** Calls are recorded for safety. You agree not to sell on a call (use the Shop instead), not to take payment outside the app, not to share contact details, and to be respectful.
+7. **Send it for approval.** A person from our team watches your video and checks your profile. We WhatsApp you when you are approved. If something needs fixing, we tell you what, and you can fix it and send it again.
 
 Until a person approves you, you are not an influencer yet and nobody can call you.
 

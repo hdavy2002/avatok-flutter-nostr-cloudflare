@@ -58,7 +58,7 @@ Priya is on a call. After 5 minutes the other person says he is from her bank. H
 
 ## Good to know
 
-- No human monitors your call. So if something feels wrong, press # yourself.
+- Nobody listens live. So if something feels wrong, press # yourself. The call is recorded for safety, and you can report it afterwards.
 - Three confirmed strikes lead to a permanent ban. Serious cases can be banned at once.
 - If you think a strike or ban was a mistake, tell us at [grievance page](/grievance). A person will look at it.
 - You can also report later at [report form](/report).

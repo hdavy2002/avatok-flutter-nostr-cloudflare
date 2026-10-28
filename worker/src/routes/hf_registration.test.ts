@@ -189,7 +189,7 @@ describe("HF immutable registration username", () => {
     const status = await (await policyCall()).json();
     expect(status.required).toBe(true);
     expect(status.pending.map((p: any) => p.policy).sort()).toEqual(['privacy', 'terms']);
-    expect(status.note).toContain('UPI');
+    expect(status.note).toContain('recorded for safety'); // [HF-CALL-SAFETY-LEGAL] changes with the pinned policy text
     const refused = await policyCall('POST', { acceptedPolicyVersions: { terms: acceptedPolicyVersions.terms } });
     expect(refused.status).toBe(409);
     expect((await policyCall('POST', { acceptedPolicyVersions })).status).toBe(200);

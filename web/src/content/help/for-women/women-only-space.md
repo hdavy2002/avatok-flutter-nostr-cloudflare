@@ -44,7 +44,7 @@ Only you and our verification team see your Aadhaar check. Your intro video is s
 
 ## Rules still apply
 
-Harassment and sexual pressure are never allowed. No human monitors your call.
+Harassment and sexual pressure are never allowed. Nobody listens live. Women-only calls are recorded for safety and checked by AI after the call, like every call.
 
 ## Learn more
 

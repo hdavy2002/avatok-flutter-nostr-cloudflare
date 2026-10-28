@@ -1,14 +1,17 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+import { BRAND } from '../lib/brand';
 ---
-<HelloFraandsPage title="Safety centre" summary="Pehle niyam samjhein, apni hadon ka dhyaan rakhein." review={false} related={[]}>
+<HelloFraandsPage updated="2026-10-28" title="Safety centre" summary="Pehle niyam samjhein, apni hadon ka dhyaan rakhein." review={false} related={[]}>
 <h2>How calls are kept safe</h2>
 <p>We call the influencer first and announce that you want to talk. The influencer chooses whether to accept before you are dialled. Both calls come from a platform number, so your private number and the influencer's stay hidden. Either person can hang up at any time; pressing <strong>#</strong> ends the call and blocks the other person.</p>
-<p>You can report and block anyone, and after our team reviews a report, serious or repeated violations lead to strikes and bans. Watch out for scams: anyone who asks you for an OTP, UPI PIN, password, card or bank details is a scammer. The platform never asks for them. No human monitors or listens to your calls. Talking about distress is never a reason for a strike.</p>
+<p>Every call is recorded for safety, and nobody listens live. After the call, an AI system checks the recording. Very clear rule breaks can get a strike straight away; anything unclear goes to our safety team first. Only a person can ban an account. You can also report and block anyone. Do not share your phone number, UPI ID or address, and never pay anyone outside {BRAND.name}: if someone asks, say no and report it after the call. Watch out for scams: anyone who asks you for an OTP, UPI PIN, password, card or bank details is a scammer. The platform never asks for them. Talking about distress is never a reason for a strike.</p>
 <p>You do not owe anyone your number, identity documents, money, private contact or another minute of conversation. Leave if you feel uncomfortable. The <a href="/women-only">women's safety guide</a> explains Women-only channels, boundaries and respectful discussion of women's experiences. Most questions are answered in the <a href="/faq">FAQs</a>.</p>
 <h2>Safety guides</h2>
 <div class="safety-cards">
-<a href="/community-guidelines"><strong>Community guidelines</strong><span>Boundaries, reports, strikes and bans.</span></a>
+<a href="/community-guidelines"><strong>Community guidelines</strong><span>Boundaries, recording, strikes, appeals and bans.</span></a>
+<a href="/help/safety-and-privacy/are-calls-recorded"><strong>Are calls recorded?</strong><span>What we record, who can read it and how long we keep it.</span></a>
+<a href="/help/safety-and-privacy/how-to-appeal-a-strike"><strong>Appeal a strike</strong><span>One appeal for each strike, reviewed by a person.</span></a>
 <a href="/talk-safely"><strong>Talk safely</strong><span>Ways to protect your privacy on a call.</span></a>
 <a href="/report"><strong>Report a user</strong><span>How to report someone after a call.</span></a>
 <a href="/grievance"><strong>Grievance redressal</strong><span>Published contacts and how to raise a concern.</span></a>

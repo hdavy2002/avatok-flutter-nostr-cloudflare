@@ -12527,5 +12527,12 @@
         "note": "A rejected, replaced, expired or orphaned intro video was removed from storage (server telemetry; bytes is the size freed)."
       }
     ]
+  },
+  "HF-CALL-SAFETY-LEGAL": {
+    "description": "Public copy (terms, privacy, guidelines, safety centre, agreement, FAQ, help) for call recording, after-call AI review, strikes, appeals and pauses; pinned policy hashes bumped so users re-accept.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Copy only. The recording / strike behaviour itself is gated and measured by the backend lane (HF-CALL-SAFETY-1). The only code change is the pinned policy hashes; the existing policy re-accept events already cover acceptance."
   }
 }

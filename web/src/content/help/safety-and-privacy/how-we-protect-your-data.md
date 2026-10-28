@@ -32,7 +32,7 @@ To call an influencer, we keep:
 - your **wallet top-ups** by UPI
 - your **call details**: the time, how long, the price and how the call ended
 
-No human monitors your call. Influencers never see your number. They see only your caller name.
+Nobody listens to your call live. Every call is recorded for safety; read [Are calls recorded?](/help/safety-and-privacy/are-calls-recorded) to see who can read it and how long we keep it. Influencers never see your number. They see only your caller name.
 
 *Example: Rohan tops up Rs 100 and talks for 10 minutes. We keep the top-up, the time, the length and the price. We do not keep what he said.*
 

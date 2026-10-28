@@ -1,21 +1,24 @@
 ---
 import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+import { BRAND } from '../../lib/brand';
 export const prerender = true;
 ---
-<HelloFraandsPage title="Influencer rules" summary="Call lena aapki marzi hai; hadon ka dhyaan rakhein." review={true} related={[{href:'/hosts/agreement',label:'Influencer agreement'},{href:'/hosts/crisis-script',label:'Crisis script'}]}>
+<HelloFraandsPage updated="2026-10-28" title="Influencer rules" summary="Call lena aapki marzi hai; hadon ka dhyaan rakhein." review={true} related={[{href:'/hosts/agreement',label:'Influencer agreement'},{href:'/hosts/crisis-script',label:'Crisis script'}]}>
 <h2>Choose whether to take each call</h2>
 <p>Your phone will ring first. A private announcement will say that a fan wants to talk, give the caller's handle, how many times they have called you before, and your saved caller note if you have one. Press <strong>1 to accept</strong> or <strong>2 to decline</strong>. No input within 10 seconds is a decline. The caller is dialled only after you accept; declined or unconnected calls are not billed to the caller.</p>
 <p>Set yourself online only when you want calls. You may decline or end a conversation without explaining why. Do not stay on an uncomfortable call to earn more minutes.</p>
 <h2>Keep every call respectful</h2>
-<ul><li>No sexual or suggestive talk, abuse, threats or harassment.</li><li>Do not ask for or share phone numbers, social accounts, addresses or meetings.</li><li>Do not sell products, services or paid remedies, or solicit money.</li><li>No medical, legal or financial advice, diagnosis or treatment.</li><li>Astrology is for reflection and entertainment. Never promise an outcome.</li></ul>
+<ul><li>No sexual or suggestive talk, adult services, abuse, threats or harassment.</li><li>Do not ask for or share phone numbers, UPI IDs, social accounts, addresses or meetings.</li><li>Do not sell products, services, courses or paid remedies on a call. Use the {BRAND.name} Shop instead.</li><li>Never take or ask for payment outside {BRAND.name}. No loans, investment or network-marketing offers.</li><li>No medical, legal or financial advice, tips, diagnosis or treatment.</li><li>Astrology is for reflection and entertainment. Never promise an outcome.</li></ul>
 <p>If you list women's health as a topic, respectful discussion of periods, PCOS, pregnancy and other health experiences is welcome. Do not mistake ordinary health vocabulary for sexual misconduct. The same consent and anti-harassment boundaries apply.</p>
 <h2>Know the two keypad controls</h2>
 <ul><li><strong>* — end:</strong> ends the connected call. Use this when you simply need to leave.</li><li><strong># — end, block and flag:</strong> ends the call, blocks this caller from calling you again and creates an incident for review. A pending incident is not a confirmed strike.</li></ul>
 <p>These keys are for the influencer's phone during the connected call. Either participant can also hang up normally. After a call, the influencer WhatsApp message shows duration and earnings: reply <strong>1 to block</strong>, <strong>2 to report</strong>, or <strong>3 to tag</strong>. The dashboard offers the same actions. Do not put sensitive personal details in caller notes.</p>
 <h2>Distress is not misconduct</h2>
 <p>If someone mentions self-harm, use the <a href="/hosts/crisis-script">crisis script</a> to direct them to appropriate support. Do not use the # end-and-block key solely because they are distressed. Such mentions are for welfare review only and must never earn a strike. Do not promise emergency dispatch or a response from the platform.</p>
+<h2>Recording and safety checks</h2>
+<p>Every call is recorded for safety. Nobody listens live. After the call an AI system checks the recording against these rules. You accept the call rules when you sign up in the app, and once more if the rules change. A strike is for one call and counts for 90 days. Three active strikes pause your account, and earnings are held until our review ends. You can appeal each strike once. Only a person on our team can ban. See the <a href="/community-guidelines">community guidelines</a>.</p>
 <h2>Safety</h2>
-<p>No human monitors or listens to your calls. Spammy, sexual or threatening behaviour is not allowed; report it and use # to end the call and block the person. We train influencers regularly to spot scam and spam callers. Read the <a href="/safety">safety centre</a>.</p>
+<p>Spammy, sexual or threatening behaviour is not allowed; report it and use # to end the call and block the person. We train influencers regularly to spot scam and spam callers. Read the <a href="/safety">safety centre</a>.</p>
 <h2>Account action</h2>
 <p>Enforcement and earnings terms are in the <a href="/hosts/agreement">influencer agreement</a>. See <a href="/grievance">Grievance redressal</a> to raise a concern.</p>
 </HelloFraandsPage>

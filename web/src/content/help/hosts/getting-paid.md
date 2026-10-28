@@ -31,6 +31,10 @@ After each **completed call**, your earnings for that call are credited to your 
 
 Your fan pays per minute at the rate you have set. To learn more, read [how much you will earn](/help/hosts/host-earnings).
 
+## If your account is paused
+
+If your account is paused, your earnings are held until our review ends. If a ban is confirmed, fans of the flagged calls are refunded first from the held money, and the rest is paid to your UPI ID. Read [Why is my account paused?](/help/safety-and-privacy/why-is-my-account-paused).
+
 ## How to withdraw
 
 1. Sign in and open your wallet.

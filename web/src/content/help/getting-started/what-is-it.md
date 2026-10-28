@@ -56,7 +56,7 @@ Influencers must not act like doctors, lawyers, counsellors or financial advisor
 ## How it keeps you safe
 
 - Your number is hidden. See [How does a call work?](/help/getting-started/how-a-call-works).
-- No human monitors your call.
+- Calls are recorded for safety. Nobody listens live. ([Read more](/help/safety-and-privacy/are-calls-recorded))
 - You can press the # key at any time to end the call and block the person.
 
 Read more on [safety centre](/safety).

@@ -25,7 +25,7 @@ draft: false
 - **Your number is masked.** The other person never sees your real phone number. See [How your number stays private](/help/safety-and-privacy/your-number-stays-private).
 - **Strikes and bans.** Our team reviews every report. Confirmed strikes can lead to a permanent ban.
 - **The # key.** Press it any time. It ends the call, blocks the other person and reports the incident.
-- **No one listens in.** No human monitors your call. See [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe).
+- **No one listens live.** Calls are recorded for safety and checked by AI after the call, Women-only calls too. See [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe).
 
 ## If a man flirts or says sexual things
 
