@@ -2,7 +2,8 @@
 // [HF-HOST-ONBOARD-1] Host onboarding (Phase 1 clickable mock). Standalone page, not indexed.
 import brandConfig from '../../../../Specs/brand.json';
 import SiteHeader from '../../components/callvaal/Header.astro'; // [HF-HEADER-EVERYWHERE-1] the front-page header on every website page
-import HostOnboarding from '../../islands/host-onboarding/HostOnboarding';
+import SiteFooter from '../../components/callvaal/Footer.astro';
+import OnboardingGate from '../../islands/host-onboarding/OnboardingGate'; // [HF-INTRO-B1] flag on = "Download our app" panel; off = the step flow
 import '../../styles/callvaal-notebook.css';
 import '../../styles/profile-card.css';
 import '../../styles/host-onboarding/base.css';
@@ -10,6 +11,7 @@ import '../../styles/host-onboarding/verify.css';
 import '../../styles/host-onboarding/profile.css';
 import '../../styles/host-onboarding/finish.css';
 import '../../styles/host-onboarding/spaces.css'; // [HF-CREATOR-SPACES-1]
+import '../../styles/host-onboarding/app-only.css'; // [HF-INTRO-B1]
 export const prerender = true;
 const identity = brandConfig.homepageIdentity;
 ---
@@ -27,7 +29,8 @@ const identity = brandConfig.homepageIdentity;
   </head>
   <body class="hf-flow-page">
     <SiteHeader />
-    <HostOnboarding client:only="react" />
+    <OnboardingGate client:only="react" />
+    <div id="hia-footer" hidden><SiteFooter /></div>
     <noscript><p style="padding:24px;font-family:sans-serif;font-size:1rem">Please turn on JavaScript to become an influencer.</p></noscript>
   </body>
 </html>
