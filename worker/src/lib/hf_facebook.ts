@@ -25,6 +25,12 @@ export const fbAppIdOf = (cfg: Record<string, unknown>): string => {
   const v = String(cfg.hfFacebookAppId ?? "").trim();
   return /^\d{6,25}$/.test(v) ? v : "";
 };
+// [HF-FB-CONFIG-ID] The Meta app is a Business app, so the dialog uses a Facebook Login for Business configuration
+// (config_id; user access token; pages_show_list + pages_read_engagement) instead of scope. Empty = old scope dialog.
+export const fbConfigIdOf = (cfg: Record<string, unknown>): string => {
+  const v = String(cfg.hfFacebookConfigId ?? "").trim();
+  return /^\d{6,25}$/.test(v) ? v : "";
+};
 
 const te = new TextEncoder();
 const appSecret = (env: Env): string => {

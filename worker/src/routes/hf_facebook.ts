@@ -20,7 +20,7 @@ import { readConfig } from "./config";
 import { ProviderError } from "../lib/hf_channel_providers";
 import { appScheme } from "../lib/hf_instagram";
 import {
-  FB_GRAPH_VERSION, FB_PROVIDER_REF, FB_SCOPES, FB_STATE_TTL_S, channelsForFbUser, fbAppIdOf, fbExchangeCode, fbFetchProfile, fbRedirectUri, parseFbSignedRequest, saveFbLogin,
+  FB_GRAPH_VERSION, FB_PROVIDER_REF, FB_SCOPES, FB_STATE_TTL_S, channelsForFbUser, fbAppIdOf, fbConfigIdOf, fbExchangeCode, fbFetchProfile, fbRedirectUri, parseFbSignedRequest, saveFbLogin,
   signFbState, verifyFbState, wipeFbChannel, type FbProfile,
 } from "../lib/hf_facebook";
 import { COLS, MAX_CHANNELS, ensureHostRow, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
@@ -124,7 +124,8 @@ export async function hfFacebookRoute(req: Request, env: Env, p: string, ctx?: E
       const exp = Date.now() + FB_STATE_TTL_S * 1000;
       await env.TOKENS.put(nonceKey(nonce), uid, { expirationTtl: FB_STATE_TTL_S });
       const state = await signFbState(env, { uid, client, nonce, exp });
-      const q = new URLSearchParams({ client_id: fbAppIdOf(cfgAny), redirect_uri: fbRedirectUri(), response_type: "code", scope: FB_SCOPES, state });
+      const configId = fbConfigIdOf(cfgAny);
+      const q = new URLSearchParams({ client_id: fbAppIdOf(cfgAny), redirect_uri: fbRedirectUri(), response_type: "code", ...(configId ? { config_id: configId } : { scope: FB_SCOPES }), state });
       emit("hf_channel_oauth_start", { client });
       return json({ ok: true, url: `https://www.facebook.com/${FB_GRAPH_VERSION}/dialog/oauth?${q}` }, 200, NO_STORE);
     }

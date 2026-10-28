@@ -128,6 +128,13 @@ describe("start", () => {
     expect(u.searchParams.get("redirect_uri")).toBe(`${BRAND.apiOrigin}/api/hf/channels/facebook/callback`);
     expect(await verifyFbState(env, u.searchParams.get("state"))).toMatchObject({ uid: "u1", client: "app" });
   });
+  it("[HF-FB-CONFIG-ID] uses config_id instead of scope when a Login for Business configuration is set", async () => {
+    cfg.hfFacebookConfigId = "2164704090752250";
+    const u = new URL((await start()).j.url);
+    expect(u.searchParams.get("config_id")).toBe("2164704090752250");
+    expect(u.searchParams.get("scope")).toBeNull();
+    cfg.hfFacebookConfigId = "";
+  });
   it("503 when the secret or app id is missing", async () => {
     delete env.FACEBOOK_APP_SECRET;
     expect((await start()).r.status).toBe(503);

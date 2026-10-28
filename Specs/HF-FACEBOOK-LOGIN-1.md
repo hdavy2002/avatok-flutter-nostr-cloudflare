@@ -42,6 +42,13 @@ User-facing worker messages now say "social media verification" instead of "chan
 - Migration `worker/migrations/2026-10-28-hf-facebook-login.sql` (CREATE only, coordinator applies).
 - Telemetry: `hf_channel_oauth_start|done|fail` with `platform: 'facebook'`, plus the usual `hf_channel_added` / `hf_channel_threshold`, `hf_fb_deauthorize`, `hf_fb_data_deletion`. Ship manifest entry `HF-INTRO-W3`.
 
+## 1b. Facebook Login for Business configuration (2026-10-28, [HF-FB-CONFIG-ID])
+The Meta app "Hello Fraands" (1901869440784665) is a Business app, so its login product is Facebook Login for Business. Set up on 2026-10-28:
+- Use case "Manage everything on your Page" added; `pages_show_list` + `pages_read_engagement` are Ready for testing.
+- Configuration "Page owner verification" (General, User access token, those two permissions): id `2164704090752250`.
+- Valid OAuth Redirect URI, Deauthorize URL and Data Deletion URL set to the three routes below.
+- The worker sends `config_id` instead of `scope` when the string config `hfFacebookConfigId` is set (empty = old scope dialog).
+
 ## 2. Why the Instagram app cannot be reused
 The Instagram login uses the "Instagram API with Instagram login" product, whose app id and secret are special to that product (the Instagram app secret is `INSTAGRAM_APP_SECRET`). Facebook Login needs the **main Meta app id and main app secret** of the same Meta app (App settings, Basic). It is the same Meta app, but a different id and secret pair. So one new secret (`FACEBOOK_APP_SECRET`) and one config string (`hfFacebookAppId`).
 
