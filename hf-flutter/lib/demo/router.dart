@@ -266,6 +266,7 @@ final router = GoRouter(
       // [HF-IG-LOGIN-1] `?ig=connected|error&reason=&result=` is where the Instagram login sends her back (core/deep_links.dart).
       builder: (_, s) => ChannelsListScreen(
         ig: s.uri.queryParameters['ig'],
+        fb: s.uri.queryParameters['fb'], // [HF-INTRO-A3] the Facebook login's answer
         reason: s.uri.queryParameters['reason'],
         result: s.uri.queryParameters['result'],
         igLogin: IgLoginMode.probe,

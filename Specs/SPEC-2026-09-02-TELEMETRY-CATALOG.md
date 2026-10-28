@@ -1475,6 +1475,10 @@ Spec: `Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md` section 2.8. All dark behin
 | `hf_app_queue_left` | `wait_s`, `reason: 'user'/'left'/'skipped'/'expired'/'closed'/'done'/'gone'` | The fan's queue ended; `user` = they tapped Leave. |
 | `hf_app_queue_failed` | `reason` (server error code) | Join refused. |
 | `hf_app_booking_length_picked` | `minutes` | Fan picked a booking length. |
+| `hf_call_option_ui` | `option: 'A'/'B'` | [HF-INTRO-A3] Influencer picked Bookings only (A) or Bookings + live (B) on Home, or tapped the footer button while on A. |
+| `hf_intro_banner_click` | `status: 'none'/'submitted'/'rejected'` | [HF-INTRO-A3] Influencer tapped the intro banner on Home (Record now / Check again / Fix and send again). |
+| `hf_fb_login_open` | `ok` | [HF-INTRO-A3] The Facebook login tab was opened from Social media verification. |
+| `hf_fb_login_result` | `fb: 'connected'/'error'`, `reason`, `result` | [HF-INTRO-A3] The Facebook login came back to the app. |
 | `hf_app_call_topup_tapped` | `surface: 'call'/'queue'`, `short?: boolean` | Top up tapped from the live call banner (`short` = the wallet could not fund the next slice) or from a low-balance queue refusal. |
 
 ### Ship manifest note

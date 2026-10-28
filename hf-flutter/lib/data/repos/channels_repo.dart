@@ -19,7 +19,7 @@ class ChannelsRepo {
 
   final ApiClient _api;
 
-  static const String notOpenText = 'Channels are not open yet. Please check back soon.';
+  static const String notOpenText = 'Social media verification is not open yet. Please check back soon.';
 
   Future<T> _guard<T>(Future<T> Function() run) async {
     try {
@@ -70,6 +70,17 @@ class ChannelsRepo {
         final j = await _api.getJson('/api/hf/channels/instagram/start', query: {'client': 'app'});
         final u = Uri.tryParse((j['url'] ?? '').toString());
         if (u == null || u.scheme != 'https' || u.host != 'www.instagram.com') {
+          throw const ApiException(kind: ApiFailure.http, code: 'bad_response', message: ApiException.genericText);
+        }
+        return u;
+      });
+
+  /// [HF-INTRO-A3] "Log in with Facebook" (Specs/HF-FACEBOOK-LOGIN-1.md): the Facebook dialog URL for the in-app browser. The result comes back as the
+  /// deep link `<scheme>://channels?fb=connected|error&reason=...&result=...`. Errors: `not_enabled`, `provider_not_configured`.
+  Future<Uri> facebookLoginUrl() => _guard(() async {
+        final j = await _api.getJson('/api/hf/channels/facebook/start', query: {'client': 'app'});
+        final u = Uri.tryParse((j['url'] ?? '').toString());
+        if (u == null || u.scheme != 'https' || u.host != 'www.facebook.com') {
           throw const ApiException(kind: ApiFailure.http, code: 'bad_response', message: ApiException.genericText);
         }
         return u;

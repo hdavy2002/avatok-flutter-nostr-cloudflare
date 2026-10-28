@@ -9,6 +9,7 @@ import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
 import '../../data/models/spaces.dart'; // [HF-CREATOR-BADGES-1]
 import '../../data/presence_store.dart';
+import '../../data/repos/intro_home_repo.dart'; // [HF-INTRO-A3]
 import '../../data/repos/payouts_repo.dart';
 import '../../data/repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
 import '../../data/services.dart';
@@ -24,6 +25,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../desi.dart';
 import '../inf_kit.dart';
+import '../intro_home_kit.dart'; // [HF-INTRO-A3]
 import '../channel_kit.dart';
 import '../booking_kit.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
@@ -290,7 +292,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     } else if (_step == 1) {
       final c = _channels;
       if (c == null || !c.qualified) {
-        setState(() => _error = 'We need at least ${c?.minFollowers ?? ChannelsList.defaultMinFollowers} followers or subscribers on YouTube or Instagram, and ${c?.minViews ?? ChannelsList.defaultMinViews} total views on YouTube. Add a channel and check it, or try another channel.');
+        setState(() => _error = 'We need at least ${c?.minFollowers ?? ChannelsList.defaultMinFollowers} followers or subscribers on YouTube or Instagram, and ${c?.minViews ?? ChannelsList.defaultMinViews} total views on YouTube. Add a social account and check it, or try another one.');
         return;
       }
       setState(() => _step = 2);
@@ -323,10 +325,10 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
   /// [HF-APP-DESI-13] approved "Join as influencer" layout.
   @override
   Widget build(BuildContext context) {
-    const titles = ['Your details', 'Your channels', 'Your WhatsApp'];
+    const titles = ['Your details', 'Social media verification', 'Your WhatsApp'];
     const subs = [
       'Fans see your name on your reels and profile.',
-      'Connect your Instagram or YouTube.',
+      'Connect your Instagram, YouTube or Facebook.',
       'Call alerts and booking reminders come here.',
     ];
     const tones = [DesiTone.rani, DesiTone.lav, DesiTone.tea];
@@ -466,6 +468,25 @@ class InfluencerShell extends StatelessWidget {
       await PresenceStore.instance.load(); // first read failed: tapping tries again
       return;
     }
+    // [HF-INTRO-A3] With the call option on: Bookings only has nothing to switch (the button opens her calendar); Bookings + live is a plain
+    // Online / Offline flip (Offline = the existing `bookings_only` mode, so bookings stay open and the reel is hidden).
+    final option = PresenceBridge.real ? CallOptionStore.instance.active : null;
+    if (option == 'A') {
+      Telemetry.event('hf_call_option_ui', {'option': 'A'});
+      shell.goBranch(3, initialLocation: shell.currentIndex == 3);
+      return;
+    }
+    if (option == 'B') {
+      final goOnline = !myOnline;
+      final err = await PresenceStore.instance.setMode(goOnline ? 'online' : 'bookings_only');
+      if (!context.mounted) return;
+      if (err != null) {
+        toast(context, err);
+      } else {
+        Telemetry.event('hf_presence_toggled', {'from': goOnline ? 'offline' : 'online', 'to': goOnline ? 'online' : 'offline', 'surface': 'footer'});
+      }
+      return;
+    }
     // [HF-CALL-MODES-E2] Three-way Online / Bookings only / Offline instead of the two-way flip.
     if (CallFlags.modes && PresenceBridge.real) {
       await showHostModeSheet(context, surface: 'footer');
@@ -481,8 +502,9 @@ class InfluencerShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ensurePresenceLoaded();
+    ensureCallOptionLoaded(); // [HF-INTRO-A3]
     return ListenableBuilder(
-      listenable: presenceListenable,
+      listenable: PresenceBridge.real ? Listenable.merge([presenceListenable, CallOptionStore.instance]) : presenceListenable,
       builder: (context, _) {
         // [HF-APP-DESI-11] white bar like the fan bar: pink highlight on the current tab, Online/Offline pill in the middle.
         return Scaffold(
@@ -576,6 +598,7 @@ class InfluencerShell extends StatelessWidget {
   Widget _presencePill(BuildContext context) {
     final waiting = PresenceBridge.real && !PresenceStore.instance.loaded;
     final modes = CallFlags.modes && PresenceBridge.real; // [HF-CALL-MODES-E2]
+    final option = PresenceBridge.real ? CallOptionStore.instance.active : null; // [HF-INTRO-A3] 'A' | 'B' | null (flag off)
     final busy = myBusy;
     final online = myOnline;
     final IconData icon;
@@ -598,24 +621,24 @@ class InfluencerShell extends StatelessWidget {
       fill = C.marigold;
       ink = C.deep;
       edge = C.deep;
-    } else if (modes && PresenceStore.instance.mode == 'bookings_only') {
+    } else if (option == 'A' || (option == null && modes && PresenceStore.instance.mode == 'bookings_only')) {
       icon = Icons.event_available_rounded;
       label = 'Bookings only';
-      spoken = 'You take bookings only. Tap to change your mode';
+      spoken = option == 'A' ? 'You take bookings only. Tap to open your availability' : 'You take bookings only. Tap to change your mode';
       fill = C.butter;
       ink = C.deep;
       edge = C.deep;
     } else if (online) {
       icon = Icons.wifi_tethering_rounded;
       label = 'Online';
-      spoken = modes ? 'You are online. Tap to change your mode' : 'You are online. Tap to go offline';
+      spoken = modes && option == null ? 'You are online. Tap to change your mode' : 'You are online. Tap to go offline';
       fill = C.onlineBg;
       ink = C.onlineInk;
       edge = C.onlineInk;
     } else {
       icon = Icons.nightlight_round;
       label = 'Offline';
-      spoken = modes ? 'You are offline. Tap to change your mode' : 'You are offline. Tap to go online';
+      spoken = modes && option == null ? 'You are offline. Tap to change your mode' : 'You are offline. Tap to go online';
       fill = C.white;
       ink = C.maroon;
       edge = C.maroon;
@@ -672,7 +695,7 @@ class InfluencerHomeScreen extends StatelessWidget {
       backgroundColor: C.page,
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: presenceListenable,
+          listenable: PresenceBridge.real ? Listenable.merge([presenceListenable, CallOptionStore.instance]) : presenceListenable, // [HF-INTRO-A3]
           builder: (context, _) {
             final today = dayOnly(DateTime.now());
             final todays = demo.bookingsOn(today);
@@ -681,13 +704,15 @@ class InfluencerHomeScreen extends StatelessWidget {
               children: [
                 InfHero(name: demo.name.isEmpty ? 'Influencer' : demo.name),
                 const SizedBox(height: 12),
-                // [HF-CALL-MODES-E2] with call modes on, the card shows her mode and opens the three-way choice
-                if (CallFlags.modes && PresenceBridge.real && PresenceStore.instance.loaded)
-                  HostModeCard(store: PresenceStore.instance)
-                else
-                  PresenceCard(online: myOnline, onTap: () => StatefulNavigationShell.of(context).goBranch(2)),
+                // [HF-INTRO-A3] intro banner + "How do you take calls?" card; shows the card it replaces while its flags are off
+                IntroHomeSection(
+                  // [HF-CALL-MODES-E2] with call modes on, the card shows her mode and opens the three-way choice
+                  fallback: CallFlags.modes && PresenceBridge.real && PresenceStore.instance.loaded
+                      ? HostModeCard(store: PresenceStore.instance)
+                      : PresenceCard(online: myOnline, onTap: () => StatefulNavigationShell.of(context).goBranch(2)),
+                ),
                 const SizedBox(height: 12),
-                if (CallFlags.queue && PresenceBridge.real && PresenceStore.instance.loaded && PresenceStore.instance.mode == 'online') ...[
+                if (CallFlags.queue && PresenceBridge.real && PresenceStore.instance.loaded && PresenceStore.instance.mode == 'online' && CallOptionStore.instance.active != 'A') ...[
                   const HostQueueCard(),
                   const SizedBox(height: 12),
                 ],
@@ -712,7 +737,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 16),
                 if (PresenceBridge.real) const MyReelsSection() else ...[
-                  InfSectionHead(title: 'My reels', action: 'Manage channels', onAction: () => context.push('/inf/channels')),
+                  InfSectionHead(title: 'My reels', action: 'Social media verification', onAction: () => context.push('/inf/channels')),
                   Text('24 of 31 passed the face check and are in the feed.', style: t(14, color: C.muted, w: FontWeight.w700)),
                   const SizedBox(height: 10),
                   SizedBox(

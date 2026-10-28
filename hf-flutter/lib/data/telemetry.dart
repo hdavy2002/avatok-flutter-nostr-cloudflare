@@ -80,6 +80,10 @@ abstract final class Telemetry {
     'hf_app_queue_left', // [HF-CALL-MODES-E2] {wait_s, reason}
     'hf_app_queue_failed', // [HF-CALL-MODES-E2] {reason}
     'hf_app_booking_length_picked', // [HF-CALL-MODES-E2] {minutes}
+    'hf_call_option_ui', // [HF-INTRO-A3] {option: A|B} she picked (or tapped the footer for) Bookings only / Bookings + live
+    'hf_intro_banner_click', // [HF-INTRO-A3] {status: none|submitted|rejected} tapped the intro banner on Home
+    'hf_fb_login_open', // [HF-INTRO-A3] {ok} the Facebook login tab was opened
+    'hf_fb_login_result', // [HF-INTRO-A3] {fb: connected|error, reason?, result?} the Facebook login came back
     'hf_app_call_topup_tapped', // [HF-CALL-MODES-E2] {surface}
     'hf_reel_action',
     'hf_reel_start', // [HF-INTRO-A2] {platform, ms, warmed, source?: intro}

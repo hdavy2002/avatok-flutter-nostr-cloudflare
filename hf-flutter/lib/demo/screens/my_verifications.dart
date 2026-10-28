@@ -304,7 +304,7 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
       _heading('Your badges'),
       _card([
         _row('Phone', _status(b.phone, 'WhatsApp verified', 'Not verified')),
-        _row('Channel', _status(b.channel, 'Channel verified', 'No approved channel'), action: b.channel ? 'Manage' : 'Connect', onTap: () => unawaited(context.push('/inf/channels'))),
+        _row('Social media', _status(b.channel, 'Social media verified', 'None verified yet'), action: b.channel ? 'Manage' : 'Connect', onTap: () => unawaited(context.push('/inf/channels'))),
         _row('Video KYC', _status(b.videoKyc, 'Video KYC verified', 'Not done'), action: b.videoKyc ? null : 'Start', onTap: () => unawaited(_startKyc(st))),
         _row(
           'Space',

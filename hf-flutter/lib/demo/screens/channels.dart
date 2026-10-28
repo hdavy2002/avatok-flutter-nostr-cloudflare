@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
+import '../../data/facebook_login.dart'; // [HF-INTRO-A3]
 import '../../data/instagram_login.dart';
+import '../../data/intro_flags.dart'; // [HF-INTRO-A3]
 import '../../data/models/channel.dart';
 import '../../data/repos/channels_repo.dart';
 import '../../data/services.dart';
@@ -19,7 +21,8 @@ import '../channel_kit.dart';
 import '../desi.dart';
 
 // Influencer Channels (HF-WIRE-3, handover section 6). YouTube connects by signing in with Google (HF-REEL-33, HF-WIRE-14: no code);
-// Instagram keeps the handle + bio code and says "coming soon" while the provider is not switched on. Facebook says "coming soon".
+// Instagram keeps the handle + bio code and says "coming soon" while the provider is not switched on. Facebook says "coming soon" until hfFacebookLoginEnabled
+// is on, then it is "Log in with Facebook" (Specs/HF-FACEBOOK-LOGIN-1.md). [HF-INTRO-A3] The screens are called "Social media verification" (D3).
 // Routes: /inf/channels, /inf/channels/add, /inf/channels/add/:platform, /inf/channels/:id/checking.
 // `?from=join` keeps the person inside "Join as influencer" (step 2 of 3) instead of the dashboard.
 
@@ -155,12 +158,15 @@ class ChannelCard extends StatelessWidget {
 
 /// `/inf/channels`: every channel with its status, Resync and Remove, and "+ Add a channel".
 class ChannelsListScreen extends StatefulWidget {
-  const ChannelsListScreen({super.key, this.repo, this.ig, this.reason, this.result, this.igLogin = IgLoginMode.off});
+  const ChannelsListScreen({super.key, this.repo, this.ig, this.fb, this.reason, this.result, this.igLogin = IgLoginMode.off});
 
   final ChannelsRepo? repo;
 
   /// [HF-IG-LOGIN-1] What the Instagram login redirect said: `connected` or `error` (+ [reason], [result]); null when she just opened the list.
   final String? ig;
+
+  /// [HF-INTRO-A3] What the Facebook login redirect said: `connected` or `error` (+ [reason], [result]).
+  final String? fb;
   final String? reason;
   final String? result;
   final IgLoginMode igLogin;
@@ -174,20 +180,25 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
   int _key = 0;
   bool _igOn = false;
   String? _handledIg;
+  String? _handledFb;
 
   @override
   void initState() {
     super.initState();
     Telemetry.event('hf_channels_open');
     _igOn = widget.igLogin == IgLoginMode.on;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _handleIgResult());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleIgResult();
+      _handleFbResult();
+    });
   }
 
   @override
   void didUpdateWidget(ChannelsListScreen old) {
     super.didUpdateWidget(old);
-    if (old.ig != widget.ig || old.reason != widget.reason || old.result != widget.result) {
+    if (old.ig != widget.ig || old.fb != widget.fb || old.reason != widget.reason || old.result != widget.result) {
       _handleIgResult();
+      _handleFbResult();
       _reload();
     }
   }
@@ -221,9 +232,36 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
       case 'claimed':
         toast(context, 'That Instagram account is already connected to another person.');
       case 'limit_reached':
-        toast(context, 'You can connect up to 5 channels. Remove one first.');
+        toast(context, 'You can connect up to 5 social accounts. Remove one first.');
       default:
         toast(context, 'Instagram login did not work. Please try again.');
+    }
+  }
+
+  /// [HF-INTRO-A3] The answer of the Facebook login (deep link `<scheme>://channels?fb=...`): connected -> a toast, anything else -> a plain reason.
+  void _handleFbResult() {
+    final fb = widget.fb;
+    if (!mounted || fb == null) return;
+    final stamp = '$fb/${widget.reason}/${widget.result}';
+    if (_handledFb == stamp) return;
+    _handledFb = stamp;
+    final reason = widget.reason ?? '';
+    Telemetry.event('hf_fb_login_result', {'fb': fb, if (reason.isNotEmpty) 'reason': reason, if (widget.result != null) 'result': widget.result});
+    if (fb == 'connected') {
+      toast(context, widget.result == 'needs_followers' ? 'Facebook connected. We need a few more followers before you can go live.' : 'Facebook connected.');
+      return;
+    }
+    switch (reason) {
+      case 'cancelled':
+        toast(context, 'Login cancelled. You can try again anytime.');
+      case 'no_page':
+        toast(context, 'We could not find a Facebook Page on that login. Log in with the account that manages your Page.');
+      case 'claimed':
+        toast(context, 'That Facebook Page is already connected to another person.');
+      case 'limit_reached':
+        toast(context, 'You can connect up to 5 social accounts. Remove one first.');
+      default:
+        toast(context, 'Facebook login did not work. Please try again.');
     }
   }
 
@@ -268,7 +306,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
   Future<void> _remove(Channel c) async {
     final ok = await hfConfirm(
       context,
-      title: 'Remove this channel?',
+      title: 'Remove this account?',
       body: 'Fans will no longer see reels from ${c.handle}.',
       confirmLabel: 'REMOVE',
       cancelLabel: 'KEEP IT',
@@ -285,27 +323,27 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final addButton = DashedAddButton(label: '+ ADD A CHANNEL', onTap: _add);
+    final addButton = DashedAddButton(label: '+ ADD SOCIAL MEDIA', onTap: _add);
     // [HF-APP-DESI-13] approved Channels list
     return Scaffold(
       backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
-            const ChannelHeader('Channels'),
+            const ChannelHeader('Social media verification'),
             Expanded(
               child: AsyncLoader<ChannelsList>(
                 load: _load,
                 reloadKey: _key,
                 isEmpty: (v) => v.active.isEmpty,
-                loadingLabel: 'Loading your channels…',
-                emptyTitle: 'No channels yet',
-                emptyMessage: 'Add your Instagram or YouTube so fans can see your reels.',
+                loadingLabel: 'Loading your social media…',
+                emptyTitle: 'Nothing verified yet',
+                emptyMessage: 'Add your Instagram, YouTube or Facebook so fans can see your reels.',
                 emptyAction: SizedBox(width: 280, child: addButton),
                 builder: (context, v) => ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
-                    const DesiHero(eyebrow: 'Channels', title: 'Your channels', sub: 'Where fans see your reels.', ghost: 'Reels', tone: DesiTone.lav, minHeight: 110),
+                    const DesiHero(eyebrow: 'Verification', title: 'Social media verification', sub: 'Where fans see your reels.', ghost: 'Reels', tone: DesiTone.lav, minHeight: 110),
                     const SizedBox(height: 12),
                     Text(
                       v.qualified
@@ -340,30 +378,43 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
 
 // ---------------------------------------------------------------------------------------------- Pick a platform
 
-/// `/inf/channels/add`: Instagram, YouTube, and Facebook marked "coming soon".
+/// `/inf/channels/add`: Instagram, YouTube, and Facebook ("coming soon" until `hfFacebookLoginEnabled`).
 class ChannelPlatformScreen extends StatelessWidget {
   const ChannelPlatformScreen({super.key, this.from});
 
   final String? from;
 
-  /// [HF-APP-DESI-13] approved "Add a channel" layout.
+  /// [HF-APP-DESI-13] approved "Add a channel" layout. [HF-INTRO-A3] Facebook is a real tile once `hfFacebookLoginEnabled` is on.
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: IntroFlags.ensureLoaded(),
+      builder: (context, _) => _page(context),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     return Scaffold(
       backgroundColor: C.page,
       body: SafeArea(
         child: Column(
           children: [
-            const ChannelHeader('Add a channel'),
+            const ChannelHeader('Add social media'),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  const DesiHero(eyebrow: 'Add a channel', title: 'Where are your reels?', sub: 'Pick one. You can add more later.', tone: DesiTone.gold, minHeight: 110),
+                  const DesiHero(eyebrow: 'Add social media', title: 'Where are your reels?', sub: 'Pick one. You can add more later.', tone: DesiTone.gold, minHeight: 110),
                   const SizedBox(height: 12),
                   _tile(context, icon: Icons.camera_alt_rounded, name: 'Instagram', sub: 'Your reels and public videos', platform: 'instagram'),
                   _tile(context, icon: Icons.smart_display_rounded, name: 'YouTube', sub: 'Sign in with YouTube. Your public videos', platform: 'youtube'),
-                  _tile(context, icon: Icons.facebook_rounded, name: 'Facebook', sub: 'Coming soon', platform: null),
+                  _tile(
+                    context,
+                    icon: Icons.facebook_rounded,
+                    name: 'Facebook',
+                    sub: IntroFlags.facebookLogin ? 'Log in with Facebook. Your Page' : 'Coming soon',
+                    platform: IntroFlags.facebookLogin ? 'facebook' : null,
+                  ),
                   const SizedBox(height: 8),
                   const DesiMogra(),
                 ],
@@ -419,7 +470,7 @@ class ChannelPlatformScreen extends StatelessWidget {
 
 /// `/inf/channels/add/:platform`: the @handle, four tick boxes, CONNECT, then the one-time code to put in the bio.
 class ChannelConsentScreen extends StatefulWidget {
-  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo, this.signIn, this.igLogin = IgLoginMode.off, this.instagramLogin});
+  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo, this.signIn, this.igLogin = IgLoginMode.off, this.instagramLogin, this.facebookLogin});
 
   final String platform;
   final String? from;
@@ -428,6 +479,9 @@ class ChannelConsentScreen extends StatefulWidget {
   /// [HF-IG-LOGIN-1] Offer "Log in with Instagram" ([IgLoginMode]); [instagramLogin] opens the browser tab (tests pass a fake).
   final IgLoginMode igLogin;
   final InstagramLogin? instagramLogin;
+
+  /// [HF-INTRO-A3] Opens the Facebook login tab for `platform == 'facebook'` (tests pass a fake).
+  final FacebookLogin? facebookLogin;
 
   /// Google sign-in for YouTube. Tests pass a fake.
   final YoutubeSignIn? signIn;
@@ -453,9 +507,20 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   bool _igWaiting = false;
   InstagramLogin get _login => widget.instagramLogin ?? const UrlLauncherInstagramLogin();
 
+  // [HF-INTRO-A3] Log in with Facebook: shown once the flag has been read and is true.
+  bool _fbReady = false;
+  bool _fbTick = false;
+  bool _fbWaiting = false;
+  FacebookLogin get _fbLogin => widget.facebookLogin ?? const UrlLauncherFacebookLogin();
+
   @override
   void initState() {
     super.initState();
+    if (widget.platform == 'facebook') {
+      unawaited(IntroFlags.ensureLoaded().then((_) {
+        if (mounted) setState(() => _fbReady = true);
+      }));
+    }
     if (widget.platform != 'instagram' || widget.igLogin == IgLoginMode.off) {
       _igOn = false;
     } else if (widget.igLogin == IgLoginMode.on) {
@@ -468,6 +533,36 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   Future<void> _probe() async {
     final on = await _repo.instagramLoginEnabled();
     if (mounted) setState(() => _igOn = on);
+  }
+
+  /// [HF-INTRO-A3] Asks the server for the Facebook login page and opens it in an in-app browser tab. The answer comes back as a deep link.
+  Future<void> _loginFacebook() async {
+    if (!_fbTick) {
+      setState(() => _error = 'Please tick the box so we can show your reels.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    Telemetry.event('hf_channel_add_start', {'platform': 'facebook', 'via': 'login'});
+    try {
+      final url = await _repo.facebookLoginUrl();
+      final ok = await _fbLogin.open(url);
+      Telemetry.event('hf_fb_login_open', {'ok': ok});
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _fbWaiting = ok;
+        _error = ok ? null : 'We could not open Facebook. Please try again.';
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.userMessage;
+      });
+    }
   }
 
   /// [HF-IG-LOGIN-1] Asks the server for the Instagram login page and opens it in an in-app browser tab. The answer comes back as a deep link.
@@ -509,7 +604,8 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
 
   bool get _supported => widget.platform == 'instagram' || widget.platform == 'youtube';
   bool get _ig => widget.platform == 'instagram';
-  String get _name => _ig ? 'Instagram' : 'YouTube';
+  bool get _fb => widget.platform == 'facebook'; // [HF-INTRO-A3]
+  String get _name => _ig ? 'Instagram' : (_fb ? 'Facebook' : 'YouTube');
 
   @override
   void dispose() {
@@ -594,10 +690,12 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            ChannelHeader(_supported ? 'Connect $_name' : 'Add a channel'),
+            ChannelHeader(_supported || _fb ? 'Connect $_name' : 'Add social media'),
             Expanded(
-              child: !_supported
-                  ? Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('That channel type is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))
+              child: _fb
+                  ? (!_fbReady ? const Center(child: CircularProgressIndicator()) : (IntroFlags.facebookLogin ? _facebookForm() : Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('Facebook is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))))
+                  : !_supported
+                  ? Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('That social media type is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))
                   : !_ig
                       ? _youtubeForm()
                       : _igOn == null
@@ -639,6 +737,38 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
           ],
           const SizedBox(height: 14),
           ChannelBigButton(label: _busy ? 'CHECKING…' : 'SIGN IN WITH YOUTUBE', onTap: _busy ? null : () => unawaited(_connectYoutube())),
+          const SizedBox(height: 14),
+          const DesiMogra(),
+        ],
+      );
+
+  static final String _fbLabel =
+      'I allow ${Brand.name} to read my Facebook Page name, link and follower count (read only) to show it is mine. This Page is mine.';
+
+  /// [HF-INTRO-A3] Log in with Facebook (Specs/HF-FACEBOOK-LOGIN-1.md): proves she owns a public Facebook Page. There is no bio-code route.
+  Widget _facebookForm() => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          const DesiHero(eyebrow: 'Facebook', title: 'Log in with Facebook', tone: DesiTone.rani, minHeight: 100),
+          const SizedBox(height: 12),
+          Text(
+            'Log in with the Facebook account that manages your Page. That is how we know the Page is yours. We only read your Page name, link and follower count: we never post, change or download anything.',
+            style: t(16, w: FontWeight.w700, h: 1.4),
+          ),
+          const SizedBox(height: 16),
+          KeyedSubtree(
+            key: const ValueKey('fb-consent'),
+            child: ConsentTick(label: _fbLabel, value: _fbTick, onTap: _busy ? null : () => setState(() => _fbTick = !_fbTick)),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: t(15, color: C.ruby, h: 1.35)),
+          ] else if (_fbWaiting) ...[
+            const SizedBox(height: 10),
+            Text('Finish logging in on Facebook. You will come back here on your own.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35)),
+          ],
+          const SizedBox(height: 14),
+          ChannelBigButton(label: _busy ? 'OPENING…' : 'LOG IN WITH FACEBOOK', onTap: _busy ? null : () => unawaited(_loginFacebook())),
           const SizedBox(height: 14),
           const DesiMogra(),
         ],
@@ -1128,20 +1258,20 @@ class _ChannelsStepState extends State<ChannelsStep> {
     if (!_signedIn) {
       return Column(
         children: [
-          Text('Please sign in first so we can save your channels.', style: t(16, w: FontWeight.w700, h: 1.4)),
+          Text('Please sign in first so we can save your social media.', style: t(16, w: FontWeight.w700, h: 1.4)),
           const SizedBox(height: 14),
           ChannelBigButton(label: 'SIGN IN', onTap: () => unawaited(requireAccount(context, () => setState(() => _key++)))),
         ],
       );
     }
-    final add = DashedAddButton(label: '+ ADD A CHANNEL', onTap: () => unawaited(_add()));
+    final add = DashedAddButton(label: '+ ADD SOCIAL MEDIA', onTap: () => unawaited(_add()));
     return AsyncLoader<ChannelsList>(
       load: _load,
       reloadKey: _key,
       isEmpty: (v) => v.active.isEmpty,
-      loadingLabel: 'Loading your channels…',
-      emptyTitle: 'No channels yet',
-      emptyMessage: 'Add your Instagram or YouTube so fans can see your reels.',
+      loadingLabel: 'Loading your social media…',
+      emptyTitle: 'Nothing verified yet',
+      emptyMessage: 'Add your Instagram, YouTube or Facebook so fans can see your reels.',
       emptyAction: SizedBox(width: 280, child: add),
       builder: (context, v) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

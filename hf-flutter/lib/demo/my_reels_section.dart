@@ -78,7 +78,7 @@ class _MyReelsSectionState extends State<MyReelsSection> {
         Row(
           children: [
             Expanded(child: Text('My reels', style: t(20, color: C.maroon))),
-            TextButton(onPressed: () => context.push('/inf/channels'), child: Text('Manage channels', style: t(15, color: C.maroon))),
+            TextButton(onPressed: () => context.push('/inf/channels'), child: Text('Social media verification', style: t(15, color: C.maroon))),
           ],
         ),
         const SizedBox(height: 4),

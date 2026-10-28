@@ -175,16 +175,16 @@ void main() {
       expect(find.textContaining('25+ followers or subscribers'), findsOneWidget);
       expect(find.text('@maya.reels'), findsOneWidget);
       expect(find.text('FINISH CHECKING'), findsOneWidget);
-      expect(find.text('+ ADD A CHANNEL'), findsOneWidget);
+      expect(find.text('+ ADD SOCIAL MEDIA'), findsOneWidget);
     });
 
     testWidgets('empty state offers to add a channel', (tester) async {
       final f = _Fake((_) => _json({'ok': true, 'minFollowers': 10, 'channels': []}));
       await _pump(tester, ChannelsListScreen(repo: f.repo));
       await tester.pumpAndSettle();
-      expect(find.text('No channels yet'), findsOneWidget);
+      expect(find.text('Nothing verified yet'), findsOneWidget);
       expect(find.text('Add your Instagram or YouTube so fans can see your reels.'), findsOneWidget);
-      await tester.tap(find.text('+ ADD A CHANNEL'));
+      await tester.tap(find.text('+ ADD SOCIAL MEDIA'));
       await tester.pumpAndSettle();
       expect(find.text('PICK PLATFORM'), findsOneWidget);
     });
@@ -223,7 +223,7 @@ void main() {
       expect(f.to('POST', '/api/hf/channels/hfch_a/resync').length, 1);
       await tester.tap(find.text('REMOVE'));
       await tester.pumpAndSettle();
-      expect(find.text('Remove this channel?'), findsOneWidget);
+      expect(find.text('Remove this account?'), findsOneWidget);
       await tester.tap(find.text('KEEP IT'));
       await tester.pumpAndSettle();
       expect(f.to('DELETE', '/api/hf/channels/hfch_a'), isEmpty);

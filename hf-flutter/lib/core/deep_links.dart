@@ -72,10 +72,12 @@ LinkTarget? linkTargetFor(Uri uri) {
   if (scheme == Brand.scheme && segs.length == 1 && segs.first == 'channels') {
     final q = uri.queryParameters;
     final ig = q['ig'];
-    if (ig != 'connected' && ig != 'error') return null;
+    final fb = q['fb']; // [HF-INTRO-A3] hellofraands://channels?fb=connected|error: where the Facebook login sends her back
+    final which = ig ?? fb;
+    if (which != 'connected' && which != 'error') return null;
     final safe = RegExp(r'^[a-z_]{1,30}$');
     final params = <String, String>{
-      'ig': ig!,
+      if (ig != null) 'ig': ig else 'fb': fb!,
       if (q['reason'] != null && safe.hasMatch(q['reason']!)) 'reason': q['reason']!,
       if (q['result'] != null && safe.hasMatch(q['result']!)) 'result': q['result']!,
     };

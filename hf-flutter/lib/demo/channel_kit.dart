@@ -13,7 +13,7 @@ class JoinStepper extends StatelessWidget {
   final int step;
   @override
   Widget build(BuildContext context) {
-    const labels = ['Details', 'Channels', 'WhatsApp'];
+    const labels = ['Details', 'Social media', 'WhatsApp'];
     Widget dot(int i) {
       final done = i < step;
       final now = i == step;
