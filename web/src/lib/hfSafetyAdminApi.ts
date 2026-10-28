@@ -4,6 +4,7 @@
 import { adminCall, type Page } from '../islands/admin2/peopleKit';
 import { adminBlob } from '../islands/admin2/adminApi';
 import type { StrikeReason } from './hfSafetyApi';
+import { BRAND } from './brand';
 
 export type SafetyTab = 'review' | 'strikes' | 'paused' | 'access';
 export type RowKind = 'danger' | 'review' | 'appeal' | 'fan_report' | 'paused';
@@ -61,7 +62,7 @@ export const safetyAdminApi = {
 
 /** What the admin picks for "Reason (sent on WhatsApp)": the verdict it maps to and the sentence the person receives. */
 export const STRIKE_REASONS: { key: StrikeReason; label: string }[] = [
-  { key: 'outside_payment', label: 'Asked for payment outside Hello Fraands' },
+  { key: 'outside_payment', label: `Asked for payment outside ${BRAND.name}` },
   { key: 'selling', label: 'Selling a product or service' },
   { key: 'contact_sharing', label: 'Shared or asked for contact details' },
   { key: 'abuse', label: 'Abusive or rude' },
