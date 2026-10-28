@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Social media verification</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#30245f}
+.n{font-family:'Nunito',sans-serif}
+.row{display:flex;align-items:center;gap:14px;background:#fff;border:2.5px solid #30245f;border-radius:20px;padding:14px}
+.ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Nunito';font-weight:900;font-size:20px;flex:none}
+.btn{font-family:'Nunito';font-weight:900;font-size:15px;border:2.5px solid #30245f;border-radius:14px;padding:0 14px;height:46px;background:#fbd447;color:#30245f}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#E9DCC9;display:flex;flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;gap:12px;padding:18px 16px 6px">
+    <button class="n" aria-label="Back" style="width:44px;height:44px;border-radius:50%;border:2.5px solid #30245f;background:#fff;font-size:20px;font-weight:900;color:#30245f">‹</button>
+    <div style="flex:1;height:10px;border-radius:99px;background:#fff;border:2px solid #30245f;overflow:hidden"><div style="width:28%;height:100%;background:#ff793c"></div></div>
+    <span class="n" style="font-weight:800;font-size:14px">2 of 7</span>
+  </div>
+  <div style="padding:14px 16px 4px">
+    <div class="n" style="font-weight:900;font-size:14px;letter-spacing:.18em;color:#be246e">OPTIONAL</div>
+    <h1 class="n" style="margin:6px 0 4px;font-weight:900;font-size:30px;line-height:1.05">Social media verification</h1>
+    <p style="margin:0;font-size:15px;line-height:1.5;font-weight:600">Log in to prove the account is yours. Fans see a small icon next to your name and can open your page.</p>
+  </div>
+  <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:12px">
+    <div class="row">
+      <div class="ic" style="background:#d62b2b">▶</div>
+      <div style="flex:1"><div class="n" style="font-weight:900;font-size:17px">YouTube</div><div style="font-size:14px;font-weight:700;color:#1f6b3f">✓ Verified · @priyacooks · 12.4K</div></div>
+    </div>
+    <div class="row">
+      <div class="ic" style="background:#be246e">◎</div>
+      <div style="flex:1"><div class="n" style="font-weight:900;font-size:17px">Instagram</div><div style="font-size:14px;font-weight:600">Not added</div></div>
+      <button class="btn">Log in</button>
+    </div>
+    <div class="row">
+      <div class="ic" style="background:#2f4fb5">f</div>
+      <div style="flex:1"><div class="n" style="font-weight:900;font-size:17px">Facebook</div><div style="font-size:14px;font-weight:600">Not added</div></div>
+      <button class="btn">Log in</button>
+    </div>
+    <div style="margin-top:6px;background:#fff7e2;border:2px dashed #ff793c;border-radius:18px;padding:14px;font-size:14px;line-height:1.5;font-weight:600">No social media? That's fine. We'll ask for a quick Aadhaar check instead.</div>
+  </div>
+  <div style="padding:12px 16px 22px;display:flex;flex-direction:column;gap:10px">
+    <button class="n" style="width:100%;height:58px;border-radius:16px;border:3px solid #30245f;background:#fbd447;color:#30245f;font-weight:900;font-size:18px;box-shadow:5px 5px 0 #30245f">Next</button>
+    <button class="n" style="width:100%;height:48px;border:none;background:none;color:#30245f;font-weight:800;font-size:16px;text-decoration:underline">Skip — I don't use social media</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

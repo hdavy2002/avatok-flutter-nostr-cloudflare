@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Influencer home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#30245f}
+.n{font-family:'Nunito',sans-serif}
+.seg{flex:1;height:48px;border-radius:12px;border:none;font-family:'Nunito';font-weight:900;font-size:15px;background:transparent;color:#30245f}
+.segon{background:#30245f;color:#fff}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;font-family:'Nunito';font-weight:800;font-size:13px;color:#6b5a8a}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#E9DCC9;display:flex;flex-direction:column;overflow:hidden">
+  <div style="padding:18px 16px 8px;display:flex;align-items:center;gap:12px">
+    <div style="width:46px;height:46px;border-radius:50%;background:#d9a77f;border:2.5px solid #30245f"></div>
+    <div style="flex:1"><div style="font-size:14px;font-weight:600">Namaste,</div><div class="n" style="font-weight:900;font-size:22px">Priya</div></div>
+  </div>
+  <div style="flex:1;padding:6px 16px;display:flex;flex-direction:column;gap:14px">
+    <div style="background:#30245f;color:#fff;border-radius:24px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:6px 6px 0 #be246e">
+      <div class="n" style="font-weight:900;font-size:13px;letter-spacing:.16em;color:#fbd447">ACTION NEEDED</div>
+      <div class="n" style="font-weight:900;font-size:22px;line-height:1.15">Record your 20-second intro video</div>
+      <div style="font-size:14px;line-height:1.5;font-weight:600;color:#ffffffd9">Fans now find you through it. Until a person approves it, you're hidden from Reels.</div>
+      <button class="n" style="height:52px;border-radius:14px;border:none;background:#fbd447;color:#30245f;font-weight:900;font-size:17px">Record now</button>
+    </div>
+    <div style="background:#fff;border:2.5px solid #30245f;border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div class="n" style="font-weight:900;font-size:18px">How do you take calls?</div>
+      <div style="display:flex;gap:6px;background:#f1ecfb;border-radius:14px;padding:4px">
+        <button class="seg">Bookings only</button>
+        <button class="seg segon">Bookings + live</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;background:#E3F6E8;border:2px solid #A2DAB3;border-radius:16px;padding:12px">
+        <span style="width:14px;height:14px;border-radius:50%;background:#3FA868"></span>
+        <div style="flex:1"><div class="n" style="font-weight:900;font-size:16px;color:#1F6B3F">You're Online</div><div style="font-size:13px;font-weight:600;color:#1F6B3F">Fans can call you now</div></div>
+        <button class="n" style="height:44px;padding:0 14px;border-radius:12px;border:2px solid #1F6B3F;background:#fff;color:#1F6B3F;font-weight:900;font-size:14px">Go offline</button>
+      </div>
+      <div style="font-size:13px;line-height:1.5;font-weight:600;color:#6b5a8a">Offline: hidden from Reels, fans can still book a time.</div>
+    </div>
+    <div style="background:#fff7e2;border:2.5px dashed #ff793c;border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:6px">
+      <div class="n" style="font-weight:900;font-size:15px;color:#b8471a">If your video is not approved</div>
+      <div style="font-size:14px;line-height:1.5;font-weight:600">"Your face isn't clear. Please record in good light." — <b>Fix and send again</b></div>
+    </div>
+  </div>
+  <div style="height:64px;background:#F6F2FD;border-top:2px solid #E2DCF3;display:flex;align-items:center">
+    <span class="tab" style="color:#30245f">⌂<br>Home</span><span class="tab">▦<br>Bookings</span><span class="tab">◷<br>Availability</span><span class="tab">☺<br>Fan view</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

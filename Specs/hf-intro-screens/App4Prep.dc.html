@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Get ready to record</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#30245f}
+.n{font-family:'Nunito',sans-serif}
+.sel{box-sizing:border-box;width:100%;height:52px;border:2.5px solid #30245f;border-radius:14px;padding:0 14px;font-family:'Nunito';font-weight:800;font-size:16px;background:#fff;color:#30245f}
+.tab{font-family:'Nunito';font-weight:800;font-size:14px;border:2.5px solid #30245f;border-radius:999px;padding:8px 12px;background:#fff;color:#30245f}
+.t-on{background:#30245f;color:#fff}
+li{margin:0 0 8px}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#E9DCC9;display:flex;flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;gap:12px;padding:18px 16px 6px">
+    <button class="n" aria-label="Back" style="width:44px;height:44px;border-radius:50%;border:2.5px solid #30245f;background:#fff;font-size:20px;font-weight:900;color:#30245f">‹</button>
+    <div style="flex:1;height:10px;border-radius:99px;background:#fff;border:2px solid #30245f;overflow:hidden"><div style="width:56%;height:100%;background:#ff793c"></div></div>
+    <span class="n" style="font-weight:800;font-size:14px">4 of 7</span>
+  </div>
+  <div style="padding:10px 16px 0;display:flex;flex-direction:column;gap:10px">
+    <div><label class="n" for="lang" style="font-weight:800;font-size:14px;display:block;margin-bottom:6px">Language you'll speak in</label>
+      <select id="lang" class="sel"><option>हिन्दी · Hindi</option><option>English</option><option>मराठी · Marathi</option></select></div>
+    <h1 class="n" style="margin:6px 0 0;font-weight:900;font-size:27px;line-height:1.08">What is this video about?</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="tab">General</span><span class="tab t-on">Astrology</span><span class="tab">Cook</span></div>
+  </div>
+  <div style="flex:1;padding:14px 16px 0;display:flex;flex-direction:column;gap:12px;overflow:hidden">
+    <div style="background:#fff;border:2.5px solid #30245f;border-radius:22px;padding:14px 16px">
+      <div class="n" style="font-weight:900;font-size:16px;color:#be246e;margin-bottom:8px">You could say…</div>
+      <ul style="margin:0;padding-left:18px;font-size:15px;line-height:1.5;font-weight:600">
+        <li>"नमस्ते, मैं प्रिया हूँ। 8 साल से कुंडली देख रही हूँ।"</li>
+        <li>"शादी, करियर या कोई मुश्किल दौर — मुझसे बात करें।"</li>
+        <li>"कॉल पर मैं आपकी कुंडली देखकर आगे का रास्ता बताऊँगी।"</li>
+      </ul>
+    </div>
+    <div style="background:#fff7e2;border:2.5px solid #ff793c;border-radius:22px;padding:14px 16px">
+      <div class="n" style="font-weight:900;font-size:16px;color:#b8471a;margin-bottom:8px">Please avoid</div>
+      <ul style="margin:0;padding-left:18px;font-size:15px;line-height:1.5;font-weight:600">
+        <li>Phone numbers or social media handles</li>
+        <li>Romantic or sexual talk</li>
+        <li>Promises like "100% guaranteed"</li>
+      </ul>
+    </div>
+    <div class="n" style="text-align:center;font-weight:800;font-size:15px;line-height:1.4;padding:0 10px">These are only ideas — say it in your own words.</div>
+  </div>
+  <div style="padding:12px 16px 22px">
+    <button class="n" style="width:100%;height:58px;border-radius:16px;border:3px solid #30245f;background:#fbd447;color:#30245f;font-weight:900;font-size:18px;box-shadow:5px 5px 0 #30245f">I'm ready — open camera</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

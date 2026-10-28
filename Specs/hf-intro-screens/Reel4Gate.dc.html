@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Women-only pop-up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#30245f}
+.n{font-family:'Nunito',sans-serif}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:linear-gradient(180deg,#7a3a5e,#3a1d3c 60%,#120c22)">
+  <div aria-hidden="true" style="position:absolute;inset:0;background:#120c22b8"></div>
+  <div role="dialog" aria-label="Women-only channel" style="position:absolute;left:20px;right:20px;top:190px;background:#fff;border:3px solid #30245f;border-radius:28px;box-shadow:8px 8px 0 #e94f8f;padding:24px 20px 20px;display:flex;flex-direction:column;align-items:center;gap:14px">
+    <div class="n" style="width:72px;height:72px;border-radius:50%;background:#fde8f2;border:3px solid #e94f8f;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:900;color:#be246e">♀</div>
+    <h2 class="n" style="margin:0;text-align:center;font-weight:900;font-size:24px;line-height:1.15">This is a women-only channel</h2>
+    <p style="margin:0;text-align:center;font-size:15px;line-height:1.55;font-weight:600">Only Aadhaar-verified women can talk to Meera. It takes about a minute — your Aadhaar number is never shown to anyone.</p>
+    <button class="n" style="width:100%;height:56px;border-radius:16px;border:3px solid #30245f;background:#fbd447;color:#30245f;font-weight:900;font-size:18px">Verify now</button>
+    <button class="n" style="width:100%;height:48px;border-radius:14px;border:none;background:none;color:#30245f;font-weight:800;font-size:16px">Not now</button>
+  </div>
+  <div role="dialog" aria-label="Women only" style="position:absolute;left:20px;right:20px;bottom:40px;background:#fff;border:3px solid #30245f;border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+    <div class="n" style="font-weight:900;font-size:13px;letter-spacing:.14em;color:#6b5a8a">IF AADHAAR ISN'T FEMALE</div>
+    <div class="n" style="font-weight:900;font-size:18px">Sorry, this channel is for women only.</div>
+    <button class="n" style="height:48px;border-radius:14px;border:2.5px solid #30245f;background:#fff;color:#30245f;font-weight:900;font-size:16px">OK</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

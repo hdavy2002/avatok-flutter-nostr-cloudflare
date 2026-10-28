@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin — new influencers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#30245f;background:#fffdf7}
+.n{font-family:'Nunito',sans-serif}
+.row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#fff;border:3px solid #30245f;border-radius:22px;padding:14px 18px}
+.av{width:52px;height:52px;border-radius:50%;border:2.5px solid #30245f;flex:none}
+.chip{font-family:'Nunito';font-weight:800;font-size:14px;border-radius:999px;padding:5px 10px;background:#f1ecfb}
+.b{font-family:'Nunito';font-weight:800;font-size:13px;border-radius:999px;padding:5px 10px;border:2px solid #30245f;background:#fff}
+.dl{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;font-size:15px;line-height:1.45;font-weight:600}
+.dl dt{font-family:'Nunito';font-weight:900}
+.dl dd{margin:0}
+.tick{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700}
+.box{width:22px;height:22px;border-radius:6px;border:2.5px solid #30245f;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Nunito';font-weight:900;font-size:14px}
+</style>
+</helmet>
+<div style="box-sizing:border-box;min-height:1180px;background:#fff2cf;padding:24px 32px">
+  <div style="max-width:1220px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div><div class="n" style="font-weight:900;font-size:14px;letter-spacing:.18em;color:#be246e">ADMIN · HOSTS</div>
+      <h1 class="n" style="margin:4px 0 0;font-weight:900;font-size:clamp(32px,3.4vw,52px);line-height:1.04">New influencers <span style="font-size:.55em;background:#be246e;color:#fff;border-radius:999px;padding:4px 14px;vertical-align:middle">12 waiting</span></h1></div>
+      <div style="display:flex;gap:8px"><span class="b" style="background:#30245f;color:#fff">Pending</span><span class="b">Approved</span><span class="b">Rejected</span></div>
+    </div>
+    <div class="row">
+      <div class="av" style="background:#b68560"></div>
+      <div style="flex:1 1 200px"><div class="n" style="font-weight:900;font-size:18px">Arjun Mehta</div><div style="font-size:14px;font-weight:600">Hindi · ₹15/min · Bookings + live</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip">Fitness</span><span class="chip">Career</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="b">◎ Instagram ✓</span><span class="b">f Facebook ✓</span></div>
+      <div class="n" style="font-weight:800;font-size:14px;color:#6b5a8a">2 h ago ▾</div>
+    </div>
+    <div style="background:#fff;border:3px solid #30245f;border-radius:26px;box-shadow:8px 8px 0 #be246e;padding:20px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="av" style="background:#e2b08a"></div>
+        <div style="flex:1 1 200px"><div class="n" style="font-weight:900;font-size:22px">Meera Iyer <span class="n" style="background:#e94f8f;color:#fff;border-radius:999px;padding:3px 10px;font-weight:900;font-size:13px;vertical-align:middle">♀ Women only</span></div><div style="font-size:14px;font-weight:600">Submitted today, 10:42 · first submission</div></div>
+        <div class="n" style="font-weight:800;font-size:14px;color:#6b5a8a">▴ Close</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+        <div style="flex:0 0 270px;height:480px;border-radius:22px;border:3px solid #30245f;background:radial-gradient(ellipse 40% 26% at 50% 34%,#d8a07a 0 58%,transparent 60%),radial-gradient(ellipse 66% 38% at 50% 86%,#e0708f 0 60%,transparent 62%),linear-gradient(180deg,#7a3a5e,#3a1d3c);position:relative">
+          <div class="n" style="position:absolute;left:12px;bottom:12px;right:12px;display:flex;justify-content:space-between;color:#fff;font-weight:800;font-size:14px"><span>▶ 0:17</span><span>Tap for sound</span></div>
+        </div>
+        <dl class="dl" style="flex:1 1 360px;margin:0">
+          <dt>Categories</dt><dd>Listener, Women-to-Women</dd>
+          <dt>Language</dt><dd>Tamil (video about: Listener)</dd>
+          <dt>Description</dt><dd>A safe space to talk about health, family and work.</dd>
+          <dt>Rate</dt><dd>₹10/min</dd>
+          <dt>Takes calls</dt><dd>Bookings only · 14 open slots this week</dd>
+          <dt>Aadhaar</dt><dd>✓ Verified · Female</dd>
+          <dt>WhatsApp</dt><dd>✓ Verified</dd>
+          <dt>Social media</dt><dd>None (not needed)</dd>
+        </dl>
+        <div style="flex:1 1 300px;display:flex;flex-direction:column;gap:12px">
+          <button class="n" style="height:58px;border-radius:16px;border:3px solid #30245f;background:#fbd447;color:#30245f;font-weight:900;font-size:18px;box-shadow:5px 5px 0 #30245f">Approve — she goes live</button>
+          <div style="border:2.5px dashed #30245f;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px">
+            <div class="n" style="font-weight:900;font-size:16px">Or reject — pick reasons</div>
+            <div class="tick"><span class="box">✓</span>Face not clearly visible</div>
+            <div class="tick"><span class="box"></span>Video too dark or unclear</div>
+            <div class="tick"><span class="box"></span>Shared a phone number or social handle</div>
+            <div class="tick"><span class="box"></span>Not suitable content</div>
+            <div class="tick"><span class="box"></span>Description or rate needs fixing</div>
+            <label class="n" for="note" style="font-weight:800;font-size:14px">Note (optional)</label>
+            <textarea id="note" style="height:64px;border:2.5px solid #30245f;border-radius:12px;padding:10px;font-family:'Comfortaa';font-size:15px">Please record near a window.</textarea>
+            <button class="n" style="height:52px;border-radius:14px;border:3px solid #30245f;background:#fff;color:#be246e;font-weight:900;font-size:16px">Reject &amp; send WhatsApp</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="av" style="background:#d9a77f"></div>
+      <div style="flex:1 1 200px"><div class="n" style="font-weight:900;font-size:18px">Fr. Thomas</div><div style="font-size:14px;font-weight:600">Malayalam · ₹8/min · Bookings only</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip">Prayer</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="b">Aadhaar ✓</span></div>
+      <div class="n" style="font-weight:800;font-size:14px;color:#6b5a8a">yesterday ▾</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1180}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>

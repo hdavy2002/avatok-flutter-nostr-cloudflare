@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Website — Explore reels</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&amp;family=Comfortaa:wght@500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Comfortaa',sans-serif;color:#fff;background:#120c22}
+.n{font-family:'Nunito',sans-serif}
+.rb{display:flex;flex-direction:column;align-items:center;gap:5px;font-family:'Nunito';font-weight:800;font-size:14px;color:#fff;background:none;border:none}
+.rb span.c{width:54px;height:54px;border-radius:50%;background:#ffffff1f;display:flex;align-items:center;justify-content:center;font-size:22px}
+.cat{font-family:'Nunito';font-weight:800;font-size:14px;border-radius:999px;padding:5px 11px;background:#ffffff26}
+.soc{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-family:'Nunito';font-weight:900;font-size:14px}
+</style>
+</helmet>
+<div style="box-sizing:border-box;min-height:820px;background:#120c22;padding:24px 32px">
+  <div style="max-width:1220px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap">
+    <div style="position:relative;width:min(420px,100%);height:746px;border-radius:26px;overflow:hidden;background:radial-gradient(ellipse 40% 26% at 50% 33%,#c98f63 0 58%,transparent 60%),radial-gradient(ellipse 66% 38% at 50% 84%,#b8336a 0 60%,transparent 62%),linear-gradient(180deg,#5a3a7a,#2a1c46 60%,#120c22)">
+      <div aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:340px;background:linear-gradient(180deg,transparent,#000000d9)"></div>
+      <div style="position:absolute;left:18px;right:18px;bottom:18px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="width:42px;height:42px;border-radius:50%;background:#d9a77f;border:2px solid #fff"></div>
+          <span class="n" style="font-weight:900;font-size:20px">Priya Sharma</span>
+          <span aria-label="Verified" style="width:21px;height:21px;border-radius:50%;background:#3FA868;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900">✓</span>
+          <span class="soc" style="background:#d62b2b">▶</span><span class="soc" style="background:#be246e">◎</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="cat">Astrology</span><span class="cat">Cook</span><span class="n" style="font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:#3FA868"></span>Online</span></div>
+        <div style="font-size:15px;line-height:1.45;font-weight:600">Kundli reading for marriage, career and hard phases.</div>
+        <button class="n" style="height:56px;border-radius:16px;border:none;background:#fbd447;color:#30245f;font-weight:900;font-size:18px">Call now · ₹12/min</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <button class="rb"><span class="c">♥</span>2.1K</button>
+      <button class="rb"><span class="c">❝</span>148</button>
+      <button class="rb"><span class="c">↗</span>Share</button>
+      <button class="rb" aria-label="Verified accounts"><span class="c">ⓘ</span>Info</button>
+      <button class="rb" aria-label="Previous reel"><span class="c">▲</span></button>
+      <button class="rb" aria-label="Next reel"><span class="c">▼</span></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script>
+</body>
+</html>
