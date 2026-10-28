@@ -247,7 +247,7 @@ async function reviewDetail(env: Env, adminUid: string, id: string): Promise<Res
   const t = await transcriptOf(env, r);
   await logAccess(env, id, adminUid, "open_lines", null);
   const w = adminWindow(t.lines.length, t.flaggedIdx);
-  const lines = t.lines.slice(w.from, w.to + 1).map((l, i) => ({ t: l.t, speaker: l.speaker === "unknown" ? "influencer" : l.speaker, text: l.text, flagged: w.from + i === t.flaggedIdx }));
+  const lines = t.lines.slice(w.from, w.to + 1).map((l, i) => ({ t: l.t, speaker: l.speaker, // "unknown" is returned as-is (the admin screen shows "Not sure"); never guessed text: l.text, flagged: w.from + i === t.flaggedIdx }));
   const uid = r.target_uid ?? r.host_uid;
   const hist = await loadStrikes(env, uid);
   const now = Date.now();
@@ -270,7 +270,7 @@ async function fullTranscript(req: Request, env: Env, adminUid: string, id: stri
   const t = await transcriptOf(env, r);
   await logAccess(env, id, adminUid, "full_transcript", reason);
   await audit(env, adminUid, "full_transcript", id, { reason });
-  return json({ ok: true, lines: t.lines.map((l, i) => ({ t: l.t, speaker: l.speaker === "unknown" ? "influencer" : l.speaker, text: l.text, flagged: i === t.flaggedIdx })) }, 200, NO_STORE);
+  return json({ ok: true, lines: t.lines.map((l, i) => ({ t: l.t, speaker: l.speaker, // "unknown" is returned as-is (the admin screen shows "Not sure"); never guessed text: l.text, flagged: i === t.flaggedIdx })) }, 200, NO_STORE);
 }
 
 async function clipRoute(env: Env, adminUid: string, id: string): Promise<Response> {

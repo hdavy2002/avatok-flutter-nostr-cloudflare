@@ -45,6 +45,8 @@ describe("decideOutcome (contract rule 5)", () => {
     expect(decideOutcome(f("selling", 0.95), OFF).action).toBe("queue");
     expect(decideOutcome(f("selling", 0.95, "fan", 0.89), ON).action).toBe("queue");
     expect(decideOutcome(f("selling", 0.95, null, 0), ON).action).toBe("queue");
+    expect(decideOutcome(f("selling", 0.99, null, 0.99), ON).action).toBe("queue"); // unknown speaker never strikes, whatever the numbers
+    expect(decideOutcome(f("sexual", 1, "fan", 0.8999), ON).action).toBe("queue");
   });
   it("danger is always an alert; it only pauses by itself when auto is on and the speaker is sure", () => {
     expect(decideOutcome(f("danger", 0.7), OFF)).toEqual({ action: "danger", autoPause: false });

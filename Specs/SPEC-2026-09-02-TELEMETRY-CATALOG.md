@@ -1575,3 +1575,36 @@ All sent with `area: hf_call_safety`. No transcript text, audio, phone number, U
 | `hf_safety_viewed` | `status`, `active_strikes`, `is_host` | A person opened their safety page (GET /api/hf/safety/me). |
 | `hf_audio_deleted` | `reason` (`clean`, `expired`, `manual`), `call_id` | Call audio was removed from private storage. |
 
+## [HF-CALL-SAFETY-APP] Call safety screens (Flutter app)
+
+| Event | Props | Meaning |
+|---|---|---|
+| `hf_safety_view` | `surface` (`rules`/`post_call`/`strikes`/`paused`), `status?`, `strikes?` | A safety screen showed. |
+| `hf_safety_rules_accepted` | `version`, `surface`, `outcome` (`ok`/`failed`), `reason?` | The influencer pressed Agree on the call rules (`surface` = `onboarding` or the gate). |
+| `hf_safety_gate_shown` | `code` (`account_paused`/`call_rules_required`), `surface` | A blocked action showed the paused or rules gate. |
+| `hf_call_report_good` | none | After a call, the person said it went well. |
+| `hf_call_report_sent` | `outcome`, `reasons`, `n`, `reason?` | A post-call report was sent or failed. |
+| `hf_safety_appeal` | `outcome` (`ok`/`failed`), `reason?` | An appeal was sent from the strikes screen. |
+
+## [HF-CALL-SAFETY-WEB] Call safety screens (web)
+
+| Event | Props | Meaning |
+|---|---|---|
+| `hf_safety_home_card_click` | `strikes`, `status` | The Safety card on the influencer dashboard home was opened. |
+| `hf_safety_page_view` | `status?`, `strikes?` | The Safety page showed. |
+| `hf_safety_appeal_open` / `hf_safety_appeal_sent` / `hf_safety_appeal_failed` | `reason?` | Appeal form opened / sent / refused. |
+| `hf_safety_rules_view` / `hf_safety_rules_accepted` / `hf_safety_rules_failed` | `version?`, `reason?` | Call rules shown / accepted / refused. |
+| `hf_safety_notice_shown` / `hf_safety_notice_ok` / `hf_safety_notice_cancel` | none | Fan pre-call recording notice shown / continued / cancelled. |
+| `hf_safety_report_open` / `hf_safety_report_sent` / `hf_safety_report_failed` / `hf_safety_report_good` | `reasons?`, `n?`, `reason?` | Post-call report opened / sent / refused / "it went well". |
+| `hf_safety_admin_view` | none | An employee opened the Call safety admin page. |
+| `hf_safety_admin_tab` | `tab` | Tab changed (review/strikes/paused/access). |
+| `hf_safety_admin_open` | `kind` | A queue row was opened. |
+| `hf_safety_admin_danger_open` | none | A danger row was opened. |
+| `hf_safety_admin_clip_play` | none | The audio clip was played. |
+| `hf_safety_admin_transcript_open` | `reason_len` | The full transcript was opened with a typed reason (reason text not sent). |
+| `hf_safety_admin_decision` | `action`, `target`, `reason`, `kind`, `verdict`, `score`, `waited_h` | A review was decided. |
+| `hf_safety_admin_appeal_decision` | `decision`, `waited_h` | An appeal was decided. |
+| `hf_safety_admin_restore` | `removed` | An account was restored. |
+| `hf_safety_admin_ban_open` | `role` | The ban preview opened. |
+| `hf_safety_admin_ban` | `role`, `refunds`, `refund_paise`, `held_paise` | A ban was confirmed. |
+
