@@ -1,10 +1,10 @@
 ---
 title: "How do I appeal a strike?"
-description: "You can appeal each strike once. Reply APPEAL on WhatsApp or tap Appeal in the app or on the website. A person reviews it."
+description: "You can appeal each strike once, with the Appeal button in the app or on the website. A person reviews it and replies on WhatsApp."
 section: safety-and-privacy
 order: 12
 updated: 2026-10-28
-keywords: ["appeal", "strike wrong", "remove strike", "APPEAL", "review", "mistake"]
+keywords: ["appeal", "strike wrong", "remove strike", "review", "mistake"]
 audience: both
 faq:
   - q: "How many times can I appeal?"
@@ -22,10 +22,12 @@ If you think a strike is wrong, you can appeal it. **You can appeal each strike 
 
 ## How to appeal
 
-Choose one:
+Use the **Appeal** button:
 
-1. **WhatsApp.** Reply **APPEAL** to the message we sent about the strike.
-2. **App or website.** Open your safety page and tap **Appeal** next to the strike. Add a short note if you want.
+1. **In the app.** Open **Me**, then **Safety**. Tap **Appeal** next to the strike.
+2. **On the website.** Open **Dashboard**, then **Safety**. Tap **Appeal** next to the strike.
+
+Add a short note if you want.
 
 ## What happens next
 
@@ -40,7 +42,7 @@ Choose one:
 - A paused account can still appeal and can still withdraw wallet money.
 - If you still disagree, use the [grievance page](/grievance).
 
-Example: Kabir is told he asked for a phone number. He was actually reading out the helpline number. He replies APPEAL, a person listens to the flagged part, and the strike is removed.
+Example: Kabir is told he asked for a phone number. He was actually reading out the helpline number. He taps Appeal in the app, a person listens to the flagged part, and the strike is removed.
 
 ## Read next
 

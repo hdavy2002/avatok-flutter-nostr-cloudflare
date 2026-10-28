@@ -14,7 +14,7 @@ faq:
   - q: "Can a banned person get their wallet money?"
     a: "Yes. A banned user can still sign in and withdraw wallet money with the Withdraw button, after the one-time ID and UPI check. Your money is never taken as a penalty."
   - q: "What if I think a strike is wrong?"
-    a: "Appeal it once. Reply APPEAL on WhatsApp, or tap Appeal in the app or on the website. A person will review it."
+    a: "Appeal it once with the Appeal button in the app (Me, then Safety) or on the website (Dashboard, then Safety). A person will review it and reply on WhatsApp."
 draft: false
 ---
 
