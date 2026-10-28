@@ -119,14 +119,15 @@ describe("spoken text", () => {
 });
 
 describe("XML builders", () => {
-  it("host announcement uses GetDigits for 1 and 2 with a 10 s timeout and falls through to hangup", () => {
+  it("host announcement gathers one DTMF digit with a 10 s timeout and falls through to hangup", () => {
     const x = hostAnnounceXml({ handle: "Riya", previousCalls: 0, digitsUrl: "https://x/y?a=1&b=2" });
-    expect(x).toContain("<GetDigits");
-    expect(x).toContain('validDigits="12"');
-    expect(x).toContain('timeout="10"');
+    expect(x).toContain("<Gather");
+    expect(x).toContain('inputType="dtmf"');
+    expect(x).toContain('numDigits="1"');
+    expect(x).toContain('executionTimeout="10"');
     expect(x).toContain("a=1&amp;b=2");
     expect(x).toContain("Press 1 to accept, 2 to decline.");
-    expect(x.indexOf("</GetDigits>")).toBeLessThan(x.indexOf("<Hangup/>"));
+    expect(x.indexOf("</Gather>")).toBeLessThan(x.indexOf("<Hangup/>"));
   });
   it("conference XML carries the safety notice, the hash trigger and the callback", () => {
     const x = noticeAndConferenceXml({ room: "hf_abc", callbackUrl: "https://x/conf/host", timeLimitSec: 600 });
@@ -134,6 +135,8 @@ describe("XML builders", () => {
     expect(x).toContain('digitsMatch="#"');
     expect(x).toContain('callbackUrl="https://x/conf/host"');
     expect(x).toContain('endConferenceOnExit="true"');
+    expect(x).toContain('stayAlone="true"');
+    expect(x).toContain('maxParticipants="2"');
     expect(x).toContain(">hf_abc</Conference>");
     expect(x.indexOf("<Speak>")).toBeLessThan(x.indexOf("<Conference"));
   });

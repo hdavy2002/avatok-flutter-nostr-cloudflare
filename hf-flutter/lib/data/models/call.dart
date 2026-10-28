@@ -112,6 +112,8 @@ class CallStatus {
     this.fundedUntil,
     this.short = false,
     this.source,
+    this.topupMinimumCreditPaise,
+    this.topupMinimumPaymentRupees,
   });
 
   factory CallStatus.fromJson(Map<String, dynamic> j) {
@@ -142,6 +144,8 @@ class CallStatus {
       fundedUntil: _intOrNull(j['fundedUntil']),
       short: j['short'] == true,
       source: _str(j['source']),
+      topupMinimumCreditPaise: _intOrNull(j['topupMinimumCreditPaise']),
+      topupMinimumPaymentRupees: _intOrNull(j['topupMinimumPaymentRupees']),
     );
   }
 
@@ -153,6 +157,12 @@ class CallStatus {
 
   /// [HF-CALL-MODES-E2] `instant`, `queue` or `booking`. Null on old servers.
   final String? source;
+
+  /// Minimum wallet credit needed for the active-call top-up.
+  final int? topupMinimumCreditPaise;
+
+  /// Minimum whole rupees to pay, including the currently configured tax.
+  final int? topupMinimumPaymentRupees;
 
   final String id;
 

@@ -180,7 +180,7 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/topup',
-      builder: (_, __) => const TopUpScreen(),
+      builder: (_, s) => TopUpScreen(callId: s.uri.queryParameters['callId']),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
@@ -193,6 +193,7 @@ final router = GoRouter(
         orderId: s.uri.queryParameters['order'],
         creditPaise: int.tryParse(s.uri.queryParameters['credit'] ?? ''),
         sdkFailed: s.uri.queryParameters['sdk'] == 'err',
+        callId: s.uri.queryParameters['callId'],
       ),
     ),
     GoRoute(

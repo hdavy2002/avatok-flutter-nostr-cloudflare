@@ -1,3 +1,5 @@
+import { activeCallTopupMinimum } from "../lib/hf_call_topup_minimum";
+import { hfTopupFlags } from "../lib/hf_topup_config";
 import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 // [HF-CALLS-1] HF masked paid calls: start/status/cancel, wallet read, admin test credits, host presence, host call list,
 // admin call list and the Vobiz webhooks. Contract: Specs/HF-CALLS-CONTRACT.md. Dark behind hfCallsEnabled.
@@ -322,9 +324,26 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   const moneyRule = (c as unknown as { money_rule?: string | null }).money_rule ?? null;
   const dropped = c.caller_uid === u.uid && moneyRule === RULE_FIRST_MINUTE_DROP;
   const droppedPaise = dropped ? Math.max(0, Math.trunc(Number((c as unknown as { consumed_value_paise?: number | null }).consumed_value_paise ?? c.charged_paise ?? 0))) : 0;
+  let topupMinimumCreditPaise: number | null = null;
+  let topupMinimumPaymentRupees: number | null = null;
+  if (c.caller_uid === u.uid && c.status === "connected") {
+    const minimum = await activeCallTopupMinimum(env, u.uid, id);
+    if ("minimum" in minimum) {
+      const config = await readConfig(env).catch(() => null);
+      if (config) {
+        const raw = config as unknown as Record<string, unknown>;
+        const std = readHfStdPlan(raw);
+        const bps = raw.hfTokensEnabled === true && std.gstInclusive ? Math.max(0, Math.min(10000, Math.trunc(std.gstBps))) : 0;
+        const grossPaise = Math.ceil(minimum.minimum * (10000 + bps) / 10000);
+        topupMinimumCreditPaise = minimum.minimum;
+        topupMinimumPaymentRupees = Math.max(hfTopupFlags(config as never).minRupees, Math.ceil(grossPaise / 100));
+      }
+    }
+  }
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
+    topupMinimumCreditPaise, topupMinimumPaymentRupees,
     ...live, // [HF-WIRE-7] additive: phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds; [HF-CALL-MODES-C] fundedUntil, short
     source: ((c as unknown as { source?: string | null }).source ?? ((c as unknown as { booking_id?: string | null }).booking_id ? "booking" : "instant")), // [HF-CALL-MODES-C]
     ...(dropped ? { moneyRule: RULE_FIRST_MINUTE_DROP, firstMinuteDrop: true, firstMinuteChargePaise: droppedPaise, firstMinuteMessage: firstMinuteMessage(droppedPaise) } : {}), // [HF-WIRE-13]

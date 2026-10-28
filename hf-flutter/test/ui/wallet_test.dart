@@ -7,6 +7,7 @@ import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/in_app_checkout.dart';
 import 'package:hf_app/data/models/wallet.dart';
 import 'package:hf_app/data/repos/wallet_repo.dart';
+import 'package:hf_app/data/repos/calls_repo.dart';
 import 'package:hf_app/demo/screens/checkout_flow.dart' show CheckoutProfile;
 import 'package:hf_app/demo/screens/me.dart' show WalletTicket;
 import 'package:hf_app/demo/screens/money.dart';
@@ -222,6 +223,41 @@ void main() {
   });
 
   group('TopUpScreen', () {
+    testWidgets('active call suggests enough after GST and includes callId in checkout', (tester) async {
+      final api = FakeApiClient((m, p, q, b) {
+        if (p == '/api/hf/calls/c1') return {'id': 'c1', 'status': 'connected', 'topupMinimumCreditPaise': 50000, 'topupMinimumPaymentRupees': 590};
+        if (p == '/api/hf/wallet/topup') return _order(590);
+        return <String, Object?>{};
+      });
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api), callsRepo: CallsRepo(api), callId: 'c1', checkout: FakeCheckout(apps: [const UpiApp(id: 'com.phonepe.app', name: 'PhonePe')]), profile: _profile));
+      await tester.pump();
+      expect(find.textContaining('Pay at least'), findsOneWidget);
+      expect(find.textContaining('PAY ₹590'), findsOneWidget);
+      await tester.tap(find.textContaining('PAY ₹590'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
+      await tester.pumpAndSettle();
+      final index = api.calls.indexOf('POST /api/hf/wallet/topup');
+      expect(index, greaterThanOrEqualTo(0));
+      expect((api.bodies[index] as Map)['callId'], 'c1');
+    });
+
+    testWidgets('missing call quote does not start checkout', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'id': 'c1', 'status': 'connected'});
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api), callsRepo: CallsRepo(api), callId: 'c1'));
+      await tester.pump();
+      expect(find.textContaining('top-up for this call is unavailable'), findsOneWidget);
+      await tester.tap(find.textContaining('PAY ₹500'));
+      await tester.pump();
+      expect(api.calls.where((c) => c.startsWith('POST')), isEmpty);
+    });
+
+    test('ordinary top-up omits callId', () async {
+      final api = FakeApiClient((m, p, q, b) => _order(100));
+      await WalletRepo(api).createTopup(100);
+      expect((api.bodies.single as Map).containsKey('callId'), isFalse);
+    });
+
     testWidgets('minimum is ₹10: ₹9 shows a message and calls nothing', (tester) async {
       final api = FakeApiClient((m, p, q, b) => _order(9));
       await _pump(tester, TopUpScreen(repo: WalletRepo(api)));

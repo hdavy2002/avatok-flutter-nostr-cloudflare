@@ -108,24 +108,25 @@ export function announceText(handle: string, previousCalls: number): string {
   return `Call from ${handle}. ${n} previous ${n === 1 ? "call" : "calls"} with you. Press 1 to accept, 2 to decline.`;
 }
 
-/** VERIFY ON FIRST LIVE CALL: Plivo GetDigits (action posts `Digits`; with no input the flow falls through to the next element). */
+/** Gather posts `Digits`; with no input the flow falls through to the next element. */
 export function hostAnnounceXml(p: { handle: string; previousCalls: number; digitsUrl: string }): string {
   return wrap(
-    `<GetDigits action="${esc(p.digitsUrl)}" method="POST" timeout="10" numDigits="1" validDigits="12" retries="1">` +
-    `<Speak>${esc(announceText(p.handle, p.previousCalls))}</Speak></GetDigits>` +
+    `<Gather action="${esc(p.digitsUrl)}" method="POST" inputType="dtmf" executionTimeout="10" numDigits="1">` +
+    `<Speak>${esc(announceText(p.handle, p.previousCalls))}</Speak></Gather>` +
     `<Speak>No response received. Goodbye.</Speak><Hangup/>`,
   );
 }
 
 /**
- * Safety notice, then the shared room. VERIFY ON FIRST LIVE CALL: `digitsMatch="#"` + `callbackUrl` (ConferenceAction=digits),
- * `endConferenceOnExit`, `maxMembers`, `timeLimit` (a backstop only; the DO alarm is the real limit).
+ * Safety notice, then the shared room. Verify hash callback behavior on a live call: Vobiz documents digitsMatch but its
+ * callback reference only lists enter/exit. maxParticipants expresses intent but Vobiz documents its limit as ineffective;
+ * the application must enforce the two-leg limit. timeLimit is a backstop; the DO alarm is the real limit.
  */
 export function noticeAndConferenceXml(p: { room: string; callbackUrl: string; timeLimitSec: number }): string {
   return wrap(
     `<Speak>${esc(SAFETY_NOTICE)}</Speak>` +
-    `<Conference callbackUrl="${esc(p.callbackUrl)}" callbackMethod="POST" digitsMatch="#" startConferenceOnEnter="true" endConferenceOnExit="true" ` +
-    `maxMembers="2" timeLimit="${Math.max(60, Math.trunc(p.timeLimitSec))}">${esc(p.room)}</Conference>`,
+    `<Conference callbackUrl="${esc(p.callbackUrl)}" callbackMethod="POST" digitsMatch="#" startConferenceOnEnter="true" endConferenceOnExit="true" stayAlone="true" ` +
+    `maxParticipants="2" timeLimit="${Math.max(60, Math.trunc(p.timeLimitSec))}">${esc(p.room)}</Conference>`,
   );
 }
 

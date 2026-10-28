@@ -408,7 +408,6 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
   void _apply(CallStatus s) {
     if (_seen.add(s.status)) Telemetry.event('hf_app_call_status', {'status': s.status});
     if (s.isEnded) {
-      CallReturn.callId = null; // [HF-CALL-MODES-E2]
       _pulse.stop();
       _tick?.cancel();
       if (!_endedReported) {
@@ -497,8 +496,7 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
   /// [HF-CALL-MODES-E2] TOP UP while talking: opens the normal top-up and the payment result brings her back to this call.
   void _topUp() {
     Telemetry.event('hf_app_call_topup_tapped', {'surface': 'call', 'short': _s?.short == true});
-    if (CallFlags.chunkBilling) CallReturn.callId = widget.callId;
-    unawaited(context.push('/topup').then((_) {
+    unawaited(context.push('/topup?callId=${Uri.encodeQueryComponent(widget.callId)}').then((_) {
       if (mounted) unawaited(_pollNow());
     }));
   }
@@ -617,13 +615,7 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
             Semantics(
               liveRegion: true,
               child: GestureDetector(
-                onTap: () {
-                  if (CallFlags.chunkBilling) {
-                    _topUp();
-                  } else {
-                    unawaited(context.push('/topup'));
-                  }
-                },
+                onTap: _topUp,
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

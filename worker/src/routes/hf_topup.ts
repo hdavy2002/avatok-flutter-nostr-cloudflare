@@ -1,3 +1,4 @@
+import { activeCallTopupMinimum } from "../lib/hf_call_topup_minimum";
 // [HF-TOPUP-1] HF wallet top-up, gateway-agnostic. Spec: Specs/HF-WALLET-TOPUP.md. Dark behind hfTopupEnabled + hfTopupGateway.
 //   POST /api/hf/wallet/topup {amount}                    -> {ok, topupId, gateway, client_payload, testMode, amountRupees}   503 topup_unavailable when off
 //   GET  /api/hf/wallet/topup/:id                         -> {ok, id, status, credited, amountRupees}   (owner only; re-asks the gateway while still 'created')
@@ -56,6 +57,14 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
     const amount = Number(b.amount);
     if (!Number.isInteger(amount) || amount < flags.minRupees || amount > flags.maxRupees) {
       return err(400, "bad_amount", `Enter a whole amount between ₹${flags.minRupees} and ₹${flags.maxRupees}.`, { min: flags.minRupees, max: flags.maxRupees });
+    }
+    if (b.callId !== undefined) {
+      const minimum = await activeCallTopupMinimum(env, u.uid, b.callId);
+      if ("error" in minimum) return err(minimum.status, minimum.error, minimum.message);
+      const std = readHfStdPlan(cfg as unknown as Record<string, unknown>);
+      const credit = (cfg as unknown as Record<string, unknown>).hfTokensEnabled === true
+        ? topupSplit(amount * 100, std.gstBps, std.gstInclusive).walletPaise : amount * 100;
+      if (credit < minimum.minimum) return err(400, "topup_below_call_minimum", "Add enough to cover five more minutes.", { minimumCreditPaise: minimum.minimum });
     }
     const limited = await rateLimit(env, `hftopup:${u.uid}`, RL.topup.max, RL.topup.windowSec);
     if (limited) return limited;

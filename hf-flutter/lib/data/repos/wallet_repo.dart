@@ -49,13 +49,14 @@ class WalletRepo {
 
   /// [name] and [email] are what the payer typed on our "Your details" screen because the profile had none; the server hands them
   /// to the payment provider for the receipt (used for this order only, and only if the profile has nothing).
-  Future<TopupOrder> createTopup(int rupees, {String? name, String? email}) async {
+  Future<TopupOrder> createTopup(int rupees, {String? name, String? email, String? callId}) async {
     final json = await _api.request(
       'POST',
       '/api/hf/wallet/topup',
       body: {
         'amount': rupees,
         'client': 'app',
+        if (callId != null) 'callId': callId,
         if (name != null && name.trim().isNotEmpty) 'customer_name': name.trim(),
         if (email != null && email.trim().isNotEmpty) 'customer_email': email.trim(),
       },

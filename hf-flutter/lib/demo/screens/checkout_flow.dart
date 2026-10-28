@@ -43,6 +43,7 @@ class CheckoutFlow extends StatefulWidget {
     required this.profile,
     required this.onFinish,
     required this.onClose,
+    this.callId,
     this.onProfileSaved,
     this.onVerifyPhone,
     this.collectWindow = const Duration(minutes: 5),
@@ -50,6 +51,7 @@ class CheckoutFlow extends StatefulWidget {
   });
 
   final int rupees;
+  final String? callId;
   final WalletRepo repo;
   final InAppCheckout checkout;
   final CheckoutProfile profile;
@@ -136,7 +138,8 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
 
   // ------------------------------------------------------------------------------------------- helpers
 
-  String _next(TopupOrder o) => '/payment?amount=${widget.rupees}&order=${o.orderId}&credit=${o.creditPaise}';
+  String _next(TopupOrder o) => '/payment?amount=${widget.rupees}&order=${o.orderId}&credit=${o.creditPaise}'
+      '${widget.callId == null ? '' : '&callId=${Uri.encodeQueryComponent(widget.callId!)}'}';
 
   void _go(String location) {
     if (_finished) return;
@@ -186,7 +189,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     final cur = _order;
     if (cur != null) return cur;
     try {
-      final o = await widget.repo.createTopup(widget.rupees, name: _name, email: _email);
+      final o = await widget.repo.createTopup(widget.rupees, name: _name, email: _email, callId: widget.callId);
       if (!mounted) return null;
       Telemetry.event('hf_topup_started', {'amount_rupees': widget.rupees, 'order': o.orderId});
       if (o.orderId.isEmpty) {
@@ -205,7 +208,11 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
       _order = o;
       return o;
     } on ApiException catch (e) {
-      _fail(e.userMessage);
+      _fail(e.code == 'topup_below_call_minimum'
+          ? 'The amount needed for this call changed. Go back and check the amount again.'
+          : e.code == 'call_not_active' && widget.callId != null
+              ? 'This call is no longer active. Return to the call to check its status.'
+              : e.userMessage);
       return null;
     }
   }

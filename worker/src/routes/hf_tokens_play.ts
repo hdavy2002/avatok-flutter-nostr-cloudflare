@@ -1,3 +1,4 @@
+import { activeCallTopupMinimum } from "../lib/hf_call_topup_minimum";
 // [HF-TOK-PLAY-1] HF token purchases with Google Play Billing (server side). Contract: Specs/HF-PLAY-BILLING-RUNBOOK.md.
 //   GET  /api/hf/tokens/products        public; active packs {productId, tokens, pricingVersion, redemptionPaisePerToken, purchasePaisePerToken}.
 //                                       Never a display price: the app shows Play's ProductDetails price.
@@ -76,6 +77,12 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
       if (lim) return lim;
       const prod = (await listActiveProducts(env)).find((x) => x.productId === b.productId);
       if (!prod || (std.enabled ? !isRupeeProduct(prod) : isRupeeProduct(prod))) return err(400, "unknown_product", "That pack is not available.");
+      if (b.callId !== undefined) {
+        const minimum = await activeCallTopupMinimum(env, u.uid, b.callId);
+        if ("error" in minimum) return err(minimum.status, minimum.error, minimum.message);
+        const credit = productCreditPaise(prod, std.gstBps, std.gstInclusive);
+        if (credit < minimum.minimum) return err(400, "topup_below_call_minimum", "Add enough to cover five more minutes.", { minimumCreditPaise: minimum.minimum });
+      }
       const hash = await accountHashFor(env, u.uid);
       if (!hash) return err(503, "unconfigured", "Purchases are not configured yet.");
       await rememberAccount(env, u.uid, hash);

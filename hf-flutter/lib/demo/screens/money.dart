@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
-import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/in_app_checkout.dart';
 import '../../data/models/wallet.dart';
+import '../../data/repos/calls_repo.dart';
 import '../../data/repos/payouts_repo.dart';
 import '../../data/repos/wallet_repo.dart';
 import '../../data/services.dart';
@@ -312,7 +312,10 @@ class ReceiptScreen extends StatelessWidget {
 /// Top up: any whole amount; price includes 18% GST, wallet gets paid ÷ 1.18 (HF-PAY rules).
 /// The payment steps are our own screens (CheckoutFlow); the app never names the gateway.
 class TopUpScreen extends StatefulWidget {
-  const TopUpScreen({super.key, this.repo, this.checkout, this.profile});
+  const TopUpScreen({super.key, this.repo, this.checkout, this.profile, this.callId, this.callsRepo});
+
+  final String? callId;
+  final CallsRepo? callsRepo;
 
   /// Pass a repository to use the real server (tests do); otherwise real unless [DemoMode.on].
   final WalletRepo? repo;
@@ -332,6 +335,39 @@ class _TopUpScreenState extends State<TopUpScreen> {
 
   /// Set once the payer pressed Pay: the amount screen is then replaced by the checkout flow.
   int? _flowRupees;
+  int? _minimumCreditPaise;
+  int? _minimumPaymentRupees;
+  String? _callError;
+  bool _checkingCall = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.callId != null) unawaited(_loadCallMinimum());
+  }
+
+  Future<void> _loadCallMinimum() async {
+    setState(() { _checkingCall = true; _callError = null; });
+    try {
+      final call = await (widget.callsRepo ?? Services.instance.callsRepo).status(widget.callId!);
+      if (!mounted) return;
+      final minimum = call.topupMinimumCreditPaise;
+      final payment = call.topupMinimumPaymentRupees;
+      if (call.status != 'connected' || minimum == null || payment == null || payment <= 0) {
+        setState(() => _callError = 'A top-up for this call is unavailable. Return to your call to check its status.');
+      } else {
+        setState(() {
+          _minimumCreditPaise = minimum;
+          _minimumPaymentRupees = payment;
+          _amount.text = '${payment < 10 ? 10 : payment}';
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _callError = 'Could not check the call amount. Check your connection and try again.');
+    } finally {
+      if (mounted) setState(() => _checkingCall = false);
+    }
+  }
 
   bool get _real => widget.repo != null || !DemoMode.on;
   WalletRepo get _repo => widget.repo ?? Services.instance.walletRepo;
@@ -346,6 +382,11 @@ class _TopUpScreenState extends State<TopUpScreen> {
 
   Future<void> _pay() async {
     final v = _value;
+    if (widget.callId != null && (_checkingCall || _callError != null || _minimumCreditPaise == null || _minimumPaymentRupees == null)) return;
+    if (_minimumPaymentRupees != null && v < _minimumPaymentRupees!) {
+      toast(context, 'Pay at least ${inr(_minimumPaymentRupees!, paise: false)} for this call.');
+      return;
+    }
     if (v < 10) {
       toast(context, 'Minimum top up is ₹10.');
       return;
@@ -386,6 +427,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
         body: SafeArea(
           child: CheckoutFlow(
             rupees: flow,
+            callId: widget.callId,
             repo: _repo,
             checkout: widget.checkout ?? Checkout.inApp,
             profile: _profile(),
@@ -393,7 +435,10 @@ class _TopUpScreenState extends State<TopUpScreen> {
               if (mounted) context.pushReplacement(loc);
             },
             onClose: () {
-              if (mounted) setState(() => _flowRupees = null);
+              if (mounted) {
+                setState(() => _flowRupees = null);
+                if (widget.callId != null) unawaited(_loadCallMinimum());
+              }
             },
             onProfileSaved: widget.profile == null ? () => unawaited(Services.instance.refreshMe()) : null,
             onVerifyPhone: () => context.push('/settings'),
@@ -416,6 +461,17 @@ class _TopUpScreenState extends State<TopUpScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
                   const TopUpHero(),
+                  if (widget.callId != null) ...[
+                    const SizedBox(height: 12),
+                    const BookNotice(text: 'Your payment goes to your wallet. The call extends only if it is still active when the credit arrives.', icon: Icons.info_outline_rounded),
+                    const SizedBox(height: 12),
+                    if (_checkingCall) const BookNotice(text: 'Checking your call amount…', icon: Icons.info_outline_rounded)
+                    else if (_callError != null) ...[
+                      BookNotice(text: _callError!, icon: Icons.info_outline_rounded),
+                      TextButton(onPressed: _loadCallMinimum, child: const Text('Try again')),
+                    ] else if (_minimumCreditPaise != null)
+                      BookNotice(text: 'Pay at least ${inr(_minimumPaymentRupees!, paise: false)} to add at least ${inr(_minimumCreditPaise! / 100)} to your wallet for this call.', icon: Icons.info_outline_rounded),
+                  ],
                   const SizedBox(height: 12),
                   AmountBox(
                     controller: _amount,
@@ -425,7 +481,8 @@ class _TopUpScreenState extends State<TopUpScreen> {
                     label: (a) => inr(a, paise: false),
                   ),
                   const SizedBox(height: 12),
-                  MoneyHisaab(lines: [('You pay', inr(v)), ('Your GST 18%', '− ${inr(gst)}')], total: ('Added to wallet', inr(credit))),
+                  if (widget.callId == null)
+                    MoneyHisaab(lines: [('You pay', inr(v)), ('Your GST 18%', '− ${inr(gst)}')], total: ('Added to wallet', inr(credit))),
                   if (v >= 1000) ...[
                     const SizedBox(height: 12),
                     const BookNotice(text: "That's ₹1,000 or more. We'll ask you to confirm once more.", icon: Icons.info_outline_rounded),
@@ -453,8 +510,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
 }
 
 /// [HF-CALL-MODES-E2] After a payment: back to the call she topped up from (chunk billing), else the wallet as before.
-void _backFromPayment(BuildContext context) {
-  final id = CallReturn.callId;
+void _backFromPayment(BuildContext context, String? id) {
   if (id != null) {
     context.go('/call/${Uri.encodeComponent(id)}');
   } else {
@@ -473,6 +529,7 @@ class PaymentScreen extends StatefulWidget {
     this.orderId,
     this.creditPaise,
     this.sdkFailed = false,
+    this.callId,
     this.repo,
     this.pollEvery = const Duration(seconds: 2),
     this.slowAfter = const Duration(seconds: 60),
@@ -484,6 +541,7 @@ class PaymentScreen extends StatefulWidget {
   /// The in-app checkout reported an error or the payer backed out. If the server still has no payment, the screen says so
   /// instead of waiting for a minute.
   final bool sdkFailed;
+  final String? callId;
   final String? orderId;
   final int? creditPaise;
   final WalletRepo? repo;
@@ -608,16 +666,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   line: 'Receipt sent on WhatsApp and email.',
                 ),
               const SizedBox(height: 14),
-              if (done) MoneyPill(label: CallReturn.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', onTap: () => _backFromPayment(context)),
+              if (waiting && widget.callId != null) MoneyPill(label: 'BACK TO YOUR CALL', onTap: () => _backFromPayment(context, widget.callId)),
+              if (done) MoneyPill(label: widget.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', onTap: () => _backFromPayment(context, widget.callId)),
               if (failed || notDone) ...[
-                MoneyPill(label: 'TRY AGAIN', gold: true, onTap: () => context.pushReplacement('/topup')),
+                MoneyPill(label: 'TRY AGAIN', gold: true, onTap: () => context.pushReplacement(widget.callId == null ? '/topup' : '/topup?callId=${Uri.encodeQueryComponent(widget.callId!)}')),
                 const SizedBox(height: 10),
                 Semantics(
                   button: true,
                   child: TextButton(
-                    onPressed: () => _backFromPayment(context),
+                    onPressed: () => _backFromPayment(context, widget.callId),
                     style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    child: Text(CallReturn.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', style: t(16, color: C.maroon, w: FontWeight.w900)),
+                    child: Text(widget.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', style: t(16, color: C.maroon, w: FontWeight.w900)),
                   ),
                 ),
               ],
