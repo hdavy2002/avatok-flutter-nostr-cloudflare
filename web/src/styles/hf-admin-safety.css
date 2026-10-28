@@ -2,8 +2,8 @@
  * only what the approved artboards add: the Aaj ki khabar strip, bahi-khata flagged lines, case rows and the ban slip.
  * No text under 14px, buttons 48px+, no green. */
 .hf-admin .hsa-strip { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; background: #fff7cc; border: 2px solid #b3001b; border-radius: 14px; padding: 4px; color: #1a1a1a; }
-.hf-admin .hsa-strip-tag { background: #d1001f; color: #fff; border-radius: 10px; padding: 8px 12px; font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; }
-.hf-admin .hsa-strip-text { flex: 1 1 14rem; align-self: center; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: clamp(15px, 14.3px + .19vw, 18px); padding: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
+.hf-admin .hsa-strip-tag { background: #d1001f; color: #fff; border-radius: 10px; padding: 8px 12px; font-family: 'Nunito', sans-serif !important; font-weight: 900; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; }
+.hf-admin .hsa-strip-text { flex: 1 1 14rem; align-self: center; font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: clamp(15px, 14.3px + .19vw, 18px); padding: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
 .hf-admin .hsa-strip-text button { all: unset; cursor: pointer; text-decoration: underline; font-weight: 900; }
 
 .hf-admin .hsa-b { min-height: 48px; }
@@ -15,14 +15,14 @@
 /* case (expanded) */
 .hf-admin .hsa-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-right: 60px; }
 .hf-admin .hsa-who { flex: 1 1 14rem; min-width: 0; }
-.hf-admin .hsa-who .hsa-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: var(--fs-h2); line-height: 1.2; }
+.hf-admin .hsa-who .hsa-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: var(--fs-h2); line-height: 1.2; }
 .hf-admin .hsa-who .hsa-sub { font-weight: 700; font-size: 14px; color: var(--a-muted); }
-.hf-admin .hsa-waited { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px; color: var(--a-muted); }
+.hf-admin .hsa-waited { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 14px; color: var(--a-muted); }
 .hf-admin .hsa-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 16px; align-items: flex-start; }
 .hf-admin .hsa-left { flex: 1 1 520px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .hf-admin .hsa-right { flex: 1 1 280px; display: flex; flex-direction: column; gap: 10px; min-width: 0; background: #fff; border: 1px solid var(--a-line); border-radius: 18px; padding: 16px; }
-.hf-admin .hsa-kicker { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px; letter-spacing: .06em; color: var(--a-rani); text-transform: uppercase; }
-.hf-admin .hsa-lab { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; }
+.hf-admin .hsa-kicker { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 14px; letter-spacing: .06em; color: var(--a-rani); text-transform: uppercase; }
+.hf-admin .hsa-lab { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 15px; }
 .hf-admin .hsa-field { width: 100%; border: 1.5px solid var(--a-line); border-radius: 14px; padding: 10px 12px; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 15px; color: var(--a-ink); background: #fff; }
 .hf-admin select.hsa-field { height: 48px; padding-top: 0; padding-bottom: 0; }
 .hf-admin textarea.hsa-field { min-height: 60px; resize: vertical; }
@@ -38,7 +38,7 @@
 .hf-admin .hsa-bahi { position: relative; background: #fffbf2 repeating-linear-gradient(180deg, transparent 0 31px, #f1dfc6 31px 32px); border: 1px solid #f1dfc6; border-radius: 16px; padding: 0 16px 0 48px; line-height: 32px; font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 15px; max-height: 70vh; overflow: auto; }
 .hf-admin .hsa-bahi::before { content: ""; position: absolute; left: 34px; top: 0; bottom: 0; width: 2px; background: #f29ab9; }
 .hf-admin .hsa-bahi > div { position: relative; }
-.hf-admin .hsa-bahi b { font-family: 'Nunito', sans-serif; color: var(--a-muted); }
+.hf-admin .hsa-bahi b { font-family: 'Nunito', sans-serif !important; color: var(--a-muted); }
 .hf-admin .hsa-bahi .hit { background: var(--a-blush); margin: 0 -10px; padding: 0 10px; border-radius: 8px; }
 .hf-admin .hsa-bahi .hit b { color: var(--a-rani); }
 .hf-admin .hsa-bahi .gap { color: var(--a-muted); }
@@ -52,10 +52,10 @@
 .hf-admin .hsa-row:last-child { border-bottom: 0; }
 .hf-admin .hsa-ico { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex: none; }
 .hf-admin .hsa-row .mid { flex: 1 1 260px; min-width: 0; }
-.hf-admin .hsa-row .t { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 17px; overflow-wrap: anywhere; }
+.hf-admin .hsa-row .t { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 17px; overflow-wrap: anywhere; }
 .hf-admin .hsa-row .s { font-weight: 700; font-size: 14px; color: var(--a-muted); overflow-wrap: anywhere; }
-.hf-admin .hsa-row .age { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px; color: var(--a-muted); }
-.hf-admin .hsa-row .go { font-family: 'Nunito', sans-serif; font-weight: 900; }
+.hf-admin .hsa-row .age { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 14px; color: var(--a-muted); }
+.hf-admin .hsa-row .go { font-family: 'Nunito', sans-serif !important; font-weight: 900; }
 .hf-admin .hsa-checks { display: flex; flex-direction: column; gap: 6px; }
 .hf-admin .hsa-check { display: flex; align-items: center; gap: 12px; min-height: 48px; font-weight: 700; font-size: 15px; cursor: pointer; }
 .hf-admin .hsa-check input { width: 24px; height: 24px; accent-color: var(--a-rani); flex: none; }
@@ -65,18 +65,18 @@
 .hf-admin dialog.hsa-dlg::backdrop { background: rgba(43, 21, 48, .45); }
 .hf-admin .hsa-sheet { position: relative; overflow: hidden auto; max-height: calc(100vh - 24px); background: var(--a-cream); border: 1px solid var(--a-line); border-radius: 26px; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 30px 60px -20px rgba(43, 21, 48, .5); }
 .hf-admin .hsa-sheet > .fl { position: absolute; pointer-events: none; }
-.hf-admin .hsa-sheet h2 { margin: -8px 0 0; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: clamp(24px, 21px + 1vw, 30px); }
+.hf-admin .hsa-sheet h2 { margin: -8px 0 0; font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: clamp(24px, 21px + 1vw, 30px); }
 .hf-admin .hsa-sheet p { margin: 0; font-weight: 700; font-size: 15px; line-height: 1.5; }
-.hf-admin .hsa-perm { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px; letter-spacing: .06em; color: var(--a-bad); }
+.hf-admin .hsa-perm { font-family: 'Nunito', sans-serif !important; font-weight: 800; font-size: 14px; letter-spacing: .06em; color: var(--a-bad); }
 .hf-admin .hsa-box { background: #fff; border: 1px solid var(--a-line); border-radius: 18px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px; }
-.hf-admin .hsa-box b.h { font-family: 'Nunito', sans-serif; font-size: 16px; }
+.hf-admin .hsa-box b.h { font-family: 'Nunito', sans-serif !important; font-size: 16px; }
 .hf-admin .hsa-hisaab { position: relative; background: #fff; border: 1px solid var(--a-line); border-radius: 18px; overflow: hidden; }
 .hf-admin .hsa-hisaab .zig { height: 12px; background: repeating-linear-gradient(135deg, #ffe6ef 0 8px, #ffd6e5 8px 16px); }
 .hf-admin .hsa-hisaab .pu { position: absolute; top: 55%; width: 18px; height: 18px; border-radius: 50%; background: var(--a-cream); border: 1px solid var(--a-line); }
 .hf-admin .hsa-hisaab .pu.l { left: -9px; } .hf-admin .hsa-hisaab .pu.r { right: -9px; }
 .hf-admin .hsa-hisaab .in { padding: 12px 22px 14px; display: flex; flex-direction: column; gap: 8px; }
 .hf-admin .hsa-hisaab .l { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 15px; }
-.hf-admin .hsa-hisaab .l b { font-family: 'Nunito', sans-serif; white-space: nowrap; }
+.hf-admin .hsa-hisaab .l b { font-family: 'Nunito', sans-serif !important; white-space: nowrap; }
 .hf-admin .hsa-hisaab .dash { border-top: 1.5px dashed var(--a-line); }
 .hf-admin .hsa-acts { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 .hf-admin .hsa-acts .hfa-btn { min-height: 52px; font-size: 17px !important; }
@@ -86,3 +86,7 @@
   .hf-admin .hsa-head { padding-right: 36px; }
   .hf-admin .hsa-bahi { padding-left: 44px; }
 }
+
+/* Design: every title, name, number, chip, tab and button is Nunito 800. The site-wide HF-SITE-7 rule forces Comfortaa with !important, so these say so too. */
+.hf-admin .hsa-page :is(.hfa-kpi-big, .hfa-chip, .hfa-btn, .hfa-pill) { font-family: 'Nunito', sans-serif !important; font-weight: 800; }
+.hf-admin .hsa-page .hfa-kpi-big { font-weight: 900; }

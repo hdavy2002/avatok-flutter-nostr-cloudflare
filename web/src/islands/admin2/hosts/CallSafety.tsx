@@ -144,7 +144,7 @@ export default function CallSafety({ api = safetyAdminApi }: { api?: SafetyAdmin
   flush();
 
   return (
-    <div className="hfa-stack">
+    <div className="hfa-stack hsa-page">
       {danger && (
         <div className="hsa-strip" role="status">
           <span className="hsa-strip-tag">Aaj ki khabar</span>
