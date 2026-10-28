@@ -20,8 +20,8 @@
 .hfsh-pin{position:sticky;top:var(--head);height:var(--frame);overflow:hidden;background:var(--cream);
   --sx:0px;--sy:0px;--sw:100%;--sh:100%;--cl:0px;--ct:0px}
 .hfsh-stage{position:absolute;left:var(--sx);top:var(--sy);width:var(--sw);height:var(--sh)}
-.hfsh-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:var(--cream);transition:opacity .12s ease}
-.hfsh-video.is-initial-seeking,.hfsh-video.is-incoming{opacity:0}
+.hfsh-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:var(--cream)}
+.hfsh-video.is-incoming{opacity:0}
 .hfsh-copy{position:absolute;left:var(--sx);top:var(--sy);width:var(--sw);height:var(--sh);container-type:size;pointer-events:none;z-index:2}
 .hfsh-scene{position:absolute;inset:0;opacity:0;will-change:opacity,translate}
 .hfsh-scene--opening{opacity:1}
