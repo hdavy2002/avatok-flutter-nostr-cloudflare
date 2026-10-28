@@ -40,7 +40,9 @@ export const mockIntroApi = {
     return wait({
       application: { id, status: it.status, categories: it.categories, lang: it.lang, topic: 'general', callOption: it.callOption, submittedAt: it.submittedAt, rejectReasons: id === 'hfia_mockR' ? [REASONS[1], REASONS[6]] : [], rejectNote: id === 'hfia_mockR' ? 'Try recording near a window.' : null },
       host: { uid: it.uid, name: it.name, description: 'Namaste! I read kundli and guide people on career and marriage questions. 8 years of practice, calm and simple language. Ask me anything about your birth chart.', ratePerMin: it.ratePerMin, photoUrl: null, callOption: it.callOption, createdAt: now - 12 * 86_400_000 },
-      video: { videoUrl: '/mock-intro.mp4', posterUrl: null, durationMs: 14000, width: 720, height: 1280, lang: it.lang, topic: 'general' },
+      video: id === 'hfia_mockR'
+        ? { videoUrl: null, posterUrl: null, durationMs: 14000, width: 720, height: 1280, lang: it.lang, topic: 'general', deletedAt: now - 7_200_000, deletedReason: 'rejected' }
+        : { videoUrl: '/mock-intro.mp4', posterUrl: null, durationMs: 14000, width: 720, height: 1280, lang: it.lang, topic: 'general' },
       socials: it.hasSocials ? [{ platform: 'youtube', handle: '@priyaastro', url: 'https://youtube.com/@priyaastro', followers: 12400 }, { platform: 'instagram', handle: 'priya.astro', url: 'https://instagram.com/priya.astro', followers: 5300 }] : [],
       aadhaar: { done: it.aadhaar.status === 'verified', female: it.aadhaar.female, gender: it.aadhaar.status === 'verified' ? (it.aadhaar.female ? 'F' : 'M') : null },
       whatsappVerified: true, womenToWomen: w2w,

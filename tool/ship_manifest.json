@@ -12510,5 +12510,22 @@
         "note": "A person on the team approved or rejected a submission."
       }
     ]
+  },
+  "HF-INTRO-DELETE-1": {
+    "description": "Intro-video clean-up: a rejected video, a replaced older approved video and a draft never submitted within 7 days are deleted from R2 (row kept, deleted_at set); daily sweep + weekly orphan check; admin shows a Video deleted panel. Ships with the intro flags (dark).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfIntroOnboardingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_intro_video_deleted",
+        "property": "reason",
+        "exists": true,
+        "min_events": 1,
+        "note": "A rejected, replaced, expired or orphaned intro video was removed from storage (server telemetry; bytes is the size freed)."
+      }
+    ]
   }
 }

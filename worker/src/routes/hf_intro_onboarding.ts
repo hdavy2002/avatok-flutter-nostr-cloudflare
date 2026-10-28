@@ -14,6 +14,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { deleteIntroVideoFiles, type IntroFileRow } from "../lib/hf_intro_cleanup";
 import { getHost, mediaUrl } from "../lib/hf_host_store";
 import { validCreatorRate } from "../lib/hf_creator_pricing";
 import { isPhoneVerified } from "../lib/hf_public_verification";
@@ -33,16 +34,22 @@ export const SUBMITTED_MESSAGE = "Sent for approval. A person from our team will
 export interface VideoRow {
   id: string; uid: string; r2_key: string; poster_key: string | null; mime: string; bytes: number; duration_ms: number; width: number; height: number;
   lang: string | null; topic: string | null; views: number; status: string; created_at: number; updated_at: number;
+  /** [HF-INTRO-DELETE-1] set when the files were removed from storage (r2_key is then '' and poster_key NULL). */
+  deleted_at?: number | null; deleted_reason?: string | null;
 }
 export interface AppRow {
   id: string; uid: string; status: string; categories_json: string; lang: string | null; intro_video_id: string; call_option: string; rate_rupees: number | null;
   has_socials: number; aadhaar_ok: number; submitted_at: number; reviewed_at: number | null; reviewer_uid: string | null; reject_reasons_json: string | null; reject_note: string | null;
 }
 
-export const videoJson = (env: Env, v: VideoRow) => ({
-  id: v.id, status: v.status, videoUrl: mediaUrl(env, v.r2_key), posterUrl: v.poster_key ? mediaUrl(env, v.poster_key) : null,
-  durationMs: v.duration_ms, width: v.width, height: v.height, lang: v.lang, topic: v.topic, createdAt: v.created_at,
-});
+export const videoJson = (env: Env, v: VideoRow) => {
+  const gone = !!v.deleted_at || !v.r2_key; // [HF-INTRO-DELETE-1] no URL once the files are deleted
+  return {
+    id: v.id, status: v.status, videoUrl: gone ? null : mediaUrl(env, v.r2_key), posterUrl: !gone && v.poster_key ? mediaUrl(env, v.poster_key) : null,
+    durationMs: v.duration_ms, width: v.width, height: v.height, lang: v.lang, topic: v.topic, createdAt: v.created_at,
+    deletedAt: v.deleted_at ?? null, deletedReason: v.deleted_reason ?? null,
+  };
+};
 export const parseJsonArray = (s: unknown): string[] => { try { const v = JSON.parse(String(s ?? "[]")); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; } };
 export const applicationJson = (a: AppRow) => ({
   id: a.id, status: a.status, categories: categoriesFromJson(a.categories_json), lang: a.lang, introVideoId: a.intro_video_id, callOption: a.call_option,
@@ -104,7 +111,7 @@ async function me(req: Request, env: Env): Promise<Response> {
   const uid = u.uid;
   const [host, video, app, facts, photo] = await Promise.all([
     getHost(env, uid),
-    env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE uid=?1 AND status<>'replaced' ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<VideoRow>(),
+    env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE uid=?1 AND status NOT IN ('replaced','expired') AND deleted_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<VideoRow>(),
     env.DB_META.prepare("SELECT * FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1").bind(uid).first<AppRow>(),
     onboardingFacts(env, uid),
     env.DB_META.prepare("SELECT r2_key FROM hf_host_media WHERE uid=?1 AND kind='profile' AND status='active' ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ r2_key: string }>(),
@@ -150,9 +157,9 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
   const id = newIntroVideoId();
   const key = `intro-video/${uid}/${id}.${chk.ext}`;
   const now = Date.now();
-  let replaced: { r2_key: string; poster_key: string | null }[] = [];
+  let replaced: IntroFileRow[] = [];
   try {
-    replaced = (await env.DB_META.prepare("SELECT r2_key, poster_key FROM hf_intro_videos WHERE uid=?1 AND status='draft'").bind(uid).all<{ r2_key: string; poster_key: string | null }>()).results ?? [];
+    replaced = (await env.DB_META.prepare("SELECT id, uid, r2_key, poster_key, bytes FROM hf_intro_videos WHERE uid=?1 AND status='draft'").bind(uid).all<IntroFileRow>()).results ?? [];
     await env.BLOBS.put(key, body, { httpMetadata: { contentType: chk.mime, cacheControl: IMMUTABLE } });
     await env.DB_META.batch([
       env.DB_META.prepare("UPDATE hf_intro_videos SET status='replaced', updated_at=?2 WHERE uid=?1 AND status='draft'").bind(uid, now),
@@ -165,11 +172,7 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
     emit("hf_intro_upload", { ok: false, reason: "store_failed", bytes: bytes!.byteLength, ms: Date.now() - t0 });
     return err(500, "store_failed", { message: "We could not save your video. Please try again." });
   }
-  for (const r of replaced) {
-    for (const k of [r.r2_key, r.poster_key]) {
-      if (k) await env.BLOBS.delete(k).catch((e) => trackException(env, e, { uid, route: "/api/hf/onboarding/intro-video", handled: true, app_name: APP, extra: { area: "hf_intro_onboarding", step: "delete_replaced" } }));
-    }
-  }
+  for (const r of replaced) await deleteIntroVideoFiles(env, r, "draft_replaced"); // [HF-INTRO-DELETE-1] also marks the row + telemetry
   emit("hf_intro_upload", { ok: true, bytes: bytes!.byteLength, ms: Date.now() - t0, duration_ms: chk.durationMs });
   const row = await env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE id=?1").bind(id).first<VideoRow>();
   return json({ ok: true, video: videoJson(env, row!) }, 200, NO_STORE);
@@ -182,7 +185,7 @@ async function uploadPoster(req: Request, env: Env, ctx: ExecutionContext | unde
   const uid = u.uid;
   const v = await env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE id=?1 AND uid=?2").bind(id, uid).first<VideoRow>();
   if (!v) return err(404, "video_not_found");
-  if (v.status !== "draft" && v.status !== "rejected") return err(409, "video_locked", { message: "This video can not be changed any more." });
+  if ((v.status !== "draft" && v.status !== "rejected") || v.deleted_at) return err(409, "video_locked", { message: "This video can not be changed any more." });
   const limited = await rateLimit(env, `hf_introposter:${uid}`, 20, 3600);
   if (limited) return limited;
   const bytes = await boundedBytes(req, INTRO_POSTER_MAX_BYTES).catch(() => null);
@@ -227,7 +230,7 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
     onboardingFacts(env, uid),
   ]);
   if (!video) return err(404, "video_not_found", { message: "We could not find your video. Please record it again." });
-  if (video.status !== "draft" && video.status !== "rejected") return err(409, "video_not_available", { message: "This video was already used. Please record a new one." });
+  if ((video.status !== "draft" && video.status !== "rejected") || video.deleted_at) return err(409, "video_not_available", { message: "This video was already used. Please record a new one." });
   if (open) return err(409, "already_submitted", { message: "You already sent your profile. A person from our team will check it." });
 
   const hasPhoto = host ? !!(host.avatar_id || (await env.DB_META.prepare("SELECT 1 AS x FROM hf_host_media WHERE uid=?1 AND kind='profile' AND status='active' LIMIT 1").bind(uid).first())) : false;

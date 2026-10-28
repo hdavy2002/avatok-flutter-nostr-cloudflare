@@ -10,6 +10,7 @@
 import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
+import { sweepIntroVideos } from "./hf_intro_cleanup";
 import { purgeHfUser, tableColumns, tsMsExpr, type HfPurgeResult } from "./hf_purge";
 
 const DAY_MS = 86_400_000;
@@ -32,6 +33,8 @@ export interface HfRetentionSummary {
   r2_objects: number; errors: number; more: boolean; ms: number;
   /** [HF-TOK-EXIT-1] hashed token money records past 8 years. */
   money_records: number;
+  /** [HF-INTRO-DELETE-1] intro-video files deleted by the sweep (rejected + replaced + expired drafts + orphans). */
+  intro_videos: number;
 }
 
 type Cols = Map<string, string[]>;
@@ -101,7 +104,7 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
   const errs = { n: 0 };
   const acc = { r2: 0, errs: 0 };
   let more = false;
-  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, push_tokens: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0, money_records: 0 };
+  const s: HfRetentionSummary = { calls: 0, incidents: 0, blocks: 0, review_tokens: 0, notify: 0, reviews: 0, kyc_otp: 0, push_tokens: 0, drafts: 0, closed_hosts: 0, lane_callers: 0, r2_objects: 0, errors: 0, more: false, ms: 0, money_records: 0, intro_videos: 0 };
   const rows = (r: { n: number; more: boolean }) => { if (r.more) more = true; return r.n; };
 
   // Call records (time, length, price, how it ended): 1 year.
@@ -197,6 +200,14 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
       total += rows(await purgeOld(env, cols, table, ["created_at"], HF_RETENTION.moneyDays, (c) => (c.includes(uidCol) ? `${uidCol} LIKE 'del:%'` : null)));
     }
     return total;
+  }, 0);
+
+  // [HF-INTRO-DELETE-1] Intro videos: files still held by rejected / replaced rows, drafts never submitted within 7 days, and a weekly orphan check of intro-video/.
+  s.intro_videos = await runStep(env, ctx, "intro_videos", errs, async () => {
+    const r = await sweepIntroVideos(env);
+    if (r.more) more = true;
+    errs.n += r.errors;
+    return r.rejected + r.replaced + r.expired + r.orphans;
   }, 0);
 
   s.r2_objects = acc.r2;

@@ -7,7 +7,7 @@ import { introAdminApi, type CallOption, type DecisionResult, type IntroDetail, 
 import { toast } from '../../../components/ui/sonner';
 import { errMessage } from '../adminApi';
 import { dateIST } from '../consultants/kit';
-import { DesiAvatar, DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, Marigold } from '../desi';
+import { DesiAvatar, DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, Lotus, Marigold } from '../desi';
 import { HBanner } from './hostsKit';
 import '../../../styles/hf-admin-intro.css';
 
@@ -230,6 +230,11 @@ function Detail({ api, item, reasons: listReasons, panelId, onDone }: {
         {d.video?.videoUrl ? <div className="hfi-video">
           <video ref={video} src={d.video.videoUrl} poster={d.video.posterUrl ?? undefined} autoPlay muted loop playsInline controls preload="auto" aria-label={`Intro video from ${name ?? 'applicant'}`} />
           {muted && <button type="button" className="hfi-sound" onClick={sound}><Volume2 size={20} aria-hidden="true" />Tap for sound</button>}
+        </div> : d.video?.deletedAt ? <div className="hfi-gone" role="note">
+          {/* [HF-INTRO-DELETE-1] artboard AdminRejected: lotus + "Video deleted" instead of the player */}
+          <Lotus size={68} />
+          <strong>Video deleted</strong>
+          <span>Removed from storage on {dateIST(d.video.deletedAt)}, when it was {d.video.deletedReason === 'replaced' ? 'replaced by a newer one' : d.video.deletedReason === 'draft_expired' ? 'never sent' : 'rejected'}</span>
         </div> : <div className="hfi-video hfi-novideo"><Video size={40} aria-hidden="true" /><p>No video on this application.</p></div>}
         {d.video?.durationMs ? <p className="hfa-note hfi-center">{Math.round(d.video.durationMs / 1000)} seconds{d.video.width && d.video.height ? ` · ${d.video.width}×${d.video.height}` : ''}</p> : null}
       </div>
@@ -257,6 +262,8 @@ function Detail({ api, item, reasons: listReasons, panelId, onDone }: {
           {prev.length > 0 && <><dt>Earlier tries</dt><dd>{prev.length} earlier application{prev.length > 1 ? 's' : ''}{prev[0]?.rejectReasons?.length ? ` · last: ${prev[0].rejectReasons.map((r) => r.text).join('; ')}` : ''}</dd></>}
           {!pending && d.application.rejectReasons?.length ? <><dt>Rejected for</dt><dd><ul className="hfi-cal">{d.application.rejectReasons.map((r) => <li key={r.code}>{r.text}</li>)}</ul>{d.application.rejectNote && <p className="hfa-note">Note: {d.application.rejectNote}</p>}</dd></> : null}
         </dl>
+
+        {d.video?.deletedAt && <p className="hfi-gone-note">The details and reasons are kept for the record. The video and its thumbnail are gone. If she records again, the new video shows under <b>Pending</b>.</p>}
 
         {err && <HBanner tone="error">{err}</HBanner>}
 

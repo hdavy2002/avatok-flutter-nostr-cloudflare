@@ -19,6 +19,7 @@ import { validCreatorRate } from "../lib/hf_creator_pricing";
 import { getHfBookingSchedule } from "../lib/hf_booking_store";
 import { categoriesFromJson, WOMEN_TO_WOMEN } from "../lib/hf_categories";
 import { APPLICATION_ID_RE, REJECT_REASONS, REJECT_REASON_CODES, GATE_MESSAGES, submissionGate, approvedMessage, rejectedMessage } from "../lib/hf_intro_video";
+import { deleteIntroVideoFiles, type IntroFileRow } from "../lib/hf_intro_cleanup";
 import { readConfig } from "./config";
 import { onboardingFacts, applicationJson, videoJson, parseJsonArray, type AppRow, type VideoRow } from "./hf_intro_onboarding";
 
@@ -160,6 +161,8 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
   if (!slug) return err(500, "slug_failed");
   const now = Date.now();
   const women = cats.includes(WOMEN_TO_WOMEN) ? 1 : 0;
+  // [HF-INTRO-DELETE-1] the older approved video becomes 'replaced' below; its files are deleted once the decision is saved.
+  const older = (await env.DB_META.prepare("SELECT id, uid, r2_key, poster_key, bytes FROM hf_intro_videos WHERE uid=?1 AND status='approved' AND id<>?2 AND deleted_at IS NULL AND r2_key<>''").bind(uid, app.intro_video_id).all<IntroFileRow>()).results ?? [];
   const guard = "EXISTS (SELECT 1 FROM hf_influencer_applications WHERE id=?1 AND status='approved' AND reviewed_at=?2 AND reviewer_uid=?3)";
   const res = await env.DB_META.batch([
     env.DB_META.prepare("UPDATE hf_influencer_applications SET status='approved', reviewed_at=?2, reviewer_uid=?3 WHERE id=?1 AND status='submitted'").bind(id, now, a.uid),
@@ -174,7 +177,9 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
     ).bind(id, now, a.uid, app.categories_json, app.call_option, app.intro_video_id, women, uid),
   ]);
   if (!res[0]?.meta?.changes) return err(409, "bad_state", { message: "Someone else just decided on this." });
-  await audit(env, a.uid, "approve", id, { uid });
+  let filesDeleted = 0;
+  for (const o of older) if (await deleteIntroVideoFiles(env, o, "replaced")) filesDeleted++;
+  await audit(env, a.uid, "approve", id, { uid, replaced_videos_deleted: filesDeleted });
   const notified = await notifyInfluencer(env, a.uid, uid, "approve", approvedMessage(host.display_name), id);
   await pushHostDecision(env, undefined, uid, "approve").catch((e) => trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "push" } }));
   await emit(env, a.uid, "hf_admin_review", { decision: "approve", reasons: "", application_id: id, influencer_uid: uid, women_to_women: women === 1 });
@@ -191,6 +196,7 @@ async function reject(req: Request, env: Env, id: string): Promise<Response> {
   const app = await env.DB_META.prepare("SELECT * FROM hf_influencer_applications WHERE id=?1").bind(id).first<AppRow>();
   if (!app) return err(404, "not_found");
   if (app.status !== "submitted") return err(409, "bad_state", { status: app.status });
+  const toDelete = await env.DB_META.prepare("SELECT id, uid, r2_key, poster_key, bytes FROM hf_intro_videos WHERE id=?1 AND uid=?2 AND deleted_at IS NULL AND r2_key<>''").bind(app.intro_video_id, app.uid).first<IntroFileRow>();
   const now = Date.now();
   const guard = "EXISTS (SELECT 1 FROM hf_influencer_applications WHERE id=?1 AND status='rejected' AND reviewed_at=?2 AND reviewer_uid=?3)";
   const res = await env.DB_META.batch([
@@ -199,12 +205,14 @@ async function reject(req: Request, env: Env, id: string): Promise<Response> {
     env.DB_META.prepare(`UPDATE hf_intro_videos SET status='rejected', updated_at=?2 WHERE id=?4 AND ${guard}`).bind(id, now, a.uid, app.intro_video_id),
   ]);
   if (!res[0]?.meta?.changes) return err(409, "bad_state", { message: "Someone else just decided on this." });
+  // [HF-INTRO-DELETE-1] decision saved -> delete the video + poster from storage (the row and reasons stay). A failed delete is retried by the daily sweep.
+  const videoDeleted = toDelete ? await deleteIntroVideoFiles(env, toDelete, "rejected") : true;
   const host = await getHost(env, app.uid);
-  await audit(env, a.uid, "reject", id, { uid: app.uid, reasons, note });
+  await audit(env, a.uid, "reject", id, { uid: app.uid, reasons, note, video_deleted: videoDeleted });
   const notified = await notifyInfluencer(env, a.uid, app.uid, "reject", rejectedMessage(reasons, note), id);
   await pushHostDecision(env, undefined, app.uid, "reject").catch((e) => trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "push" } }));
-  await emit(env, a.uid, "hf_admin_review", { decision: "reject", reasons: reasons.join(","), application_id: id, influencer_uid: app.uid, host_status: host?.status ?? null });
-  return json({ ok: true, status: "rejected", notified: notified.sent, notifyReason: notified.reason }, 200, NO_STORE);
+  await emit(env, a.uid, "hf_admin_review", { decision: "reject", reasons: reasons.join(","), application_id: id, influencer_uid: app.uid, host_status: host?.status ?? null, video_deleted: videoDeleted });
+  return json({ ok: true, status: "rejected", videoDeleted, notified: notified.sent, notifyReason: notified.reason }, 200, NO_STORE);
 }
 
 /** Returns null when the path is not ours so index.ts can fall through. */

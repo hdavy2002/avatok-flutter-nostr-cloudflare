@@ -11,7 +11,7 @@ const sent: { to: string; text: string }[] = [];
 const events: { event: string; props: any }[] = [];
 vi.mock("./config", () => ({ readConfig: async () => cfg }));
 vi.mock("../hooks", () => ({
-  track: async () => {}, trackException: async () => {},
+  track: async (_e: any, uid: string, event: string, _a: string, props: any) => { events.push({ event, props: { uid, ...props } }); }, trackException: async () => {},
   trackUser: async (_e: any, uid: string, email: any, event: string, _a: string, props: any) => { events.push({ event, props: { uid, email, ...props } }); },
 }));
 vi.mock("../authz", () => ({
@@ -31,6 +31,7 @@ import { hfIntroOnboardingRoute } from "./hf_intro_onboarding";
 import { hfIntroAdminRoute } from "./hf_intro_admin";
 import { hfReelsRoute, visibleReel } from "./hf_reels";
 import { hfReelEngageRoute } from "./hf_reel_engage";
+import { sweepIntroVideos } from "../lib/hf_intro_cleanup";
 import { introSelfState } from "../lib/hf_intro_reels";
 import { validateIntroVideo, submissionGate, rejectedMessage } from "../lib/hf_intro_video";
 import { HF_CATEGORIES, isSensitiveCategory, normalizeCategories } from "../lib/hf_categories";
@@ -38,6 +39,8 @@ import { HF_CATEGORIES, isSensitiveCategory, normalizeCategories } from "../lib/
 const require_ = createRequire(import.meta.url);
 const { DatabaseSync } = require_("node:sqlite");
 let db: any, env: any, blobs: Map<string, any>;
+const uploadedAt = new Map<string, Date>(); // [HF-INTRO-DELETE-1] object ages for the orphan check (default: very old)
+const kv = new Map<string, string>();
 const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.meta.url), "utf8");
 
 function makeEnv() {
@@ -59,6 +62,8 @@ function makeEnv() {
   db.exec(mig("2026-10-24-hf-reel-engage.sql"));
   db.exec(mig("2026-10-28-hf-intro-video-alters.sql"));
   db.exec(mig("2026-10-28-hf-intro-video-tables.sql"));
+  db.exec(mig("2026-10-28-hf-intro-video-deleted-alters.sql")); // [HF-INTRO-DELETE-1]
+  uploadedAt.clear(); kv.clear();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     run: async () => { const r = db.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; },
@@ -69,7 +74,17 @@ function makeEnv() {
   env = {
     DB_META: { prepare: (q: string) => stmt(q), batch: async (ss: any[]) => { const out = []; for (const s of ss) out.push(await s.run()); return out; } },
     DB_WALLET: { prepare: () => stmt("SELECT 1") },
-    BLOBS: { put: async (k: string, v: any) => { blobs.set(k, v); }, delete: async (k: string) => { blobs.delete(k); } },
+    BLOBS: {
+      put: async (k: string, v: any) => { blobs.set(k, v); }, delete: async (k: string) => { blobs.delete(k); },
+      list: async ({ prefix = "", cursor, limit = 1000 }: any) => { // [HF-INTRO-DELETE-1] paged listing like R2
+        const keys = [...blobs.keys()].filter((k) => k.startsWith(prefix)).sort();
+        const start = cursor ? Number(cursor) : 0;
+        const page = keys.slice(start, start + limit);
+        const truncated = start + limit < keys.length;
+        return { objects: page.map((key) => ({ key, size: blobs.get(key)?.byteLength ?? 0, uploaded: uploadedAt.get(key) ?? new Date(0) })), truncated, cursor: truncated ? String(start + limit) : undefined };
+      },
+    },
+    TOKENS: { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => { kv.set(k, v); }, delete: async (k: string) => { kv.delete(k); } },
     BLOSSOM_BASE_URL: "https://media.test",
     ADMIN_UIDS: "admin1",
   };
@@ -302,7 +317,10 @@ describe("admin review", () => {
     const me = await body(await call("/api/hf/onboarding/me"));
     expect(me.application.status).toBe("rejected");
     expect(me.application.rejectReasons[0].code).toBe("video_dark");
-    const again = await body(await submit({ categories: ["traveller"], lang: "en", intro_video_id: s.videoId, call_option: "B" }));
+    // [HF-INTRO-DELETE-1] the rejected video is deleted, so the OLD one can not be sent again - she records a new one
+    expect((await body(await submit({ categories: ["traveller"], lang: "en", intro_video_id: s.videoId, call_option: "B" }))).error).toBe("video_not_available");
+    const fresh = await recordedDraft();
+    const again = await body(await submit({ categories: ["traveller"], lang: "en", intro_video_id: fresh, call_option: "B" }));
     expect(again.status).toBe(200);
     const l = await body(await adm("/api/admin/hf/intro-applications"));
     expect(l.items).toHaveLength(1);
@@ -410,5 +428,119 @@ describe("reels feed (hfIntroReelsEnabled)", () => {
     expect(list.items.some((i: any) => i.body === "Great video")).toBe(true);
     const f = await feed();
     expect(f.items[0]).toMatchObject({ id: s.videoId, likes: 1, comments: 1 });
+  });
+});
+
+// ── [HF-INTRO-DELETE-1] clean-up: files must not outlive the decision ─────────────────────────────────────────────
+const dayMs = 86_400_000;
+const delEvents = () => events.filter((e) => e.event === "hf_intro_video_deleted");
+async function withPoster(videoId: string, uid = "u1") {
+  const r = await call(`/api/hf/onboarding/intro-video/${videoId}/poster`, { method: "PUT", body: new Uint8Array(300), headers: { "content-type": "image/jpeg" } }, uid);
+  expect((await body(r)).ok).toBe(true);
+}
+
+describe("intro video clean-up", () => {
+  it("reject deletes the video + poster from storage, keeps the row and the reasons, emits telemetry", async () => {
+    host("u1"); social("u1");
+    const videoId = await recordedDraft();
+    await withPoster(videoId);
+    const j = await body(await submit({ categories: ["traveller"], lang: "en", intro_video_id: videoId, call_option: "B" }));
+    const s = { videoId, appId: j.application.id as string };
+    expect(blobs.size).toBe(2);
+    const bytes = db.prepare("SELECT bytes FROM hf_intro_videos WHERE id=?").get(s.videoId).bytes;
+    const r = await body(await reject(s.appId, { reasons: ["video_dark"] }));
+    expect(r).toMatchObject({ ok: true, status: "rejected", videoDeleted: true });
+    expect(blobs.size).toBe(0);
+    const row = db.prepare("SELECT * FROM hf_intro_videos WHERE id=?").get(s.videoId);
+    expect(row).toMatchObject({ status: "rejected", r2_key: "", poster_key: null, deleted_reason: "rejected" });
+    expect(row.deleted_at).toBeGreaterThan(0);
+    expect(db.prepare("SELECT reject_reasons_json FROM hf_influencer_applications WHERE id=?").get(s.appId).reject_reasons_json).toContain("video_dark");
+    expect(delEvents()).toHaveLength(1);
+    expect(delEvents()[0].props).toMatchObject({ reason: "rejected", bytes, files: 2 });
+    // admin detail: no URLs, says when it was deleted (drives the "Video deleted" panel)
+    const d = await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`));
+    expect(d.video).toMatchObject({ videoUrl: null, posterUrl: null, deletedReason: "rejected" });
+    expect(d.video.deletedAt).toBe(row.deleted_at);
+    // the person's own state does not show the dead video
+    expect((await body(await call("/api/hf/onboarding/me"))).video).toBeNull();
+  });
+
+  it("a failed R2 delete keeps the keys; the daily sweep finishes the job", async () => {
+    const s = await submitted();
+    const realDelete = env.BLOBS.delete;
+    env.BLOBS.delete = async () => { throw new Error("r2 down"); };
+    expect((await body(await reject(s.appId, { reasons: ["video_dark"] }))).videoDeleted).toBe(false);
+    expect(blobs.size).toBe(1);
+    expect(db.prepare("SELECT deleted_at FROM hf_intro_videos WHERE id=?").get(s.videoId).deleted_at).toBeNull();
+    env.BLOBS.delete = realDelete;
+    const r = await sweepIntroVideos(env);
+    expect(r).toMatchObject({ rejected: 1, errors: 0 });
+    expect(blobs.size).toBe(0);
+    expect(db.prepare("SELECT deleted_at FROM hf_intro_videos WHERE id=?").get(s.videoId).deleted_at).toBeGreaterThan(0);
+    expect((await sweepIntroVideos(env)).rejected).toBe(0); // nothing left to do
+  });
+
+  it("approve deletes the files of the older approved video (status replaced) and keeps the new one", async () => {
+    const first = await submitted("u1");
+    await approve(first.appId);
+    const oldKey = db.prepare("SELECT r2_key FROM hf_intro_videos WHERE id=?").get(first.videoId).r2_key;
+    const id2 = await recordedDraft("u1");
+    const j = await body(await submit({ categories: ["traveller"], lang: "en", intro_video_id: id2, call_option: "B" }));
+    expect(j.status).toBe(200);
+    expect(blobs.has(oldKey)).toBe(true);
+    const ok = await body(await approve(j.application.id));
+    expect(ok.ok).toBe(true);
+    expect(blobs.has(oldKey)).toBe(false);
+    expect(blobs.size).toBe(1);
+    expect(db.prepare("SELECT status, r2_key, deleted_reason FROM hf_intro_videos WHERE id=?").get(first.videoId)).toMatchObject({ status: "replaced", r2_key: "", deleted_reason: "replaced" });
+    expect(db.prepare("SELECT status, deleted_at FROM hf_intro_videos WHERE id=?").get(id2)).toMatchObject({ status: "approved", deleted_at: null });
+    expect(delEvents().map((e) => e.props.reason)).toEqual(["replaced"]);
+  });
+
+  it("recording again replaces the old draft and deletes its file (telemetry draft_replaced)", async () => {
+    await recordedDraft(); await recordedDraft();
+    expect(blobs.size).toBe(1);
+    expect(delEvents().map((e) => e.props.reason)).toEqual(["draft_replaced"]);
+  });
+
+  it("drafts never submitted for 7 days are deleted; younger ones and submitted ones stay", async () => {
+    const old = await recordedDraft("u1");
+    const young = await recordedDraft("u2");
+    const sub = await submitted("u3");
+    const t = Date.now();
+    db.prepare("UPDATE hf_intro_videos SET created_at=? WHERE id=?").run(t - 8 * dayMs, old);
+    db.prepare("UPDATE hf_intro_videos SET created_at=? WHERE id=?").run(t - 8 * dayMs, sub.videoId); // submitted: not a draft any more
+    db.prepare("UPDATE hf_intro_videos SET created_at=? WHERE id=?").run(t - 6 * dayMs, young);
+    const r = await sweepIntroVideos(env, t);
+    expect(r.expired).toBe(1);
+    expect(db.prepare("SELECT status, r2_key, deleted_reason FROM hf_intro_videos WHERE id=?").get(old)).toMatchObject({ status: "expired", r2_key: "", deleted_reason: "draft_expired" });
+    expect(db.prepare("SELECT status FROM hf_intro_videos WHERE id=?").get(young).status).toBe("draft");
+    expect(db.prepare("SELECT status FROM hf_intro_videos WHERE id=?").get(sub.videoId).status).toBe("submitted");
+    expect(blobs.size).toBe(2);
+    // an expired draft can no longer be submitted
+    host("u1"); social("u1");
+    expect((await body(await submit(base(old)))).error).toBe("video_not_available");
+  });
+
+  it("weekly orphan check deletes unreferenced intro-video/ objects, spares referenced and brand-new ones, runs once a week", async () => {
+    const kept = await recordedDraft("u1");
+    const keptKey = db.prepare("SELECT r2_key FROM hf_intro_videos WHERE id=?").get(kept).r2_key;
+    blobs.set("intro-video/u9/hfin_orphan.mp4", new Uint8Array(500));
+    blobs.set("intro-video/u9/hfin_new.mp4", new Uint8Array(500));
+    uploadedAt.set("intro-video/u9/hfin_new.mp4", new Date()); // in flight: younger than the grace period
+    const r = await sweepIntroVideos(env);
+    expect(r.orphans).toBe(1);
+    expect(blobs.has("intro-video/u9/hfin_orphan.mp4")).toBe(false);
+    expect(blobs.has("intro-video/u9/hfin_new.mp4")).toBe(true);
+    expect(blobs.has(keptKey)).toBe(true);
+    expect(delEvents().find((e) => e.props.reason === "orphan")?.props).toMatchObject({ bytes: 500, uid: "u9" });
+    blobs.set("intro-video/u9/hfin_orphan2.mp4", new Uint8Array(1));
+    expect((await sweepIntroVideos(env)).orphans).toBe(0); // once a week
+    expect(blobs.has("intro-video/u9/hfin_orphan2.mp4")).toBe(true);
+  });
+
+  it("the sweep does nothing (and does not throw) before the deleted_at column exists", async () => {
+    db.exec("DROP TABLE hf_intro_videos; CREATE TABLE hf_intro_videos (id TEXT PRIMARY KEY, uid TEXT, r2_key TEXT, status TEXT)");
+    expect(await sweepIntroVideos(env)).toMatchObject({ rejected: 0, replaced: 0, expired: 0, orphans: 0 });
   });
 });

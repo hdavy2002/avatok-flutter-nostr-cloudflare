@@ -25,7 +25,8 @@ export interface IntroDetail {
   ok?: true;
   application: IntroApplication;
   host: { uid: string; status?: string; name: string | null; description: string | null; ratePerMin: number | null; photoUrl: string | null; callOption?: CallOption; createdAt?: number | null };
-  video: { videoUrl: string; posterUrl: string | null; durationMs?: number; width?: number; height?: number; lang?: string | null; topic?: string | null } | null;
+  // [HF-INTRO-DELETE-1] after a reject the files are deleted: videoUrl / posterUrl are null and deletedAt says when (deletedReason: rejected | replaced | draft_expired ...).
+  video: { videoUrl: string | null; posterUrl: string | null; durationMs?: number; width?: number; height?: number; lang?: string | null; topic?: string | null; deletedAt?: number | null; deletedReason?: string | null } | null;
   socials: IntroSocial[];
   aadhaar: { done: boolean; female: boolean; gender?: string | null };
   whatsappVerified: boolean;
@@ -34,7 +35,7 @@ export interface IntroDetail {
   history?: IntroApplication[];
   rejectReasons: RejectReason[];
 }
-export interface DecisionResult { ok: true; status: 'approved' | 'rejected'; notified?: boolean; notifyReason?: string | null }
+export interface DecisionResult { ok: true; status: 'approved' | 'rejected'; notified?: boolean; notifyReason?: string | null; videoDeleted?: boolean }
 
 const e = encodeURIComponent;
 const BASE = '/api/admin/hf/intro-applications';
