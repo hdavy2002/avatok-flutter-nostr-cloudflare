@@ -216,7 +216,7 @@ class _QueueScreenState extends State<QueueScreen> {
       // [HF-CALL-SAFETY-APP] 403 account_paused / call_rules_required: open the matching screen.
       if (e is ApiException && (e.code == 'account_paused' || e.code == 'call_rules_required')) {
         setState(() => _busy = false);
-        SafetyGate.handle(GoRouter.of(context), e.code, surface: 'queue');
+        SafetyGate.handle(GoRouter.maybeOf(context), e.code, surface: 'queue');
         return;
       }
       // [HF-CREATOR-SPACES-1] 403 lane_required: the locked prompt with "Verify to call".

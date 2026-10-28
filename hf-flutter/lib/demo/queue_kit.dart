@@ -103,7 +103,7 @@ class HostModeSheet extends StatelessWidget {
         if (!ok || !context.mounted) return;
       }
     }
-    final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP] captured before the sheet closes
+    final go = GoRouter.maybeOf(context); // [HF-CALL-SAFETY-APP] captured before the sheet closes
     Navigator.of(context).pop();
     final from = st.mode;
     final err = await st.setMode(mode);

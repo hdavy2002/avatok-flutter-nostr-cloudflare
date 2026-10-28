@@ -44,7 +44,7 @@ Future<void> togglePresence(BuildContext context) async {
   }
   final store = PresenceStore.instance;
   final messenger = ScaffoldMessenger.of(context);
-  final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP] captured before the await
+  final go = GoRouter.maybeOf(context); // [HF-CALL-SAFETY-APP] captured before the await
   final error = await store.setOnline(goOnline);
   if (error != null && SafetyGate.handle(go, store.lastErrorCode)) return;
   final msg = error ?? (goOnline ? 'You are online. Fans can call you now.' : 'You are offline. Bookings stay open.');

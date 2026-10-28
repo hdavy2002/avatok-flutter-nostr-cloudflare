@@ -479,7 +479,7 @@ class InfluencerShell extends StatelessWidget {
     }
     if (option == 'B') {
       final goOnline = !myOnline;
-      final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP]
+      final go = GoRouter.maybeOf(context); // [HF-CALL-SAFETY-APP]
       final err = await PresenceStore.instance.setMode(goOnline ? 'online' : 'bookings_only');
       if (!context.mounted) return;
       if (err != null && SafetyGate.handle(go, PresenceStore.instance.lastErrorCode, surface: 'footer')) return;

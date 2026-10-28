@@ -27,7 +27,8 @@ String safetyDate(int ms) {
 /// starting a call or joining a queue: open the matching screen instead of a bare error line.
 abstract final class SafetyGate {
   /// True when [code] was a safety refusal and a screen was opened (the caller then skips its own error text).
-  static bool handle(GoRouter go, String? code, {String surface = 'online'}) {
+  static bool handle(GoRouter? go, String? code, {String surface = 'online'}) {
+    if (go == null) return false; // no router (tests / detached context): fall back to the plain message
     if (code == 'account_paused') {
       Telemetry.event('hf_safety_gate_shown', {'code': 'account_paused', 'surface': surface});
       unawaited(go.push<void>('/safety/paused'));

@@ -206,7 +206,7 @@ class CallOptionCard extends StatelessWidget {
 
   Future<void> _toggleOnline(BuildContext context) async {
     final goOnline = !presence.online;
-    final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP]
+    final go = GoRouter.maybeOf(context); // [HF-CALL-SAFETY-APP]
     final err = await presence.setMode(goOnline ? 'online' : 'bookings_only');
     if (!context.mounted) return;
     if (err != null && SafetyGate.handle(go, presence.lastErrorCode)) return;

@@ -441,7 +441,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       }
       // [HF-CALL-SAFETY-APP] 403 account_paused / call_rules_required: open the matching screen.
       if (e is ApiException && (e.code == 'account_paused' || e.code == 'call_rules_required')) {
-        SafetyGate.handle(GoRouter.of(context), e.code, surface: 'booking');
+        SafetyGate.handle(GoRouter.maybeOf(context), e.code, surface: 'booking');
         return;
       }
       if (await handleLaneRequired(context, e)) return; // [HF-CREATOR-SPACES-1]
