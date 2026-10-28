@@ -29,6 +29,7 @@ import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
 import { isIgOauth, instagramOauthLookup, refreshTokenIfDue, wipeInstagramChannel } from "../lib/hf_instagram"; // [HF-IG-LOGIN-1]
+import { isFbOauth, wipeFbChannel } from "../lib/hf_facebook"; // [HF-FB-LOGIN-1]
 import { refreshRecentReelComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 import {
   lookupChannel, makeVerifyCode, bioHasCode, ProviderError, youtubeOwnChannel, type ChannelLookup, type ChannelPlatform,
@@ -82,7 +83,7 @@ function instructionsFor(platform: string, code: string): string {
 function providerFailure(e: ProviderError, platform: string): Response {
   const name = PLATFORM_NAME[platform] ?? "that site";
   if (e.code === "bad_handle") return err(400, "invalid_field", `That does not look like a ${name} ${platform === "youtube" ? "channel" : "username"}. Check the spelling.`, { field: "handleOrUrl" });
-  if (e.code === "provider_not_configured") return err(503, "provider_not_configured", platform === "instagram" ? "Instagram is coming soon." : "Channel checks are not switched on yet. Please try again later.");
+  if (e.code === "provider_not_configured") return err(503, "provider_not_configured", platform === "instagram" ? "Instagram is coming soon." : "Social media verification is not switched on yet. Please try again later.");
   if (e.code === "token_invalid") return platform === "instagram"
     ? err(400, "token_invalid", "Your Instagram login expired. Please log in with Instagram again.")
     : err(400, "token_invalid", "Google sign-in expired. Please sign in with YouTube again.");
@@ -163,14 +164,14 @@ export async function ensureHostRow(env: Env, uid: string, now: number): Promise
 export type CheckResult = "approved" | "needs_followers" | "needs_views" | "code_missing" | "not_found" | "private" | "hidden_count" | "claimed";
 
 const RESULT_TEXT = (min: number, minViews = 1000): Record<CheckResult, string> => ({
-  approved: "You're in! Your channel is confirmed.",
-  needs_followers: `We need at least ${min} followers or subscribers on YouTube or Instagram.`,
+  approved: "You're in! Your social media verification is confirmed.",
+  needs_followers: `We need at least ${min} followers or subscribers on YouTube, Instagram or Facebook.`,
   needs_views: `We need at least ${minViews.toLocaleString("en-US")} total views on your YouTube channel.`,
   code_missing: "We could not see the code yet. It can take a minute to show. Check it is saved, then try again.",
-  not_found: "We could not find that channel any more. Check the name and try again.",
+  not_found: "We could not find that account any more. Check the name and try again.",
   private: "This Instagram account is private. Make it public for now so we can check it.",
   hidden_count: "Your subscriber count is hidden. Show it in your YouTube settings, then check again.",
-  claimed: "That channel is already connected to another person.",
+  claimed: "That account is already used for social media verification by another person.",
 });
 
 /** [HF-CREATOR-SPACES-1] followers >= min, and for YouTube total views >= minViews (Instagram has no total views: followers only). */
@@ -184,6 +185,7 @@ export function thresholdResult(platform: string, followers: number, views: numb
 /** Re-read the channel, check the code (until verified once), refresh followers and set the status. Never called for a disconnected channel. */
 async function runCheck(env: Env, ch: ChRow, min: number, minViews: number, lookup?: ChannelLookup): Promise<{ result: CheckResult; row: ChRow }> {
   const now = Date.now();
+  if (!lookup && isFbOauth(ch)) return { result: ch.status === "approved" ? "approved" : "needs_followers", row: ch }; // [HF-FB-LOGIN-1] login-only: nothing to re-read without a stored token; reconnect refreshes it
   const lk = lookup ?? (isIgOauth(ch) // [HF-IG-LOGIN-1] logged-in Instagram channels are read with her own token, never through treg
     ? await instagramOauthLookup(env, ch)
     : await lookupChannel(env, ch.platform as ChannelPlatform, ch.platform === "youtube" && ch.platform_user_id ? ch.platform_user_id : ch.handle));
@@ -263,7 +265,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       if (!lk.exists || !lk.platformUserId) return err(404, "no_youtube_channel", "This Google account has no YouTube channel. Create one on YouTube, then try again.");
       const active = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status!='disconnected'").bind(uid).first<{ c: number }>())?.c ?? 0);
       const mine0 = await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE host_uid=?1 AND platform='youtube' AND platform_user_id=?2 AND status!='disconnected' LIMIT 1`).bind(uid, lk.platformUserId).first<ChRow>();
-      if (!mine0 && active >= MAX_CHANNELS) return err(409, "limit_reached", `You can connect up to ${MAX_CHANNELS} channels. Remove one first.`);
+      if (!mine0 && active >= MAX_CHANNELS) return err(409, "limit_reached", `You can verify up to ${MAX_CHANNELS} social media accounts. Remove one first.`);
       const claimed = await env.DB_META.prepare("SELECT id FROM hf_channels WHERE platform='youtube' AND platform_user_id=?1 AND verified_at IS NOT NULL AND status!='disconnected' AND host_uid!=?2 LIMIT 1").bind(lk.platformUserId, uid).first();
       if (claimed) { emit("hf_channel_added", { platform: "youtube", ok: false, code: "channel_claimed", via: "signin" }); return err(409, "channel_claimed", RESULT_TEXT(min).claimed); }
       const now = Date.now();
@@ -316,9 +318,13 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       const lim = await rateLimit(env, `hfch:${uid}`, 20, 3600);
       if (lim) return lim;
       const b = await readBody(req);
-      if (!b) return err(400, "invalid_body", "Please send your channel details.");
+      if (!b) return err(400, "invalid_body", "Please send your social media account details.");
       const platform = String(b.platform ?? "").toLowerCase();
-      if (platform === "facebook") return err(400, "platform_unsupported", "Facebook is coming soon. Please use Instagram or YouTube for now.", { field: "platform" });
+      if (platform === "facebook") { // [HF-FB-LOGIN-1] no bio-code route for Facebook: only login. Flag off keeps the old "coming soon".
+        return cfg.hfFacebookLoginEnabled === true
+          ? err(400, "platform_unsupported", "Please use Log in with Facebook for Social media verification.", { field: "platform" })
+          : err(400, "platform_unsupported", "Facebook is coming soon. Please use Instagram or YouTube for now.", { field: "platform" });
+      }
       if (platform !== "instagram" && platform !== "youtube") return err(400, "invalid_field", "Pick Instagram or YouTube.", { field: "platform" });
       const handleOrUrl = typeof b.handleOrUrl === "string" ? b.handleOrUrl : "";
       const consent = (b.consent && typeof b.consent === "object" ? b.consent : {}) as Record<string, unknown>;
@@ -327,7 +333,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
         return err(400, "consent_required", "Please tick every box so we can show your reels.", { field: "consent" });
       }
       const active = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status!='disconnected'").bind(uid).first<{ c: number }>())?.c ?? 0);
-      if (active >= MAX_CHANNELS) return err(409, "limit_reached", `You can connect up to ${MAX_CHANNELS} channels. Remove one first.`);
+      if (active >= MAX_CHANNELS) return err(409, "limit_reached", `You can verify up to ${MAX_CHANNELS} social media accounts. Remove one first.`);
 
       let lk: ChannelLookup;
       try { lk = await lookupChannel(env, platform, handleOrUrl); } catch (e) {
@@ -367,11 +373,12 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
 
     // ── routes on one channel: always the caller's own ──────────────────────────────────────────────────────────
     const ch = await loadOwn(env, uid, id);
-    if (!ch) return err(404, "not_found", "We could not find that channel.");
+    if (!ch) return err(404, "not_found", "We could not find that social media verification.");
 
     if (method === "DELETE") {
       if (ch.status !== "disconnected") {
         await env.DB_META.prepare("UPDATE hf_channels SET status='disconnected' WHERE id=?1 AND host_uid=?2").bind(id, uid).run();
+        if (isFbOauth(ch)) await wipeFbChannel(env, id); // [HF-FB-LOGIN-1]
         if (isIgOauth(ch)) await wipeInstagramChannel(env, id); // [HF-IG-LOGIN-1] token, imported comments (replied-to ones blanked), reels hidden
         await syncHostState(env, uid);
         emit("hf_channel_removed", { platform: ch.platform });
@@ -380,7 +387,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     }
 
     // check / resync
-    if (ch.status === "disconnected") return err(409, "disconnected", "This channel was removed. Add it again to check it.");
+    if (ch.status === "disconnected") return err(409, "disconnected", "This social media verification was removed. Add it again to check it.");
     const lim = await rateLimit(env, `hfchk:${uid}`, 30, 3600);
     if (lim) return lim;
     const limCh = await rateLimit(env, `hfchk:${id}`, 6, 600);
@@ -419,7 +426,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
   const minViews = minViewsOf(cfg as unknown as Record<string, unknown>);
   const cutoff = Date.now() - RESYNC_EVERY_MS;
   const rows = (await env.DB_META.prepare(
-    `SELECT ${COLS} FROM hf_channels WHERE verified_at IS NOT NULL AND status IN ('approved','rejected') AND (last_sync_at IS NULL OR last_sync_at < ?1) ORDER BY last_sync_at ASC LIMIT ?2`,
+    `SELECT ${COLS} FROM hf_channels WHERE verified_at IS NOT NULL AND status IN ('approved','rejected') AND COALESCE(provider_ref,'')!='facebook-oauth' AND (last_sync_at IS NULL OR last_sync_at < ?1) ORDER BY last_sync_at ASC LIMIT ?2`,
   ).bind(cutoff, batch).all<ChRow>()).results ?? [];
   const hosts = new Set<string>();
   for (const ch of rows) {

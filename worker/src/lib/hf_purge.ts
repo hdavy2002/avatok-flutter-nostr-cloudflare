@@ -100,6 +100,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_host_open_alerts", cols: ["host_uid"] }, // [HF-BOOK-APPROVE-BE] "you're open" alert dedupe
     { table: "hf_channel_tokens", cols: ["host_uid"] }, // [HF-IG-LOGIN-1] encrypted Instagram login tokens
     { table: "hf_reel_ig_media", cols: ["host_uid"] }, // [HF-IG-LOGIN-1] reel -> Instagram media id
+    { table: "hf_fb_logins", cols: ["host_uid"] }, // [HF-FB-LOGIN-1] channel -> Facebook user id
     { table: "hf_channels", cols: ["host_uid"] }, // [HF-WIRE-3] influencer Instagram/YouTube channels
     { table: "hf_user_prefs", cols: ["uid"] }, // [HF-DASH-V3-1] notification preference
     { table: "hf_support_tickets", cols: ["uid"] }, // [HF-DASH-V3-1] questions sent from the dashboard

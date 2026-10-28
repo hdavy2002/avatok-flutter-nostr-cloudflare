@@ -299,7 +299,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     // [HF-CREATOR-BADGES-1] one go-live rule: approved channel OR video KYC (creators only; standard hosts keep their own review), plus the space qualification.
     const gl = goLiveBlockers(await goLiveFacts(env, uid), { requireBasis: isCreatorCat((await env.DB_META.prepare("SELECT category FROM hf_hosts WHERE uid=?1").bind(uid).first<{ category: string | null }>())?.category) });
     if (gl.includes("video_kyc_required")) return err(409, "video_kyc_required", { message: "This Women-only / LGBTQ+ creator has not passed video KYC yet." });
-    if (gl.includes("verification_required")) return err(409, "verification_required", { message: "Needs an approved channel or a video KYC before going live." });
+    if (gl.includes("verification_required")) return err(409, "verification_required", { message: "Needs an approved social media verification or a video KYC before going live." });
     const missing: string[] = [];
     if (!phoneOk) missing.push("whatsapp_not_verified");
     if (!media?.n) missing.push("no_media");

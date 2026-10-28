@@ -343,6 +343,7 @@ export interface Env {
   // [HF-IG-LOGIN-1] Both live in KV (secret:<NAME>, lib/kv_secrets.ts): the Worker is at the 128-binding limit.
   INSTAGRAM_APP_SECRET?: string;
   HF_TOKEN_ENC_KEY?: string;
+  FACEBOOK_APP_SECRET?: string; // [HF-FB-LOGIN-1] KV secret too (Facebook Login: state signing, code exchange, signed_request)
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
   // [AGENT-LIVE-1] OpenAI API key for the gpt-live-1 realtime WebSocket relay,
   // the gpt-6-astra backend/vision calls and the RAG Files/Vector Store APIs.

@@ -45,3 +45,52 @@ export async function publicChannels(env: Env, hostUid: string): Promise<PublicC
     return [];
   }
 }
+
+// ── [HF-FB-LOGIN-1] Verified socials (HF-INTRO-14/15): the accounts she PROVED by logging in, for the reel icons and the "Verified owner of" sheet. ──
+export type VerifiedPlatform = "youtube" | "instagram" | "facebook";
+export interface VerifiedSocial { platform: VerifiedPlatform; handle: string; url: string; followers?: number }
+
+/** provider_ref values that mean "ownership proven by the platform's own login" (a bio-code or treg check never counts). */
+const OAUTH_REFS: Record<VerifiedPlatform, string> = { youtube: "youtube-oauth", instagram: "instagram-oauth", facebook: "facebook-oauth" };
+const PLATFORM_ORDER: VerifiedPlatform[] = ["youtube", "instagram", "facebook"];
+
+interface VRow { host_uid: string; platform: string; handle: string; url: string | null; followers: number | null; provider_ref: string | null }
+
+/** Pure shaping of channel rows into verifiedSocials (exported for tests). Keeps only approved-by-login rows, one per platform+handle, YouTube/Instagram/Facebook order. */
+export function shapeVerifiedSocials(rows: Omit<VRow, "host_uid">[]): VerifiedSocial[] {
+  const seen = new Set<string>();
+  const out: VerifiedSocial[] = [];
+  for (const r of rows) {
+    const platform = String(r.platform || "").toLowerCase() as VerifiedPlatform;
+    if (!(platform in OAUTH_REFS) || r.provider_ref !== OAUTH_REFS[platform]) continue;
+    const pc = toPublicChannel({ platform, handle: r.handle, url: r.url, followers: r.followers, views: 0, reel_views: 0, last_sync_at: null });
+    if (!pc.handle || !pc.url || seen.has(platform + pc.handle)) continue;
+    seen.add(platform + pc.handle);
+    out.push({ platform, handle: pc.handle, url: pc.url, ...(pc.followers > 0 ? { followers: pc.followers } : {}) });
+  }
+  return out.sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform) || (b.followers ?? 0) - (a.followers ?? 0));
+}
+
+/** Verified socials for many hosts in one query: uid -> list. Never throws (a failure means no icons, not a broken feed). */
+export async function verifiedSocialsForMany(env: Env, uids: string[]): Promise<Map<string, VerifiedSocial[]>> {
+  const out = new Map<string, VerifiedSocial[]>();
+  const ids = [...new Set(uids.filter(Boolean))];
+  if (!ids.length) return out;
+  try {
+    const ph = ids.map((_, i) => `?${i + 1}`).join(",");
+    const rows = (await env.DB_META.prepare(
+      `SELECT host_uid, platform, handle, url, followers, provider_ref FROM hf_channels
+        WHERE host_uid IN (${ph}) AND status='approved' AND verified_at IS NOT NULL AND platform IN ('youtube','instagram','facebook')
+          AND provider_ref IN ('youtube-oauth','instagram-oauth','facebook-oauth') ORDER BY followers DESC`,
+    ).bind(...ids).all<VRow>()).results ?? [];
+    const by = new Map<string, VRow[]>();
+    for (const r of rows) { const l = by.get(r.host_uid) ?? []; l.push(r); by.set(r.host_uid, l); }
+    for (const [uid, l] of by) out.set(uid, shapeVerifiedSocials(l));
+  } catch { /* no icons rather than a broken feed */ }
+  return out;
+}
+
+/** The one builder every surface uses: [{ platform:'youtube'|'instagram'|'facebook', handle, url, followers? }] for the accounts this host proved by login. */
+export async function verifiedSocialsFor(env: Env, uid: string): Promise<VerifiedSocial[]> {
+  return (await verifiedSocialsForMany(env, [uid])).get(uid) ?? [];
+}

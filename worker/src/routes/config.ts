@@ -2210,6 +2210,8 @@ export interface PlatformConfig {
   hfInvitesEnabled: boolean; // "Invite" votes for influencers not yet on the app
   hfInviteYoutubeComments: boolean; // [HF-CHANNEL-LOGIN-P1] HF-REEL-59: import YouTube comments (official API) for invite reels. Default true; owner may switch off. Instagram is never imported through treg.
   hfInstagramLoginEnabled: boolean; // [HF-IG-LOGIN-1] HF-REEL-58: "Log in with Instagram" for influencer channels (routes /api/hf/channels/instagram/*, official-API reels + comments import). Default false. Public in /api/config (the app hides the button when off).
+  hfFacebookLoginEnabled: boolean; // [HF-FB-LOGIN-1] HF-INTRO-3: "Log in with Facebook" under Social media verification (routes /api/hf/channels/facebook/*). Default false until Meta App Review passes. Public in /api/config.
+  hfFacebookAppId: string; // [HF-FB-LOGIN-1] STRING (stringKeys): Meta app id for Facebook Login (not a secret). Default empty = not configured.
   hfInstagramAppId: string; // [HF-IG-LOGIN-1] STRING (stringKeys): the Meta app id used in the Instagram authorize URL (not a secret). Default is the Hello Fraands Meta app.
   hfInviteReelsEnabled: boolean; // [HF-WIRE-22] HF-REEL-40: reels of creators not on the network appear after network reels in the feed, with an Invite button. Default true.
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
@@ -3024,6 +3026,8 @@ const DEFAULTS: PlatformConfig = {
   hfInviteYoutubeComments: true, // [HF-CHANNEL-LOGIN-P1]
   hfInstagramLoginEnabled: false, // [HF-IG-LOGIN-1] dark until Meta App Review passes and the owner flips it
   hfInstagramAppId: "1116106647810644", // [HF-IG-LOGIN-1]
+  hfFacebookLoginEnabled: false, // [HF-FB-LOGIN-1] dark until Meta App Review passes and the owner flips it
+  hfFacebookAppId: "", // [HF-FB-LOGIN-1]
   hfInviteReelsEnabled: true, // [HF-WIRE-22]
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
@@ -3434,6 +3438,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfGstin", "hfLegalName", "hfLegalAddress", "hfStateCode", "hfInvoicePrefix", // [HF-WALLET-LIMITS-1]
     "hfAckVersion", // [HF-NATIVE-S4]
     "hfInstagramAppId", // [HF-IG-LOGIN-1]
+    "hfFacebookAppId", // [HF-FB-LOGIN-1]
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);

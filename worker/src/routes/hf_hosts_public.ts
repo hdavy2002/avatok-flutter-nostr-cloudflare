@@ -15,7 +15,7 @@ import type { HostAggregate } from "../lib/hf_reviews_pure";
 import { profileReels, isHiddenDemoHost } from "./hf_reels"; // [HF-WIRE-4]
 import { mediaUrl, mediaToJson, type HostRow, type MediaRow } from "../lib/hf_host_store";
 import { lineFieldsForUids, type HostLineFields } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
-import { publicChannels } from "../lib/hf_public_channels"; // [HF-CHANNEL-MOBILE-1]
+import { publicChannels, verifiedSocialsFor } from "../lib/hf_public_channels"; // [HF-CHANNEL-MOBILE-1]
 
 const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
@@ -111,6 +111,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
         protectedLane: lane,
         ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std, (await lineFieldsForUids(env, [r.uid]))?.get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, about: r.about ?? null, quote: r.quote, // [HF-DAILY-FLOWS-1] the host's own saved bio is the fallback while no polished version exists
         ...(pr ? { reels: pr.reels, followers: pr.followers, handle: pr.handle } : {}),
+        verifiedSocials: await verifiedSocialsFor(env, r.uid), // [HF-FB-LOGIN-1] accounts proven by login: reel icons + the "Verified owner of" sheet
         channels: await publicChannels(env, r.uid), // [HF-CHANNEL-MOBILE-1] "Find me on" cards: platform, handle, followers, views
         gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption, imageProvenance: m.job_id ? "ai" : "uploaded" }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);

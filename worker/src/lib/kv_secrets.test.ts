@@ -16,7 +16,7 @@ describe("[HF-WIRE-18] KV-held secrets", () => {
     expect(env.TREG_API_KEY).toBe("abc");
   });
   it("a real Worker secret wins and KV is not read", async () => {
-    const { env, reads } = envWith({ "secret:TREG_API_KEY": "kv" }, { TREG_API_KEY: "real", PRINTROVE_LOGIN: "real", INSTAGRAM_APP_SECRET: "real", HF_TOKEN_ENC_KEY: "real" });
+    const { env, reads } = envWith({ "secret:TREG_API_KEY": "kv" }, { TREG_API_KEY: "real", PRINTROVE_LOGIN: "real", INSTAGRAM_APP_SECRET: "real", HF_TOKEN_ENC_KEY: "real", FACEBOOK_APP_SECRET: "real" });
     await hydrateKvSecrets(env);
     expect(env.TREG_API_KEY).toBe("real");
     expect(reads()).toBe(0);
