@@ -93,7 +93,7 @@ function host(uid: string, o: any = {}) {
     .run(uid, o.slug === undefined ? "slug-" + uid : o.slug, o.status ?? "draft", o.name === undefined ? "Name " + uid : o.name, o.about === undefined ? "I talk about travel and food." : o.about, o.rate ?? 20, o.presence ?? "offline", o.mode ?? "online", o.avatar === undefined ? "av1" : o.avatar, o.women ?? 0);
 }
 const kyc = (uid: string, gender: string, done = 1) => db.prepare("INSERT INTO hf_kyc (uid, gender, verified_at) VALUES (?,?,?)").run(uid, gender, done ? 1 : null);
-const social = (uid: string, platform = "youtube") => db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, platform_user_id) VALUES (?,?,?,?,?,?,?,?,?)").run("ch_" + uid + platform, uid, platform, "@" + uid, 500, "approved", 1, 1, "pu_" + uid + platform);
+const social = (uid: string, platform = "youtube") => db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, platform_user_id, provider_ref, url) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run("ch_" + uid + platform, uid, platform, "@" + uid, 500, "approved", 1, 1, "pu_" + uid + platform, platform + "-oauth", "https://example.com/" + uid); // [HF-INTRO-INT] verified by login
 async function recordedDraft(uid = "u1") { const j = await body(await upload({}, uid)); expect(j.ok).toBe(true); return j.video.id as string; }
 const base = (id: string, o: any = {}) => ({ categories: o.categories ?? ["traveller"], lang: "hi", intro_video_id: id, call_option: o.option ?? "B" });
 

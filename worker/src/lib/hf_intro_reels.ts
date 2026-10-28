@@ -7,7 +7,10 @@ import { BRAND, brandUrl } from "./brand";
 import { trackException } from "../hooks";
 import { mediaUrl } from "./hf_host_store";
 import { categoriesFromJson } from "./hf_categories";
-import { toPublicChannel } from "./hf_public_channels";
+import { verifiedSocialsForMany, type VerifiedSocial } from "./hf_public_channels"; // [HF-INTRO-INT] D14: only accounts proven by login
+import { mainActionFor, parseCallOption } from "./hf_call_option"; // [HF-INTRO-INT] one button rule for web + app (W2)
+import type { PublicCallState } from "./hf_call_contracts";
+import { readConfig } from "../routes/config";
 import { lineFieldsForUids } from "./hf_host_line_view";
 import { INTRO_VIDEO_ID_RE } from "./hf_intro_video";
 
@@ -57,7 +60,11 @@ export async function introReelItems(env: Env, q: IntroReelQuery = {}): Promise<
   const last = page[page.length - 1];
   const nextCursor = rows.length > limit && last ? `${last.intro_approved_at}_${last.id}` : null;
   const uids = [...new Set(page.map((r) => r.uid))];
-  const [socialsBy, handleBy, lines] = await Promise.all([socialsFor(env, uids), handlesFor(env, uids), lineFieldsForUids(env, uids).catch(async (e) => {
+  const cfg = (await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>;
+  const [socialsBy, handleBy, lines] = await Promise.all([verifiedSocialsForMany(env, uids).catch(async (e) => {
+    await trackException(env, e, { route: "hf_intro_reels", handled: true, app_name: BRAND.slug, extra: { area: "hf_intro_reels", step: "socials" } });
+    return new Map<string, VerifiedSocial[]>();
+  }), handlesFor(env, uids), lineFieldsForUids(env, uids).catch(async (e) => {
     await trackException(env, e, { route: "hf_intro_reels", handled: true, app_name: BRAND.slug, extra: { area: "hf_intro_reels", step: "line_fields" } });
     return null;
   })]);
@@ -67,6 +74,7 @@ export async function introReelItems(env: Env, q: IntroReelQuery = {}): Promise<
     const handle = handleBy.get(r.uid) ?? (socials[0] ? "@" + socials[0].handle : null);
     const callState = introCallState(r.call_option, r.presence, line?.callState);
     const description = oneLine(r.about, r.tagline);
+    const mainAction = mainActionFor({ option: parseCallOption(r.call_option), state: callState as PublicCallState, queueOpen: line?.queue?.open === true, bookingsOn: cfg.hfBookingsEnabled === true });
     const ratePaise = Math.max(0, Math.trunc(Number(r.price_per_min))) * 100;
     const posterUrl = r.poster_key ? mediaUrl(env, r.poster_key) : null;
     const shareUrl = brandUrl(`/r/${r.id}`);
@@ -78,10 +86,10 @@ export async function introReelItems(env: Env, q: IntroReelQuery = {}): Promise<
         presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline", greenTick: true,
         ...(line ? { mode: line.mode, callState: line.callState, queue: line.queue } : {}),
       },
-      categories: categoriesFromJson(r.categories_json), description, ratePaise, callOption: r.call_option, callState,
+      categories: categoriesFromJson(r.categories_json), description, ratePaise, callOption: r.call_option, callState, mainAction,
       ...(line ? { queue: line.queue } : {}),
-      womenOnly: r.women_lane === 1 && categoriesFromJson(r.categories_json).some((c) => c.id === "women_to_women"),
-      greenTick: true, socials: socials.map((s) => ({ platform: s.platform, handle: s.handle, url: s.url })), shareUrl,
+      womenOnly: r.women_lane === 1, // [HF-INTRO-INT] the lane flag is what the server enforces
+      greenTick: true, socials: socials.map((s) => ({ platform: s.platform, handle: s.handle, url: s.url, ...(s.followers != null ? { followers: s.followers } : {}) })), shareUrl,
       // Old-feed field names so an older client never crashes on an intro item.
       url: shareUrl, embedUrl: null, thumbUrl: posterUrl, title: description, caption: description, likes: 0, comments: 0, views: Number(r.views ?? 0), publishedAt: r.intro_approved_at,
     };
@@ -89,24 +97,6 @@ export async function introReelItems(env: Env, q: IntroReelQuery = {}): Promise<
   return { items, nextCursor };
 }
 
-async function socialsFor(env: Env, uids: string[]): Promise<Map<string, ReturnType<typeof toPublicChannel>[]>> {
-  const out = new Map<string, ReturnType<typeof toPublicChannel>[]>();
-  if (!uids.length) return out;
-  try {
-    const rows = (await env.DB_META.prepare(
-      `SELECT host_uid, platform, handle, url, followers FROM hf_channels WHERE status='approved' AND host_uid IN (${uids.map((_, i) => `?${i + 1}`).join(",")}) ORDER BY followers DESC`,
-    ).bind(...uids).all<{ host_uid: string; platform: string; handle: string; url: string | null; followers: number | null }>()).results ?? [];
-    for (const r of rows) {
-      const c = toPublicChannel({ platform: r.platform, handle: r.handle, url: r.url, followers: r.followers, views: null, reel_views: null, last_sync_at: null });
-      const list = out.get(r.host_uid) ?? [];
-      if (c.handle && !list.some((x) => x.platform === c.platform && x.handle === c.handle)) list.push(c);
-      out.set(r.host_uid, list);
-    }
-  } catch (e) {
-    await trackException(env, e, { route: "hf_intro_reels", handled: true, app_name: BRAND.slug, extra: { area: "hf_intro_reels", step: "socials" } });
-  }
-  return out;
-}
 
 async function handlesFor(env: Env, uids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
