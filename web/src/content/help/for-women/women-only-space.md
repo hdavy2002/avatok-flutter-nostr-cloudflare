@@ -1,39 +1,40 @@
 ---
 title: "Women-only channels"
-description: "How Women-only channels work: who can start one, who can call, and what video KYC means."
+description: "How Women-to-Women channels work: who can start one, who can call, and what Aadhaar verification means."
 section: for-women
 order: 2
-updated: 2026-10-24
+updated: 2026-10-28
 keywords: ["women only", "mahila only", "ladies only", "women-only channel", "video kyc", "verified women", "women influencer", "safe calls"]
 audience: both
 faq:
   - q: "Who can start a Women-only channel?"
-    a: "A woman with a verified WhatsApp number, an Aadhaar that shows female, and an approved video KYC selfie video. You do not need a YouTube or Instagram channel."
+    a: "A woman whose Aadhaar is verified and shows female. She picks Women-to-Women when she becomes an influencer in our app. You do not need a YouTube or Instagram account."
   - q: "Who can call a Women-only channel?"
-    a: "Only verified women. You complete video KYC once (WhatsApp, Aadhaar and a selfie video), and it works for every Women-only channel."
+    a: "Only women whose Aadhaar is verified and shows female. You verify with Aadhaar once, and it works for every Women-only channel. No selfie video is needed."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-A **Women-only channel** is started by a verified woman, for verified women. Its profile shows a **Women-only channel** tag, and anyone can find it in Explore, search and Google. Only verified women can call, book, join the queue or ask to be notified.
+A **Women-only channel** (the category is called **Women-to-Women**) is started by an Aadhaar-verified woman, for Aadhaar-verified women. Both the influencer and the caller must be Aadhaar-verified women. Its profile and its Reel show a pink **Women only** tag, and anyone can find it in Explore, search and Google. Only Aadhaar-verified women can call, book, join the queue or ask to be notified.
 
 ## Starting a Women-only channel
 
-1. Verify your WhatsApp number.
-2. Verify your Aadhaar with an OTP (DigiLocker if the OTP does not work). It must show female.
-3. Record a 10-second selfie video reading a short code. This is your **video KYC**. Our team compares your face with your Aadhaar photo.
-4. Once it is approved, your channel can go live.
+1. Open our app and start becoming an influencer.
+2. Pick **Women-to-Women** as one of your categories.
+3. Verify your Aadhaar with an OTP (DigiLocker if the OTP does not work). It must show female. If it does not, you cannot pick this category.
+4. Record your 10 to 20 second live intro video. This is the only video we need. There is no separate selfie video.
+5. A person from our team approves you, and your channel goes live.
 
 ## Calling a Women-only channel
 
-You complete the same video KYC: WhatsApp number, Aadhaar (it must show female) and a selfie video. Until it is approved, the Call, Book, Join queue and Notify buttons stay locked and show **Verify to call**. You verify once, and it works for every Women-only channel. We WhatsApp you when your video is approved.
+You verify your Aadhaar once (it must show female). No selfie video is needed. If you are not verified yet and you tap Call, Book or Join queue, you see: "This is a women-only channel. Only Aadhaar-verified women can talk to her." Tap **Verify now** to start. If you are verified but your Aadhaar does not show female, you see: "Sorry, this channel is for women only." Our system also checks this, so it cannot be skipped.
 
-People who finished video KYC show a green **Video KYC verified** badge. Verification confirms who someone is. It does not guarantee behaviour. Your usual controls still work on every call.
+Verified people show a green **verified** badge. Verification confirms who someone is. It does not guarantee behaviour. Your usual controls still work on every call.
 
 ## Your privacy
 
-Only you and our verification team see your Aadhaar check and your video. We keep only the last 4 digits of your Aadhaar number.
+Only you and our verification team see your Aadhaar check. Your intro video is shown in Reels only after our team approves it. We keep only the last 4 digits of your Aadhaar number.
 
 ## Controls every influencer has
 

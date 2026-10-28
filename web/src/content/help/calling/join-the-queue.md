@@ -3,7 +3,7 @@ title: "What if the influencer is on a call? Join the queue"
 description: "When an influencer is already talking, you can join their queue or book a time. We WhatsApp you, then connect you by ourselves. Nothing is charged while you wait."
 section: calling
 order: 6
-updated: 2026-10-23
+updated: 2026-10-28
 keywords: ["queue", "waiting", "on a call", "busy", "line", "join the queue", "position", "wait", "you're next", "leave the queue"]
 audience: buyer
 faq:
@@ -28,7 +28,7 @@ When an influencer is talking to someone else, you see **On a call** on their pa
 
 1. Tap **Join the queue**. You need a verified WhatsApp number and enough money in your wallet: at least **₹20**, or the cost of **5 minutes** at the influencer's rate if that is more.
 2. We WhatsApp you: "You're in the queue, #N". We do not message you every time you move up.
-3. When the influencer's call ends, she gets a short break of about a minute. Just before we call, we WhatsApp you "you're next".
+3. When the influencer's call ends, she gets a 2 minute break. Just before we call, we WhatsApp you "you're next".
 4. Then we connect you by ourselves. The influencer's phone rings first. Once she picks up, we call you and join you. Your number stays hidden.
 
 **Nothing is charged while you wait.** No money is taken until you are talking. After that, the usual rules apply: you pay by the minute you speak. See [How call money works](/help/wallet-and-payments/how-call-money-works).
@@ -42,7 +42,7 @@ If you do not pick up when we call, you leave the queue and nothing is charged. 
 - You can wait in **one queue at a time**, and you can **leave any time**.
 - A queue holds up to **10 people**, and a place lasts up to **2 hours**.
 - An influencer can **pause** her queue. While it is paused, nobody new can join.
-- The queue runs only while the influencer is **Online**. If she goes Offline or to Bookings only, the queue closes and we tell you. Nothing is charged.
+- The queue runs only for influencers who take live calls, and only while she is **Online**. If she goes Offline, the queue closes and we tell you. Nothing is charged. You can still book a time.
 - When someone is waiting, new instant callers join the queue too. Nobody jumps the line.
 
 Not sure which mode an influencer is in? Read [Online, Bookings only or Offline](/help/hosts/online-bookings-only-offline).

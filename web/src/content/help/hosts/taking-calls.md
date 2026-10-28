@@ -3,7 +3,7 @@ title: "How do I take calls as an influencer?"
 description: "Learn how to go online or offline, what you hear before a call, and how to accept or decline."
 section: hosts
 order: 3
-updated: 2026-10-23
+updated: 2026-10-28
 keywords: ["take calls", "go online", "go offline", "press 1", "press 2", "decline call", "call kaise uthaye", "topics"]
 audience: creator
 faq:
@@ -21,11 +21,11 @@ Taking calls is easy. You go online, your phone rings, and you choose to accept 
 
 ## Going online and offline
 
-You choose **Online**, **Bookings only** or **Offline** any time from your dashboard or the app. When you are Online, your fans can call you now. Bookings only means "available by appointment". Offline means no new calls, queue or bookings. Read [which mode to choose](/help/hosts/online-bookings-only-offline).
+You choose your call option, **Bookings only** or **Bookings + live**, any time from your dashboard or the app. With Bookings + live, you also switch between **Online** and **Offline**. When you are Online, your fans can call you now. When you are Offline, people cannot call now, but they can still book a time from your profile. Read [which mode to choose](/help/hosts/online-bookings-only-offline).
 
 If a fan has hearted you as a favourite, they can tap "Notify me". They get one WhatsApp when you are back. You can see how many people have hearted you and asked to be notified.
 
-While you are talking, fans see **On a call** and can join your queue or book a time. After your call you get a short break of about a minute, then your phone rings for the next person.
+While you are talking, fans see **On a call** and can join your queue or book a time. After your call you get a 2 minute break, then your phone rings for the next person.
 
 ## What happens when a call comes
 

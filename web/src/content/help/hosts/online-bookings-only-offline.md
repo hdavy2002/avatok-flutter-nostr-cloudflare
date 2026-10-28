@@ -3,7 +3,7 @@ title: "Online, Bookings only or Offline: which should I choose?"
 description: "Three modes decide how people can reach you: Online for instant calls and a queue, Bookings only for appointments, Offline for a break."
 section: hosts
 order: 7
-updated: 2026-10-23
+updated: 2026-10-28
 keywords: ["online", "offline", "bookings only", "by appointment", "queue", "pause queue", "on a call", "mode", "go offline"]
 audience: creator
 faq:
@@ -18,7 +18,12 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-You choose how people can reach you with one switch on your dashboard or in the app. You can change it any time.
+First you choose your **call option**: **Bookings only** or **Bookings + live**. You choose it when you join, and you can change it any time on your dashboard or in the app.
+
+- **Bookings only:** people can only book a time with you, whether you are online or not.
+- **Bookings + live:** the three modes below decide what people can do right now.
+
+If you pick Bookings + live, you also use this switch:
 
 | Mode | What people can do |
 | --- | --- |
@@ -30,7 +35,7 @@ When you switch to Offline, we warn you how many booked calls you have. They wil
 
 ## On a call
 
-**On a call** shows only while you are really talking. Then people can [join your queue](/help/calling/join-the-queue) or [book a time](/help/calling/book-a-time). After each call you get a short break of about a minute. Then the next person in the queue is connected, and your phone rings first. Your dashboard shows how many people are waiting.
+**On a call** shows only while you are really talking. Then people can [join your queue](/help/calling/join-the-queue) or [book a time](/help/calling/book-a-time). After each call you get a 2 minute break. Then the next person in the queue is connected, and your phone rings first. Your dashboard shows how many people are waiting.
 
 ## Pausing the queue
 
