@@ -12,6 +12,7 @@
 // Error codes (POST): not_enabled 404, not_live 403, kyc_required 409, bank_required 409, invalid_amount 400, below_minimum 400,
 //   weekly_limit 429, insufficient_withdrawable 402, wallet_error 502.
 import type { Env } from "../types";
+import { modBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { withIdempotency, rateLimit } from "../money";
@@ -154,6 +155,7 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
   const lim = await rateLimit(env, `hfpayout:${u.uid}`, 6, 3600);
   if (lim) return lim;
   const uid = u.uid;
+  { const held = await modBlock(env, uid, "payout"); if (held) return held; } // [HF-CALL-SAFETY-BE] a paused or banned influencer's earnings are held
   const body = await readJson(req);
   return withIdempotency(req, env, uid, async () => {
     const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>().catch(() => null);

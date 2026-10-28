@@ -26,6 +26,8 @@ import { isAdminUid } from "../lib/preview";
 import { personName } from "../lib/admin2_people_data";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
+import { modBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
+import { hfSafetyRecordingWebhook } from "./hf_safety";
 import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
@@ -139,6 +141,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   if (ageGate) return ageGate;
   // [HF-WALLET-EXIT-1] A user closing their account starts no new calls.
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
+  { const blocked = await modBlock(env, uid, "call"); if (blocked) return blocked; } // [HF-CALL-SAFETY-BE]
   const body = await readJson(req);
   const slug = String(body.hostSlug ?? "").trim().toLowerCase();
   const laneIn = body.lane == null || body.lane === "" ? null : String(body.lane);
@@ -1022,6 +1025,7 @@ async function vobizWebhook(req: Request, env: Env, p: string): Promise<Response
   if (kind === "digits" && a === "host") return forward("host-digits", b ?? "", "host");
   if (kind === "hangup" && role(a)) return forward("hangup", b ?? "", role(a)!);
   if (kind === "conf" && role(b)) return forward("conf", a ?? "", role(b)!);
+  if (kind === "recording" && a && ID_RE.test(a) && role(b)) return hfSafetyRecordingWebhook(req, env, a, b!); // [HF-CALL-SAFETY-BE]
   if (kind === "notice" && a === "host-nopickup") return xml(callerDidntPickUpXml());
   return xml(hangupXml(), 404);
 }

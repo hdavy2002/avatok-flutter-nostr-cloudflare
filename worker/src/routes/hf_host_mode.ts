@@ -15,6 +15,7 @@ import { readConfig } from "./config";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { notifyHostOnline } from "../lib/hf_notify";
 import { isClosing, forceHostOffline, CLOSING_MESSAGE } from "../lib/hf_exit";
+import { modBlock, callRulesBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
 import { HF_CALL_APP } from "../lib/hf_calls_store";
 import { closeQueue, hostQueueView, pokeLine, setQueuePaused } from "../lib/hf_queue_store"; // [HF-CALL-MODES-INT] Lane B's real functions
 import { derivePresence } from "../lib/hf_host_status";
@@ -118,6 +119,11 @@ async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionC
   else return err(400, "invalid_field", flags.modes ? "mode must be online, bookings_only or offline." : "online must be true or false.");
   if (!flags.modes && typeof body.online !== "boolean") return err(400, "invalid_field", "online must be true or false.");
 
+  if (target !== "offline") { // [HF-CALL-SAFETY-BE] a paused or banned influencer takes no calls or bookings; going Online also needs the call rules
+    const blocked = await modBlock(env, u.uid, "online");
+    if (blocked) return blocked;
+    if (target === "online") { const rules = await callRulesBlock(env, u.uid); if (rules) return rules; }
+  }
   if (target === "online") {
     if (await isClosing(env, u.uid)) { await forceHostOffline(env, u.uid); return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" }); } // [HF-WALLET-EXIT-1]
     if (!(await verifiedWhatsAppNumber(env, u.uid))) return err(403, "not_verified", "Verify your WhatsApp number to take calls.");

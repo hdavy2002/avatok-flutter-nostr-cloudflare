@@ -13,6 +13,7 @@ import { trackException } from "../hooks";
 import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit";
+import { modBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo";
 import { HF_CALL_APP, hasLaneAccess } from "../lib/hf_calls_store";
 import { BOOKINGS_ONLY_MESSAGE, BOOKINGS_ONLY_REASON, liveBlockedByOption } from "../lib/hf_call_option"; // [HF-INTRO-W2]
@@ -63,6 +64,7 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   const ageGate = await requireHfAgeConfirmation(env, uid);
   if (ageGate) return ageGate;
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
+  { const blocked = await modBlock(env, uid, "queue"); if (blocked) return blocked; } // [HF-CALL-SAFETY-BE]
   if (host.uid === uid) return err(409, "queue_closed", JOIN_MESSAGE.queue_closed, { reason: "unavailable" });
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" });
   if (await liveBlockedByOption(env, host.uid)) return err(409, "queue_closed", BOOKINGS_ONLY_MESSAGE, { reason: BOOKINGS_ONLY_REASON, canQueue: false, canBook: cfg.bookingsOn }); // [HF-INTRO-W2] option A takes bookings only

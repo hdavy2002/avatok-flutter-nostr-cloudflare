@@ -2154,6 +2154,17 @@ export interface PlatformConfig {
   hfPushEnabled: boolean;
   // [HF-PRESENCE-NUDGE-1] 3-hourly WhatsApp (+ push) reminder to a LIVE host who is offline, 08:00-23:00 IST (worker/src/lib/hf_presence_nudge.ts). Default OFF; server-only.
   hfPresenceNudgeEnabled: boolean;
+  // [HF-CALL-SAFETY-BE] Call safety (worker/src/lib/hf_safety*.ts). All default OFF = shadow mode. Clients show the fan pre-call notice / influencer rules gate only while hfCallRecordingEnabled is true.
+  hfCallRecordingEnabled: boolean; // Vobiz records the caller leg; recordings are processed after the call
+  hfCallReviewEnabled: boolean;    // speech-to-text + decision model run on recordings; verdicts are saved (and queued for admins)
+  hfAutoStrikeEnabled: boolean;    // score >= hfStrikeHighScore AND speaker >= hfStrikeHighScore gives a strike without an admin
+  hfStrikeHighScore: number;       // NUMERIC -> also in numericKeys
+  hfStrikeQueueScore: number;      // NUMERIC
+  hfStrikesToPause: number;        // NUMERIC
+  hfStrikeExpiryDays: number;      // NUMERIC
+  hfFlaggedAudioDays: number;      // NUMERIC
+  hfCleanTranscriptDays: number;   // NUMERIC
+  hfCallRulesVersion: number;      // NUMERIC
   // [HF-APPT-REMIND-1] WhatsApp (+ push) reminders 1 h and 10 min before a booked call, to both people (worker/src/lib/hf_booking_reminders.ts). Kill switch; server-only.
   hfBookingRemindersEnabled: boolean;
   hfTokensEnabled: boolean;
@@ -3065,6 +3076,16 @@ const DEFAULTS: PlatformConfig = {
   hfMoneyMonitorAutoFix: true, // [HF-WIRE-13] off = the monitor only reports
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfPresenceNudgeEnabled: false, // [HF-PRESENCE-NUDGE-1] dark until the owner flips it
+  hfCallRecordingEnabled: false, // [HF-CALL-SAFETY-BE] shadow mode first
+  hfCallReviewEnabled: false,
+  hfAutoStrikeEnabled: false,
+  hfStrikeHighScore: 0.9,
+  hfStrikeQueueScore: 0.6,
+  hfStrikesToPause: 3,
+  hfStrikeExpiryDays: 90,
+  hfFlaggedAudioDays: 30,
+  hfCleanTranscriptDays: 30,
+  hfCallRulesVersion: 1,
   hfBookingRemindersEnabled: true, // [HF-APPT-REMIND-1] owner asked for reminders to be built and live (2026-10-16)
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
@@ -3273,6 +3294,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
     ...Object.keys(COMMERCIAL_QUALITY_BOUNDS),
+    "hfStrikeHighScore", "hfStrikeQueueScore", "hfStrikesToPause", "hfStrikeExpiryDays", "hfFlaggedAudioDays", "hfCleanTranscriptDays", "hfCallRulesVersion", // [HF-CALL-SAFETY-BE]
     "commercialCreatorFeePct", "commercialSettlementHoldHours",
     // [COMM-REFUND-POL-1] Integers → they MUST be here or putConfig stores them as
     // strings and `Number(policy.creator_cancel_refund_pct) === 100` quietly stops

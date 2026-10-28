@@ -122,8 +122,9 @@ export function hostAnnounceXml(p: { handle: string; previousCalls: number; digi
  * callback reference only lists enter/exit. maxParticipants expresses intent but Vobiz documents its limit as ineffective;
  * the application must enforce the two-leg limit. timeLimit is a backstop; the DO alarm is the real limit.
  */
-export function noticeAndConferenceXml(p: { room: string; callbackUrl: string; timeLimitSec: number }): string {
+export function noticeAndConferenceXml(p: { room: string; callbackUrl: string; timeLimitSec: number; record?: string }): string {
   return wrap(
+    (p.record ?? "") + // [HF-CALL-SAFETY-BE] optional <Record/> verb for the caller leg (flag hfCallRecordingEnabled); empty = unchanged XML
     `<Speak>${esc(SAFETY_NOTICE)}</Speak>` +
     `<Conference callbackUrl="${esc(p.callbackUrl)}" callbackMethod="POST" digitsMatch="#" startConferenceOnEnter="true" endConferenceOnExit="true" stayAlone="true" ` +
     `maxParticipants="2" timeLimit="${Math.max(60, Math.trunc(p.timeLimitSec))}">${esc(p.room)}</Conference>`,

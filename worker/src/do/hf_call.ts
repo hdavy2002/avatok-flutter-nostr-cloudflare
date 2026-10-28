@@ -31,6 +31,8 @@ import {
 } from "../lib/hf_call_math";
 
 import { validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
+import { loadSafetyCfg } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
+import { recordLegXml } from "../lib/hf_vobiz_recording"; // [HF-CALL-SAFETY-BE]
 import { readMoneyRules, firstMinuteDrop } from "../lib/hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 3
 
 type Role = "host" | "caller";
@@ -373,11 +375,16 @@ export class HfCallDO {
       await this.finish(s, "failed", "error", { skipHostLeg: true });
       return xmlRes(hangupXml("Sorry, we couldn't reach the caller. Goodbye."));
     }
-    return xmlRes(this.roomXml(s, "host"));
+    return xmlRes(await this.roomXml(s, "host"));
   }
 
-  private roomXml(s: S, r: Role): string {
-    return noticeAndConferenceXml({ room: this.room(s), callbackUrl: this.urls(s).conf(r), timeLimitSec: this.backstopSec(s) });
+  private async roomXml(s: S, r: Role): Promise<string> {
+    // [HF-CALL-SAFETY-BE] flag hfCallRecordingEnabled: the CALLER leg is recorded (Vobiz <Record recordSession>, no beep, nothing spoken). Off = the XML is byte for byte what it was.
+    let record: string | undefined;
+    if (r === "caller") {
+      try { if ((await loadSafetyCfg(this.env)).recordingEnabled) record = recordLegXml(`${webhookBase(this.env)}/recording/${s.callId}/caller`, this.backstopSec(s)); } catch { /* never block a call for the recorder */ }
+    }
+    return noticeAndConferenceXml({ room: this.room(s), callbackUrl: this.urls(s).conf(r), timeLimitSec: this.backstopSec(s), ...(record ? { record } : {}) });
   }
 
   // ── caller leg ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -389,7 +396,7 @@ export class HfCallDO {
     s.tasks.guess = Date.now() + CONNECT_GUESS_MS;
     await this.save(s);
     await this.db().prepare("UPDATE hf_calls SET caller_leg_uuid=?1 WHERE id=?2").bind(s.callerLeg, s.callId).run().catch(() => undefined);
-    return xmlRes(this.roomXml(s, "caller"));
+    return xmlRes(await this.roomXml(s, "caller"));
   }
 
   // ── conference events (enter / exit / digits) ─────────────────────────────────────────────────────────────────

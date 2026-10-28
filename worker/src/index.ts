@@ -311,6 +311,8 @@ import { hfVobizAdminRoute } from "./routes/hf_vobiz_admin"; // [HF-VOBIZ-SPEND-
 import { hfStdAdminRoute } from "./routes/hf_std_admin"; // [HF-STD-PLAN-1] admin Standard-plan reporting + rupee lot migration
 import { runVobizWatch } from "./lib/hf_vobiz_watch"; // [HF-VOBIZ-SPEND-1] every-minute Vobiz spend watcher
 import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
+import { hfSafetyRoute } from "./routes/hf_safety"; // [HF-CALL-SAFETY-BE]
+import { runHfSafetyCron } from "./lib/hf_safety_process";
 import { hfBookingsAppRoute, runHfBookingAutoStart } from "./routes/hf_bookings_app"; // [HF-WIRE-8]
 import { hfBookingsRoute } from "./routes/hf_bookings"; // [HF-BOOKING-CALENDAR-1] host availability and reserved bookings (flag hfBookingsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
@@ -534,6 +536,7 @@ export default {
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfMoneyMonitor(env).then((r) => { if (r.fixed || r.flagged) console.log("[hf-money-monitor]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-money-monitor] failed:", String(e)); }), // [HF-WIRE-13]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
+        runHfSafetyCron(env).catch((e) => { console.error("[hf-safety-cron] failed:", String(e)); }), // [HF-CALL-SAFETY-BE]
         runHfQueueCron(env).then((r) => { if (r.hosts) console.log("[hf-queue-cron]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-queue-cron] failed:", String(e)); }), // [HF-CALL-MODES-B] safety net only; sub-minute timers are DO alarms
         readConfig(env).then(async (c) => { if (c.hfBookingsEnabled !== true) return null; const st = await runHfBookingAutoStart(env).catch(() => null); if (st && st.scanned) console.log("[hf-booking-autostart]", JSON.stringify(st)); return runHfBookingsCron(env); }) // [HF-WIRE-8] start booked calls at their minute, then the existing cleanup
           .then((r) => { if (r && (r.expiredQuotes || r.noShows.processed || r.noShows.blocked || r.recovery.processed || r.recovery.blocked)) console.log("[hf-bookings-cron]", JSON.stringify(r)); })
@@ -1209,6 +1212,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/reel-bookmarks" || p.startsWith("/api/hf/reel-bookmarks/")) { const r = await hfReelBookmarksRoute(req, env, p); if (r) return r; }
       if (p === "/api/hf/reports" || p === "/api/admin/hf/reports" || p === "/api/admin/hf/support-tickets") { const r = await hfReportsRoute(req, env, p); if (r) return r; } // [HF-DAILY-FLOWS-1]
       if (p === "/api/hf/favourites" || p.startsWith("/api/hf/favourites/")) { const r = await hfFavouritesRoute(req, env, p); if (r) return r; } // [HF-DASH-FRAANDS-1]
+      if (p.startsWith("/api/hf/safety/") || p.startsWith("/api/admin/hf/safety/") || /^\/api\/hf\/calls\/[^/]+\/report$/.test(p)) { const r = await hfSafetyRoute(req, env, p); if (r) return r; } // [HF-CALL-SAFETY-BE]
       if (p === "/api/hf/queue/me" || (p.startsWith("/api/hf/hosts/") && p.endsWith("/queue"))) { const r = await hfQueueRoute(req, env, ctx); if (r) return r; } // [HF-CALL-MODES-B] before the generic /api/hf/ handlers
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p.startsWith("/api/admin/hf/calls/") || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/tokens/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]

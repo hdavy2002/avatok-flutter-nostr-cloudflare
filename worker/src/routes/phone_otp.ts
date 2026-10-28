@@ -40,6 +40,7 @@
 // live in routes/whatsapp_auth.ts, which reuses this file's ledger, phoneTakenByOther
 // and the new verifiedAccountForPhone.
 import { BRAND } from "../lib/brand";
+import { isBannedNumber } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -131,6 +132,7 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
   const db = env.DB_META;
   const now = Date.now();
   const hash = await sha256Hex(e164);
+  if (await isBannedNumber(env, hash)) return json({ error: "number_blocked", message: "This number can't be used to sign up." }, 403); // [HF-CALL-SAFETY-BE]
 
   const mine = await db.prepare("SELECT phone_verified, phone_hash FROM contact_verification WHERE uid=?1")
     .bind(ctx.uid).first<{ phone_verified: number; phone_hash: string | null }>().catch(() => null);

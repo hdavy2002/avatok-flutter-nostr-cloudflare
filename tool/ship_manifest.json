@@ -12534,5 +12534,31 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Copy only. The recording / strike behaviour itself is gated and measured by the backend lane (HF-CALL-SAFETY-1). The only code change is the pinned policy hashes; the existing policy re-accept events already cover acceptance."
+  },
+  "HF-CALL-SAFETY-BE": {
+    "description": "HF-CALL-SAFETY backend: Vobiz call recording to private R2, speech-to-text, decision model, strikes / pause / ban / appeals, held earnings and ban refunds, admin review API. Everything ships dark (shadow mode); recording is turned on first, then review, then automatic strikes last.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallRecordingEnabled",
+      "hfCallReviewEnabled",
+      "hfAutoStrikeEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_checked",
+        "property": "verdict",
+        "exists": true,
+        "min_events": 1,
+        "note": "A real recorded call went through recording, transcript and the decision step."
+      },
+      {
+        "event": "hf_strike_given",
+        "property": "reason",
+        "exists": true,
+        "min_events": 1,
+        "note": "A strike was given (employee-confirmed, or automatic once hfAutoStrikeEnabled is on)."
+      }
+    ]
   }
 }

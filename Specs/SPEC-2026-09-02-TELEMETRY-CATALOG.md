@@ -1549,3 +1549,29 @@ Web only (`web/src/lib/scrollStoryHero.ts`). CTA clicks reuse `homepage_cta_clic
 | `hf_onb_submit_refused` | `reason` (server error code) | The server refused the submit. |
 
 No Aadhaar number, gender, name, handle or video content is ever sent.
+
+## [HF-CALL-SAFETY-BE] Call safety (server, worker)
+
+All sent with `area: hf_call_safety`. No transcript text, audio, phone number, UPI ID or quote is ever sent; only ids, verdicts and scores.
+
+| Event | Props | Meaning |
+|---|---|---|
+| `hf_recording_received` | `call_id`, `role`, `bytes?`, `duration_sec?` | Vobiz told us a leg recording is ready (once per recording; a repeat delivery is ignored). |
+| `hf_recording_failed` | `call_id`, `step` (`webhook`, `copy`, `transcribe`, `decide`), `reason` | A recording job step failed for good or the webhook was rejected. |
+| `hf_call_checked` | `call_id`, `verdict`, `score`, `speaker`, `speaker_score`, `outcome` (`none`/`queue`/`strike`/`danger`), `provider`, `model`, `flagged`, `reported`, `women_lane`, `host_uid`, `fan_uid` | A recorded call went through the decision step. |
+| `$ai_generation` | `$ai_model`, `$ai_provider`, `$ai_latency`, `$ai_input_tokens?`, `kind` (`stt`/`decision`) | One model call (speech-to-text or decision). No input or output text. |
+| `hf_strike_given` | `strike_id`, `reason`, `auto`, `role`, `active_strikes`, `call_id`, `review_id`, `by_uid` | A strike was recorded (automatic or by an employee). |
+| `hf_account_paused` | `why` (`strikes`/`danger`/`admin`), `by_uid` | An account was paused. |
+| `hf_account_banned` | `refund_total_paise`, `payout`, `by_uid` | An employee banned an account. |
+| `hf_account_restored` | `strikes_removed`, `by_uid` | An employee restored a paused or banned account. |
+| `hf_appeal_opened` | `strike_id`, `via` (`app`/`whatsapp`) | A person appealed a strike. |
+| `hf_appeal_decided` | `appeal_id`, `decision`, `by_uid` | An employee accepted or rejected an appeal. |
+| `hf_review_decided` | `review_id`, `call_id`, `action`, `target`, `reason`, `women_lane` | An employee decided a queued call. |
+| `hf_review_opened` | `review_id`, `action` (`open_lines`/`full_transcript`/`clip`), `has_reason` | An employee opened flagged lines, the full transcript or the clip (also written to the access log). |
+| `hf_call_report` | `call_id`, `reasons`, `role` | A fan or influencer reported a call. |
+| `hf_rules_accepted` | `version` | An influencer accepted the call rules. |
+| `hf_safety_blocked` | `where` (`online`/`call`/`queue`/`booking`/`payout`/`rules`), `status` | An action was refused because the account is paused, banned, or the rules are not accepted. |
+| `hf_safety_notice_sent` | `event`, `channel` | A safety message (strike, pause, appeal, refund) went out. |
+| `hf_safety_viewed` | `status`, `active_strikes`, `is_host` | A person opened their safety page (GET /api/hf/safety/me). |
+| `hf_audio_deleted` | `reason` (`clean`, `expired`, `manual`), `call_id` | Call audio was removed from private storage. |
+

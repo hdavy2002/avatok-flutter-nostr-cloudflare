@@ -50,7 +50,7 @@ function correctionShares(lotsUsed: string | null, amount: number, charge: numbe
  * One correction per call: asking again returns the first one's numbers (`again: true`) and moves no money.
  */
 export async function correctCallCharge(
-  env: Env, a: { callId: string; amountPaise?: number | null; adminUid: string; note?: string },
+  env: Env, a: { callId: string; amountPaise?: number | null; adminUid: string; note?: string; reverseHost?: boolean /* [HF-CALL-SAFETY-BE] a ban takes the earning back even after the 7-day hold */ },
 ): Promise<CorrectionResult> {
   const db = env.DB_META;
   const call = await db.prepare(
@@ -103,7 +103,7 @@ export async function correctCallCharge(
     const paidEarn = earns.find((e) => e.kind === "call_earning");
     const holdUntil = Number(paidEarn?.at ?? ((call.ended_at ?? earns[0].created_at) + HOST_HOLD_MS));
     // Once either half was reversed inside the hold, a retry must finish the other half even if the clock crossed the hold boundary.
-    if (holdUntil > now || existingReversals.length > 0) {
+    if (holdUntil > now || existingReversals.length > 0 || a.reverseHost === true) {
       for (const e of earns) {
         const share = Number((BigInt(Math.trunc(Number(e.amt))) * BigInt(amount)) / BigInt(charge));
         if (share <= 0) continue;

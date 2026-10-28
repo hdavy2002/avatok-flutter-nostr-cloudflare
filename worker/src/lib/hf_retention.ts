@@ -12,6 +12,7 @@ import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
 import { sweepIntroVideos } from "./hf_intro_cleanup";
 import { purgeHfUser, tableColumns, tsMsExpr, type HfPurgeResult } from "./hf_purge";
+import { runSafetyRetention, type SafetyRetentionSummary } from "./hf_safety_retention"; // [HF-CALL-SAFETY-BE]
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365 * DAY_MS;
@@ -35,6 +36,8 @@ export interface HfRetentionSummary {
   money_records: number;
   /** [HF-INTRO-DELETE-1] intro-video files deleted by the sweep (rejected + replaced + expired drafts + orphans). */
   intro_videos: number;
+  /** [HF-CALL-SAFETY-BE] call-safety audio / transcripts / verdicts swept (contract rule 9). */
+  safety?: SafetyRetentionSummary;
 }
 
 type Cols = Map<string, string[]>;
@@ -209,6 +212,8 @@ export async function runHfRetention(env: Env, ctx: ExecutionContext): Promise<H
     errs.n += r.errors;
     return r.rejected + r.replaced + r.expired + r.orphans;
   }, 0);
+  // [HF-CALL-SAFETY-BE] Call-safety data: flagged audio 30 days, transcript 30 days clean / 1 year flagged, verdicts, strikes, decisions 1 year.
+  s.safety = await runStep(env, ctx, "call_safety", errs, async () => { const r = await runSafetyRetention(env); if (r.more) more = true; return r; }, undefined);
 
   s.r2_objects = acc.r2;
   s.errors = errs.n + acc.errs;
