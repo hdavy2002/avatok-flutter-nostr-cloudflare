@@ -1,101 +1,83 @@
-# HF-INTRO-VIDEO-1 — Influencer intro video (onboarding + Reels feed)
+# HF-INTRO-VIDEO-1 — Influencer intro video, human approval, new Reels (MASTER PLAN)
 
-Owner decision 2026-10-26. Rules: `Specs/RULEBOOK-HELLO-FRAANDS.md` §20 (HF-INTRO-1…10). Status: **PLANNED**, not built.
+Owner-approved 2026-10-28 ("go"). Rules: `Specs/RULEBOOK-HELLO-FRAANDS.md` §20 (HF-INTRO-1…21).
+**Every agent working on this reads this file and §20 first. If code and this file disagree, ask the coordinator — do not guess.**
+Design rules: `Specs/HF-DESIGN-SYSTEM.md` (Nunito/Comfortaa only, nothing tiny, not boxy, no green except Online + verified tick).
+Brand: never type the brand name or domain — `BRAND.*` / `brandUrl()` / `Brand.*` (CLAUDE.md).
 
-## 1. Why
+## 0. Goal in one paragraph
 
-The feed used to play influencers' YouTube / Instagram reels as embeds. Their controls and branding do not
-represent us, and a random reel does not tell a fan what a call is for. Instead every influencer makes one
-short video for us saying what fans can talk to them about and how the fan benefits. It is honest (the person
-on the call is the person in the video), it keeps the feed about topics rather than looks, and it costs ~₹1.
+No more YouTube/Instagram videos in our Reels. Every influencer records ONE live 10–20 second vertical intro
+video inside our onboarding, saying what fans can call them about. A human (an employee) watches every
+submission and approves or rejects it; WhatsApp tells the influencer either way. Only approved intro videos
+play in the Reels (app + website /explore), with our own overlay: name, green tick, verified social icons,
+categories, one line, ₹/min, a smart Call / Queue / Book button, Like / Comment / Share. A Women-to-Women
+channel is a category: creator and fan must both be Aadhaar-verified Female.
 
-## 2. Onboarding flow
+## 1. Decisions (owner, 2026-10-28) — the source of truth
 
-```
-fan account
-  → link channel (HF-SPACE-1: 20 followers / 1,000 YouTube views)   [space creators: video KYC instead]
-  → INTRO VIDEO  (record or upload → automatic check → pass / fail / borderline)
-  → set rate
-  → submit → existing admin approval → influencer
-```
-
-- No passed intro video → the account stays a fan. Never upgraded (HF-INTRO-1).
-- The check runs only after the channel check passed (no spend on non-creators).
-- Progress is saved per step; the person can leave at any step and resume (HF-INTRO-6).
-- Next day, if the video is still missing: one WhatsApp nudge (8 am–11 pm window), from the HF WhatsApp session.
-
-## 3. The video
-
-- 30–60 s, vertical 9:16, own face + own voice. Record in app/browser (preferred) or upload a file.
-- Example script on screen (Hindi + English), e.g. astrologer:
-  "Namaste, I'm Pandit Rohan, 12 years reading kundlis. Call me about marriage timing, career change, or a bad
-  phase. On the call I'll look at your birth chart live and tell you what to do next. I'm online most evenings."
-- Uploads: tick "I own this video and the music in it"; other platforms' watermarks are refused.
-- Compress on the device before upload (target 720×1280, ~1.5–2 Mbps, ≤ ~15 MB for 60 s). No server ffmpeg.
-
-## 4. Automatic check (Gemini, video input)
-
-One call per video returns JSON: `{ verdict: pass|fail|borderline, reasons: [{code, at_s, text}], transcript, topics[], lang }`.
-
-| Check | Fail reason shown (plain words) |
+| # | Decision |
 |---|---|
-| Face in first 3 s | "We couldn't see your face in the first 3 seconds." |
-| Phone / handle / UPI / "DM me" (speech or on screen) | "Remove your Instagram handle at 0:12." |
-| Sexual or flirty pitch (HF-CON-1) | "This video talks about things we don't allow on calls." |
-| Guaranteed results / cures | "Please don't promise guaranteed results (0:34)." |
-| Other platform watermark | "Please upload a video without the Instagram / TikTok logo." |
-| Too short / too long / not vertical | "Your video should be 30–60 seconds and filmed upright." |
+| D1 | Becoming an influencer = onboarding flow below. **Nobody is an influencer until a human approves.** No AI check of videos. |
+| D2 | **Categories: choose one or more.** Normal ones first (Astrology, Teacher, Traveller, Cook, Fitness, Music, Beauty, Tech, Comedy, Spirituality, Career, Health & Wellness, Language, Gaming, Other). **Always last, in this order: Listener, Prayer, Virtual friend, Women-to-Women.** LGBTQ+ is NOT offered in onboarding (existing LGBTQ+ channels untouched). |
+| D3 | **"Channels" is renamed "Social media verification"** everywhere a person sees it. Optional. YouTube login + Instagram login (exist) + **Facebook login (new; live only after Meta review — flag off until then)**. |
+| D4 | **Aadhaar is required** when: no verified social account, OR any of Listener / Prayer / Virtual friend / Women-to-Women is picked. Women-to-Women needs Aadhaar gender **F** (else the category cannot be picked). Reuse the existing Aadhaar check (Sandbox.co.in). |
+| D5 | **No separate selfie video.** The live intro video replaces the space-creator selfie (HF-SPACE-2 selfie step dropped for this flow). |
+| D6 | **Recording prep screen**: language at top (Hindi, English, Marathi, Bengali, Tamil, Telugu, Gujarati, Punjabi, Kannada, Malayalam), "What is this video about?" = one of their categories or General, then hints (say / avoid) in that language. Always the note: "These are only ideas — say it in your own words." |
+| D7 | **Recorder**: live camera + mic only, **min 10 s, max 20 s**, **portrait only** ("Please hold your phone upright" and recording blocked when sideways), **no file upload anywhere**, preview, re-record / use it. One intro video per influencer. |
+| D8 | Then the existing profile steps (name, description, photo) and per-minute rate. |
+| D9 | **Call option** (onboarding + dashboard switch): **A = Bookings only** (only bookings, ever, online or not). **B = Bookings + live** (Online & free → Call now; Online & on a call → Busy: Join queue or Book; Offline → reel hidden, bookings still open from profile/search). A closed day = she closes calendar slots. |
+| D10 | Queue: as HF-CALL-9/10, but the **break between queued calls is 2 minutes** (config). |
+| D11 | Last screen: "Sent for approval. A person from our team will check your profile. Once approved you can receive calls." |
+| D12 | **Admin**: list of pending submissions (rows); click → full detail: video, categories, language, description, rate, call option, calendar, verified socials, Aadhaar status (+ Female). **Approve** → live, reel appears. **Reject** → ready-made reasons (multi-select) + optional note → send. |
+| D13 | **WhatsApp** on approve ("you're live") and on reject (reasons + what to fix). Rejected → can fix, re-record, resubmit. |
+| D14 | **Reels show only approved intro videos** (app + web). Overlay: name + **green tick** (= approved by our team), small YouTube/Instagram/Facebook icons for each verified account (tap opens that account inside our app), **pink "Women only" tag** when it applies, categories, one-line description, **₹X/min**, smart main button. Right rail: **Like, Comment, Share** (share link plays the video). |
+| D15 | **ⓘ** opens "Verified owner of": each verified account with a link (opened inside our app). |
+| D16 | Show rules: option A → reel always shown (button Book a time). Option B → reel shown only when Online (Call now / Busy). Offline B → hidden. |
+| D17 | **Women-to-Women**: fan must be Aadhaar-verified **F** to call, book or queue (server already enforces `lane_required`; change: **fan needs Aadhaar only, no selfie**). Reel shows the pink tag; tapping Call/Book/Queue as a non-verified fan opens a pop-up: "This is a women-only channel. Only Aadhaar-verified women can talk to her." [Verify now] [Not now]. Verified but not F → "Sorry, this channel is for women only." |
+| D18 | **Existing influencers** must record an intro and be re-approved; hidden from Reels until then (dashboard banner + WhatsApp). |
+| D19 | Video storage: Cloudflare **R2** (vertical MP4 + poster), long cache. Not Cloudflare Stream. |
+| D20 | Server never rings an Offline / Bookings-only / busy influencer except a booked call (already true — keep and re-test). |
+| D21 | Deploy only after the owner reads the final plain-English summary. Everything new ships dark behind flags. |
 
-- `pass` → live automatically. `fail` → reasons + **Re-record**. `borderline` → admin queue (approve / reject with a reason).
-- A missing model answer is never a pass (lesson from listing review — verdict, not vibes).
-- Transcript → captions on the reel, and suggested topics for the profile.
-- Cost: under ₹1 per video.
+## 2. Phases
 
-## 5. Replacing a video (HF-INTRO-7)
+| Phase | What | Lane(s) |
+|---|---|---|
+| **0** | Save this plan + rulebook §20; land docs. | coordinator |
+| **1** | **Backend**: tables + migration, upload of recorded video to R2, submission API, admin review API + WhatsApp, reels feed from intro videos, call option A/B + reel visibility, queue break 2 min, women-only fan = Aadhaar F only, categories list, "verification" naming in API messages, Facebook login (code, flag off). | W1 (intro + admin + feed), W2 (call option + women + queue), W3 (Facebook login) |
+| **2** | **Website UIs**: onboarding screens (category, social verification rename, Aadhaar step, prep, recorder, call option, submitted), admin approval page, /explore reel overlay + women-only pop-up + ⓘ sheet + share. | B1 (onboarding), B2 (admin), B3 (explore reels) |
+| **3** | **App UIs (Flutter, hf-flutter)**: same onboarding screens, reels overlay, pop-up, ⓘ sheet, share, call option switch. | A1 (onboarding), A2 (reels) |
+| **4** | Copy: help / FAQ / terms ("verification", call options, women-only, intro video), rulebook rows marked built. | C |
+| **5** | Verify: tsc, worker tests, ship gate, brand + design guard, visual check of web pages in the external browser on a build; owner summary. | coordinator |
+| **6** | Deploy (only after owner OK): migrations, worker, web, flags on in order, app build on request. | coordinator |
 
-New upload = new draft row, checked the same way. The live video stays until the draft passes, then swaps
-atomically. Old file kept 30 days, then deleted.
+## 3. Flags (all default false; declare in config.ts DEFAULTS)
 
-## 6. Storage and playback (HF-INTRO-10)
+- `hfIntroOnboardingEnabled` — new onboarding flow + submission + admin review.
+- `hfIntroReelsEnabled` — Reels play intro videos only (old embed feed off).
+- `hfCallOptionEnabled` — option A/B semantics + D16 visibility (on top of existing hfCallModesEnabled).
+- `hfFacebookLoginEnabled` — Facebook login button + routes.
+- numeric `hfQueueBreakSeconds` = 120 (needs numericKeys entry).
 
-- Cloudflare **R2**: `intro/<userId>/<videoId>.mp4` + `poster.jpg`. Served from the CDN with long cache headers.
-  No Cloudflare Stream (its per-minute delivery fee is ~₹78k/month at 6 M plays; R2 egress is free).
-- Feed (app + web /explore) plays only passed intro videos of approved influencers. Poster first; play when on
-  screen; warm the next one (HF-REEL-49 pattern, now with our own file so it can be cached on the phone).
-- Profile keeps channel stats (followers, views) as proof. **Open:** do profiles still show the channel's
-  embedded videos tab (HF-SPACE-6)? Default: yes, on the profile only, not in the feed.
-- Invite reels of creators not on the network (HF-REEL-40) leave the feed. **Open:** where does Invite live —
-  search only (default) or a separate card type?
+## 4. Data (sketch — W1 owns the final shape)
 
-## 7. Existing and demo influencers (HF-INTRO-8, HF-INTRO-9)
+- `hf_intro_videos(id, uid, r2_key, poster_key, duration_ms, width, height, lang, topic, created_at, status[draft|submitted|approved|rejected|replaced])`
+- `hf_influencer_applications(id, uid, status[submitted|approved|rejected], categories_json, lang, intro_video_id, call_option[A|B], submitted_at, reviewed_at, reviewer_uid, reject_reasons_json, reject_note)`
+- `hf_hosts`: `categories_json`, `call_option`, `intro_video_id`, `intro_approved_at` (hidden from reels until set).
+- Reject reason codes: `face_unclear`, `video_dark`, `audio_unclear`, `contact_shared`, `unsuitable`, `wrong_category`, `description_fix`, `rate_fix`, `aadhaar_mismatch`, `other`.
 
-- Existing influencers: dashboard banner + WhatsApp asking for the video; after the deadline (owner to set),
-  hidden from the feed and treated as fan until a video passes. Bookings already made still ring.
-- Demo influencers (is_demo): admin uploads an intro video per demo account in the admin demo screen.
+## 5. Telemetry (PostHog, every surface; include email + clerk_uid)
 
-## 8. Data (sketch)
+`hf_onb_step_view{step}`, `hf_onb_categories{n, has_sensitive}`, `hf_intro_record{duration_ms, retake_n}`,
+`hf_intro_upload{bytes, ms, ok}`, `hf_onb_submitted`, `hf_admin_review{decision, reasons}`,
+`hf_review_whatsapp{decision, ok}`, `hf_reel_start{source:'intro'}`, `hf_women_gate{result}`,
+`hf_reel_share`, `hf_social_link_open{platform}`.
 
-`hf_intro_videos(id, user_id, status[draft|checking|pass|fail|borderline|live|replaced], r2_key, poster_key,
-duration_s, source[recorded|uploaded], owns_rights_at, verdict_json, transcript, created_at, live_at)`;
-`users`/host row gets `intro_video_id` (the live one) and an onboarding step marker.
+## 6. Coordination
 
-## 9. Switches
-
-- `hfIntroVideoRequired` (default false) — makes the step required for new upgrades.
-- `hfIntroVideoFeedEnabled` (default false) — feed plays intro videos instead of embeds.
-- `hfIntroExistingDeadline` (date, unset) — when existing influencers without a video are hidden.
-All declared in `config.ts` DEFAULTS (no fake flags).
-
-## 10. Telemetry (PostHog, every surface)
-
-`hf_intro_step_view`, `hf_intro_record_start`, `hf_intro_upload` (source, duration_s, bytes),
-`hf_intro_check` (verdict, reason codes, ms), `hf_intro_rerecord`, `hf_intro_nudge_sent`, `hf_intro_live`,
-`hf_reel_start` (existing; add `source=intro`). Include email + clerk_uid. Success = `hf_intro_check verdict=pass`
-and `hf_intro_live` for real accounts; feed `hf_reel_start` p50 under 500 ms.
-
-## 11. Open questions for the owner
-
-1. Deadline for existing influencers (HF-INTRO-8).
-2. Channel videos tab on profiles: keep or drop?
-3. Where Invite (vote) lives once invite reels leave the feed.
-4. Min / max length: 30–60 s OK?
+- Every lane works in its own worktree (`git worktree add -b issue/<id> ../wt-<id> origin/main`), commits with
+  `scripts/git_safe_commit.py` and explicit paths, never `npm install` (symlink node_modules).
+- Another agent owns `[HF-CALL-TOPUP-FIVE-1]` (call billing pause). Lane W2 must rebase on it and must not touch
+  billing/pause code.
+- No deploys, no flag writes, no builds by lanes. Coordinator only, after the owner's OK.
