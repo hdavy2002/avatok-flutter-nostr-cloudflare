@@ -1,5 +1,5 @@
 /* [HF-INTRO-P] Pre-download the first ~1.5 MB (about 5 s) of the next intro videos while the current one plays, so the next
- * reel starts from the browser's HTTP cache (media.hellofraands.com sends public, max-age=31536000, immutable and the MP4s are
+ * reel starts from the browser's HTTP cache (the public media host sends public, max-age=31536000, immutable and the MP4s are
  * faststart, so a partial range is playable). Low priority, at most 5 requests at once, skipped on Data Saver / 2G,
  * once per URL per page session. */
 import { isIntro, type ReelItem } from './hfExplore';
