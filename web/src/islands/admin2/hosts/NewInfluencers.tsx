@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { BadgeCheck, CalendarDays, Check, ChevronDown, ExternalLink, IdCard, MessageCircle, RefreshCw, Users, Video, Volume2 } from 'lucide-react';
 import { capture, captureException } from '../../../lib/analytics';
 import { introAdminApi, type CallOption, type DecisionResult, type IntroDetail, type IntroListItem, type IntroStatus, type RejectReason } from '../../../lib/hfIntroAdminApi';
-import { mockIntroApi } from './newInfluencersMock';
 import { toast } from '../../../components/ui/sonner';
 import { errMessage } from '../adminApi';
 import { dateIST } from '../consultants/kit';
@@ -23,6 +22,15 @@ const PLATFORMS: Record<string, string> = { youtube: 'YouTube', instagram: 'Inst
 const W2W = 'women_to_women';
 const PENDING_EVENT = 'hf-intro-admin:pending';
 const PENDING_KEY = 'admin2:hf-intro-pending';
+
+/** Dev-only mock (page passes mock): loaded lazily so its sample data never lands in the production chunk. */
+const loadMock = () => import('./newInfluencersMock').then((m) => m.mockIntroApi);
+const lazyMockApi: typeof introAdminApi = {
+  list: (...a) => loadMock().then((m) => m.list(...(a as [IntroStatus]))),
+  detail: (id) => loadMock().then((m) => m.detail(id)),
+  approve: (id) => loadMock().then((m) => m.approve(id)),
+  reject: (id, r, n) => loadMock().then((m) => m.reject(id, r, n)),
+};
 
 const langName = (c: string | null | undefined) => (c ? LANGS[c] ?? c : '—');
 const optionLabel = (o: CallOption | undefined) => (o === 'B' ? 'Bookings + live' : o === 'A' ? 'Bookings only' : 'Not chosen');
@@ -52,7 +60,7 @@ function whatsappPreview(name: string | null, reasons: RejectReason[], note: str
 }
 
 export default function NewInfluencers({ mock = false }: { mock?: boolean }) {
-  const api = import.meta.env.MODE === 'development' && mock ? mockIntroApi : introAdminApi;
+  const api = import.meta.env.MODE === 'development' && mock ? lazyMockApi : introAdminApi;
   const [tab, setTab] = useState<IntroStatus>('submitted');
   const [items, setItems] = useState<IntroListItem[] | null>(null);
   const [reasons, setReasons] = useState<RejectReason[]>([]);
