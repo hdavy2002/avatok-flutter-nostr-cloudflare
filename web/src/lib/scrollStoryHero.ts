@@ -182,12 +182,24 @@ export function initScrollStoryHero(root: HTMLElement | null = document.querySel
   };
   function wake() { if (!raf && root!.dataset.mode === 'live') raf = requestAnimationFrame(frame); }
 
+  // Avoid exposing the opening poster while a restored scroll position seeks to its matching film frame.
+  let initialFramePending = false;
   // Chain the next seek straight from `seeked` (not a frame later) so the decoder is never idle mid-scrub.
-  const onSeeked = () => { shown = video.currentTime; seek(); wake(); };
+  const onSeeked = () => {
+    shown = video.currentTime;
+    if (initialFramePending && Math.abs(video.currentTime - requested) < 0.5 / FPS) {
+      initialFramePending = false;
+      video.classList.remove('is-initial-seeking');
+    }
+    seek(); wake();
+  };
   const onMeta = () => {
     if (Number.isFinite(video.duration) && video.duration > 1) duration = video.duration;
     if (video.videoWidth && video.videoHeight) ratio = video.videoWidth / video.videoHeight;
     maxT = Math.max(0, duration - END_GUARD);
+    readTarget();
+    smooth = target;
+    if (target > 0.5) { initialFramePending = true; video.classList.add('is-initial-seeking'); }
     ready = true; requested = -1; geo = '';
     wake();
   };
