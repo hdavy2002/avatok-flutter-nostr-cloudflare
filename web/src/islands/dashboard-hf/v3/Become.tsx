@@ -7,6 +7,7 @@ import { formatPaise } from '../../../lib/money';
 import { capture } from '../../../lib/analytics';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { STATUS_NOTE } from '../hostActivity';
+import { FacebookReturnNote } from './SocialVerify'; // [HF-INTRO-B4]
 import { Card, Ic, PageHead, Skel, Sticker, fmtInt } from './ui';
 
 interface HostMe { host: { status: string; slug: string | null } | null; kyc: { aadhaar: { done: boolean }; selfie: { status: string }; payout: { done: boolean } } }
@@ -44,17 +45,18 @@ export default function Become({ account }: { account: DashboardAccount }) {
   const trustDone = chanDone || kycDone || profileDone;
   const steps: [string, string, boolean][] = [
     ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
-    ['Build trust: channel or video KYC', chanDone ? 'Your channel is connected.' : kycDone ? 'Your video KYC is verified.' : kycStarted ? (selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'Finish Aadhaar and your 10-second selfie video.') : sp ? `Connect YouTube or Instagram (${sp.minFollowers ?? 20}+ followers${sp.minViews ? `, ${sp.minViews}+ views on YouTube` : ''}), or do Aadhaar + a 10-second selfie video. You can add both.` : 'Connect YouTube or Instagram, or do Aadhaar + a 10-second selfie video.', trustDone],
+    ['Build trust: social media verification or video KYC', chanDone ? 'Your social media is verified.' : kycDone ? 'Your video KYC is verified.' : kycStarted ? (selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'Finish Aadhaar and your 10-second selfie video.') : sp ? `Connect YouTube, Instagram or Facebook (${sp.minFollowers ?? 20}+ followers${sp.minViews ? `, ${sp.minViews}+ views on YouTube` : ''}), or do Aadhaar + a 10-second selfie video. You can add both.` : 'Connect YouTube, Instagram or Facebook, or do Aadhaar + a 10-second selfie video.', trustDone],
     ...(space ? [[`${spaceName} space`, kycDone ? `Your ${spaceName} space is set up.` : 'Needs your video KYC to be verified first.', kycDone]] as [string, string, boolean][] : []),
     // Withdrawal details (UPI + Aadhaar) come later, in the wallet.
     ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', profileDone],
-    ['Review & go live', sp?.canGoLive === false && missing.length ? 'Still needed: ' + missing.map(m => m === 'space_video_kyc' ? 'video KYC for your space' : 'a channel or video KYC').join(', ') + '.' : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
+    ['Review & go live', sp?.canGoLive === false && missing.length ? 'Still needed: ' + missing.map(m => m === 'space_video_kyc' ? 'video KYC for your space' : 'social media verification or video KYC').join(', ') + '.' : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
   ];
   const doneN = steps.filter(s => s[2]).length;
   const cur = steps.findIndex(s => !s[2]);
   const price = PRICES[pi], per = hostPaisePerMin(price), month = Math.round(per * mins * 4.3);
   return <>
     <PageHead eyebrow="Become an influencer" title="Apni baatein, apni kamaai" sub="Create content on YouTube, Instagram or Facebook? Let your fans call you privately — and earn from every connected minute." art={<Sticker name="girlboss" w={100} rot={5} />} />
+    <FacebookReturnNote />
     <section className="h3-kpis">{([['🔒', 'Number hidden', 'Fans never see your real number.'], ['🕐', 'Your hours', 'Go online or offline any time. Decline any call.'], ['💸', 'Real money', 'Paid to your own UPI, no minimum withdrawal, 7 days after the call.'], ['🛡️', 'Safety first', 'Press # to end, block and report.']] as const)
       .map(([e, t, d]) => <div key={t} className="h3-card"><div style={{ fontSize: 28 }} aria-hidden="true">{e}</div><h3 style={{ marginTop: 6 }}>{t}</h3><p className="small muted">{d}</p></div>)}</section>
     <section className="h3-row c21">

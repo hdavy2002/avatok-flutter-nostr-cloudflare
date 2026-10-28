@@ -12,7 +12,14 @@ import { Marigold } from './ui';
 
 const POLL_MS = 10_000;
 
-export default function HostModes({ queueOn, bookedCount, onPresence, onMode }: { queueOn: boolean; bookedCount: number; onPresence?: (p: HostPresence) => void; onMode?: (m: HostMode) => void }) {
+/** [HF-INTRO-B4] twoState = the person chose "Bookings + live calls": only Online and Offline show. Offline is saved as bookings_only, which keeps bookings open. */
+const TWO: readonly HostMode[] = ['online', 'bookings_only'];
+const TWO_HINT: Record<'online' | 'offline', string> = {
+  online: 'Fans can call you right now, and book a time. Switch to Offline when you are done.',
+  offline: 'Offline: hidden from Reels, fans can still book a time.',
+};
+
+export default function HostModes({ queueOn, bookedCount, onPresence, onMode, twoState = false }: { queueOn: boolean; bookedCount: number; onPresence?: (p: HostPresence) => void; onMode?: (m: HostMode) => void; twoState?: boolean }) {
   const [pres, setPres] = useState<HostPresenceResponse | null>(null);
   const [queue, setQueue] = useState<HostQueueView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,8 +41,11 @@ export default function HostModes({ queueOn, bookedCount, onPresence, onMode }: 
   }, [load]);
 
   const choose = async (mode: HostMode, confirmed = false) => {
-    if (!pres || busy || mode === pres.mode) return;
-    if (mode === 'offline' && !confirmed && offlineWarning(bookedCount)) { setConfirmOff(true); return; }
+    if (twoState) {
+      const cur: HostMode = pres?.mode === 'online' ? 'online' : 'bookings_only';
+      if (!pres || busy || mode === cur) return;
+    } else if (!pres || busy || mode === pres.mode) return;
+    if (!twoState && mode === 'offline' && !confirmed && offlineWarning(bookedCount)) { setConfirmOff(true); return; }
     setConfirmOff(false); setBusy(true); setMsg('');
     const from = pres.mode;
     const r = await setMyMode(mode);
@@ -57,12 +67,13 @@ export default function HostModes({ queueOn, bookedCount, onPresence, onMode }: 
   const waiting = queue?.waiting ?? pres?.queue.waiting ?? 0;
   return <>
     <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
-      <div className="h3-modes" role="radiogroup" aria-label="Your call mode" style={{ marginTop: 12 }}>
-        {HOST_MODES.map(m => <button key={m} type="button" role="radio" aria-checked={mode === m} className={`h3-mode${mode === m ? ' is-on' : ''}${m === 'offline' ? ' off' : ''}`}
-          disabled={busy || !pres} onClick={() => void choose(m)}>{MODE_LABEL[m]}</button>)}
+      <div className="h3-modes" role="radiogroup" aria-label="Your call mode" style={{ marginTop: 12, ...(twoState ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } : {}) }}>
+        {(twoState ? TWO : HOST_MODES).map(m => { const on2 = twoState ? (m === 'online') === (mode === 'online') && !!mode : mode === m; const off = m === 'offline' || (twoState && m === 'bookings_only');
+          return <button key={m} type="button" role="radio" aria-checked={on2} className={`h3-mode${on2 ? ' is-on' : ''}${off ? ' off' : ''}`}
+            disabled={busy || !pres} onClick={() => void choose(m)}>{twoState ? (m === 'online' ? 'Online' : 'Offline') : MODE_LABEL[m]}</button>; })}
       </div>
       {pres?.onCall && <p style={{ marginTop: 10 }}><span className="h3-chip miss">On a call</span></p>}
-      <p className="small muted" style={{ marginTop: 8 }}>{failed && !pres ? 'We could not load your status. It will retry.' : mode ? MODE_HINT[mode] : 'Loading…'}</p>
+      <p className="small muted" style={{ marginTop: 8 }}>{failed && !pres ? 'We could not load your status. It will retry.' : mode ? (twoState ? TWO_HINT[mode === 'online' ? 'online' : 'offline'] : MODE_HINT[mode]) : 'Loading…'}</p>
       {confirmOff && warn && <div className="h3-modewarn" role="alertdialog" aria-label="Go offline">
         <p><b>{warn}</b> You will not get instant calls, queue or new bookings while you are offline.</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

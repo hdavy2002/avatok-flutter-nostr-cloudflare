@@ -39,6 +39,7 @@ import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
 import MerchApp from './merch/MerchApp'; // [HF-MERCH-CREATOR-WEB-1]
 import OrdersV3 from './v3/Orders'; // [HF-MERCH-FAN-WEB-1]
+import { CallOptionCard, useCallOption } from './v3/CallOption'; // [HF-INTRO-B4]
 import ProfilePhoto from './v3/ProfilePhoto'; // [HF-CHANNEL-PHOTO-1]
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
@@ -145,7 +146,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'verifications': body = <VerificationsV3 key={key} account={account} />; break;
     case 'host': body = <div className="h3-legacy"><HostProfile key={key} account={account} /></div>; break;
     case 'host-calendar': body = <div className="h3-legacy"><HostBookings key={key} role="host" /></div>; break;
-    case 'availability': body = <div className="h3-legacy"><HostAvailability key={key} /></div>; break;
+    case 'availability': body = <><AvailabilityCallOption /><div className="h3-legacy"><HostAvailability key={key} /></div></>; break;
     case 'earnings': body = <div className="h3-legacy"><Earnings key={key} account={account} /></div>; break;
     case 'profile-photo': body = <ProfilePhoto key={key} account={account} />; break;
     case 'merch': body = <MerchApp key={key} />; break;
@@ -162,4 +163,10 @@ function Shell({ initial }: { initial: DashSection }) {
       </ToastProvider>
     </DashDataProvider>
   </div>;
+}
+
+/** [HF-INTRO-B4] The call option also lives above the availability editor; renders nothing while hfCallOptionEnabled is off. */
+function AvailabilityCallOption() {
+  const co = useCallOption();
+  return co.enabled ? <div style={{ marginBottom: 16 }}><CallOptionCard st={co} /></div> : null;
 }

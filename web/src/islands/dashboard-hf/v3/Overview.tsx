@@ -8,6 +8,7 @@ import { getBookingSummary, listBookings, type BookingSummary, type HfBooking } 
 import { capture } from '../../../lib/analytics';
 import { callModeFlags, NO_FLAGS, type CallModeFlags, type HostMode } from '../../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import HostModes from './HostModes';
+import { CallOptionCard, IntroBanner, useCallOption } from './CallOption'; // [HF-INTRO-B4]
 import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
@@ -110,6 +111,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     </div>
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
+    {hostLive && <IntroBanner />}
     {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
     {hostLive && <ShareMyPage slug={account.host?.slug} />}
 
@@ -281,6 +283,7 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
   // [HF-CALL-MODES-E1] flags off (or unknown) = the old Online/Offline toggle below, unchanged
   const [flags, setFlags] = useState<CallModeFlags>(NO_FLAGS);
   useEffect(() => { let l = true; void callModeFlags().then(f => { if (l) setFlags(f); }); return () => { l = false; }; }, []);
+  const co = useCallOption(); // [HF-INTRO-B4] flag off / failure = co.enabled false = the dashboard exactly as before
   const pres = useRef(presence); pres.current = presence;
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { if (loaded) onPresence?.(presence); }, [loaded, presence, onPresence]);
@@ -311,15 +314,26 @@ function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: Hos
     if (r.ok) setPresence(r.data.presence === 'online' || r.data.presence === 'busy' ? r.data.presence : 'offline');
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
-  return <section className="h3-row c2">
-    {flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> :
+  const toggleCard = (
     <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}>
         <label className="h3-toggle"><input type="checkbox" role="switch" checked={onlineNow} disabled={busy || !on || !host} onChange={toggle} /><b>{!on ? 'Calls open soon' : onlineNow ? (presence === 'busy' ? 'On a call' : 'Online') : 'Offline'}</b></label>
       </div>
       <p className="small muted" style={{ marginTop: 8 }}>{!on ? 'Calling isn’t switched on yet.' : onlineNow ? 'Callers can call you now. Switch off when you’re done.' : 'Switch on when you’re ready. People who asked to be told get a WhatsApp.'}</p>
       {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}
-    </section>}
+    </section>
+  );
+  const optA = co.enabled && co.option === 'A', optB = co.enabled && co.option === 'B';
+  return <section className="h3-row c2">
+    {co.enabled && on && host ? <div style={{ display: 'grid', gap: 16, alignContent: 'start', minWidth: 0 }}>
+      <CallOptionCard st={co} />
+      {optB && flags.modes ? <HostModes twoState queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} />
+        : optB ? <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}><label className="h3-toggle"><input type="checkbox" role="switch" checked={onlineNow} disabled={busy || !on || !host} onChange={toggle} /><b>{onlineNow ? (presence === 'busy' ? 'On a call' : 'Online') : 'Offline'}</b></label></div>
+          {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}</section>
+        : !optA ? (flags.modes ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> : toggleCard) : null}
+    </div> :
+    flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> : toggleCard}
     <section className="h3-card"><h2><Marigold size={20} tone={1} />Today as an influencer</h2>
       <div className="h3-kpis" style={{ marginTop: 10 }}>
         <div><div className="small muted">Calls received today</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.callsToday.received ?? '—'}</div></div>

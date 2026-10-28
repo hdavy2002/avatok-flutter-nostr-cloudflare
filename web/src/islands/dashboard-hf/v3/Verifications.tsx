@@ -7,6 +7,7 @@ import { capture } from '../../../lib/analytics';
 import { NEVER_SHARE } from '../../../lib/hfSpaces';
 import SpaceBadges from '../../../components/hosts/SpaceBadges';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
+import { FacebookLoginButton, FacebookReturnNote } from './SocialVerify'; // [HF-INTRO-B4]
 import { Failed, Ic, PageHead, Skel, Sticker } from './ui';
 import '../../../styles/hf-verifications.css';
 
@@ -19,7 +20,7 @@ interface Me {
   canGoLive?: boolean; missing?: string[]; callerLevel?: Level; callerLevelLocked?: boolean; videoKycVerified?: boolean; hostStatus?: string | null;
 }
 const MISSING_TEXT: Record<string, string> = {
-  channel_or_video_kyc: 'Connect a channel or finish video KYC',
+  channel_or_video_kyc: 'Finish social media verification or video KYC',
   space_video_kyc: 'Finish video KYC to open your special space',
 };
 // [HF-VERIF-WORDING-1] Kept word for word in step with the app (my_verifications.dart _liveTitle / _liveLine).
@@ -48,7 +49,8 @@ export default function Verifications({ account }: { account: DashboardAccount }
   const canGoLive = me.canGoLive ?? (missing.length === 0 && (b.channel || b.videoKyc));
   const closing = !!account.closing;
   return <>
-    <PageHead eyebrow="My verifications" title="Bharosa ke badge" sub="Stack your badges so fans trust you. Add a channel, video KYC, or both." art={<Sticker name="nazar" w={100} rot={5} />} />
+    <PageHead eyebrow="My verifications" title="Bharosa ke badge" sub="Stack your badges so fans trust you. Add social media verification, video KYC, or both." art={<Sticker name="nazar" w={100} rot={5} />} />
+    <FacebookReturnNote />
     <section className="hv-summary" aria-live="polite">
       <div className="hv-lead">
         <h2>{canGoLive ? liveTitle(me.hostStatus) : 'Not ready to go live yet'}</h2>
@@ -77,12 +79,12 @@ function PhoneCard({ done }: { done: boolean }) {
   </section>;
 }
 
-function ChannelCard({ done, closing }: { done: boolean; closing: boolean }) {
+export function ChannelCard({ done, closing }: { done: boolean; closing: boolean }) {
   return <section className="hv-card">
     <div className="hv-head"><span className="hv-ico" aria-hidden="true"><Ic name="star" className="" /></span>
-      <div><h3>YouTube / Instagram channel</h3><p>Connect your channel so fans see your videos. Needs 20 followers and 1,000 YouTube views.</p></div>
+      <div><h3>Social media verification</h3><p>Connect your YouTube, Instagram or Facebook so fans see your videos. Needs 20 followers and 1,000 YouTube views.</p></div>
       <span className="hv-status">{done ? <Chip tone="lav">Connected</Chip> : <Chip tone="dec">Not connected</Chip>}</span></div>
-    {!closing && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?add=channel&step=channel" onClick={() => track('hf_verifications_action', { badge: 'channel' })}>{done ? 'Manage channel' : 'Connect my channel'}</a></div>}
+    {!closing && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?add=channel&step=channel" onClick={() => track('hf_verifications_action', { badge: 'channel' })}>{done ? 'Manage social media' : 'Connect my social media'}</a><FacebookLoginButton surface="verifications" /></div>}
   </section>;
 }
 
