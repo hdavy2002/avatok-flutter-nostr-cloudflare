@@ -1,0 +1,74 @@
+/* [HF-INTRO-B2] New influencers review page. Desi look: tone washes, flower corners, fluid type (var(--fs-*) from hf-admin-desi.css), nothing under 14px. */
+.hf-admin .hfi-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.hf-admin .hfi-pill[aria-selected='true'] { background: var(--a-plum); color: #fff; border-color: var(--a-plum); }
+.hf-admin .hfi-list { display: flex; flex-direction: column; gap: clamp(12px, 1.2vw, 20px); min-width: 0; }
+
+.hf-admin .hfi-row { position: relative; overflow: hidden; border-radius: 30px; border: 1.5px solid var(--a-line); background: linear-gradient(165deg, #fff 40%, var(--a-goldtint)); box-shadow: var(--a-shadow); transition: box-shadow .2s, border-color .2s; }
+.hf-admin .hfi-row.is-w2w { background: linear-gradient(165deg, #fff 40%, var(--a-blush)); border-color: #f6c2d8; }
+.hf-admin .hfi-row.is-open { box-shadow: 0 24px 46px -26px rgba(74,23,71,.5); border-color: var(--a-rani); }
+.hf-admin .hfi-flower { position: absolute; top: -26px; right: -22px; opacity: .55; pointer-events: none; }
+.hf-admin .hfi-head { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: clamp(12px, 1.4vw, 24px); align-items: center; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; padding: clamp(14px, 1.4vw, 24px); color: var(--a-ink); font: inherit; min-height: 88px; }
+.hf-admin .hfi-head:focus-visible { outline: 3px solid var(--a-rani); outline-offset: -4px; border-radius: 30px; }
+.hf-admin .hfi-head:hover .hfi-name { color: var(--a-rani); }
+.hf-admin .hfi-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.hf-admin .hfi-name { font-family: 'Nunito', 'Comfortaa', sans-serif; font-weight: 900; font-size: var(--fs-h2); line-height: 1.15; color: var(--a-plum); overflow-wrap: anywhere; }
+.hf-admin .hfi-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hf-admin .hfi-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: var(--fs-small); color: var(--a-muted); font-weight: 700; }
+.hf-admin .hfi-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: clamp(180px, 26vw, 420px); padding-right: 36px; }
+.hf-admin .hfi-chev { position: absolute; right: clamp(14px, 1.4vw, 24px); bottom: 14px; color: var(--a-plum); transition: transform .25s; }
+.hf-admin .hfi-row.is-open .hfi-chev { transform: rotate(180deg); }
+
+.hf-admin .hfi-panel { position: relative; border-top: 2px dashed #f0d4b8; padding: clamp(16px, 2vw, 36px); animation: hfi-down .28s ease-out; background: rgba(255,255,255,.55); }
+@keyframes hfi-down { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hf-admin .hfi-panel { animation: none; } .hf-admin .hfi-chev { transition: none; } }
+.hf-admin .hfi-grid { display: grid; grid-template-columns: minmax(240px, clamp(280px, 28vw, 460px)) minmax(0, 1fr); gap: clamp(18px, 3vw, 56px); align-items: start; }
+.hf-admin .hfi-videocol { display: flex; flex-direction: column; gap: 8px; }
+.hf-admin .hfi-video { position: relative; width: 100%; aspect-ratio: 9 / 16; max-height: 82vh; margin-inline: auto; border-radius: 28px; overflow: hidden; background: #1b0b1c; border: 4px solid #fff; box-shadow: 0 0 0 2px var(--a-plum), 0 24px 40px -22px rgba(74,23,71,.7); }
+.hf-admin .hfi-video video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.hf-admin .hfi-novideo { display: grid; place-content: center; justify-items: center; gap: 8px; color: #fff; text-align: center; padding: 20px; }
+.hf-admin .hfi-sound { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: inline-flex; gap: 8px; align-items: center; min-height: 44px; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--a-marigold); color: #3b1600; font-family: 'Comfortaa', sans-serif; font-weight: 800; font-size: var(--fs-small); cursor: pointer; box-shadow: 0 8px 18px -8px rgba(0,0,0,.5); }
+.hf-admin .hfi-sound:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.hf-admin .hfi-center { text-align: center; margin: 0; }
+
+.hf-admin .hfi-info { display: flex; flex-direction: column; gap: clamp(12px, 1.2vw, 20px); min-width: 0; }
+.hf-admin .hfi-h { margin: 0; font-family: 'Nunito', 'Comfortaa', sans-serif; font-weight: 900; font-size: var(--fs-big); line-height: 1.1; color: var(--a-plum); }
+.hf-admin .hfi-desc { margin: 0; font-size: var(--fs-body); line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; padding: 14px 18px; border-radius: 20px; background: var(--a-cream); border: 1.5px solid var(--a-line); }
+.hf-admin .hfi-dl { display: grid; grid-template-columns: minmax(7.5rem, 11rem) minmax(0, 1fr); gap: 12px 18px; margin: 0; font-size: var(--fs-body); }
+.hf-admin .hfi-dl dt { font-weight: 800; color: var(--a-plum); }
+.hf-admin .hfi-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.hf-admin .hfi-cal, .hf-admin .hfi-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hf-admin .hfi-cal li { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.hf-admin .hfi-links a { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; color: var(--a-lav); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.hf-admin .hfi-links a:focus-visible { outline: 3px solid var(--a-rani); outline-offset: 2px; border-radius: 8px; }
+.hf-admin .hfi-warn { color: var(--a-bad); font-weight: 800; }
+.hf-admin .hfi-ticks { display: flex; flex-wrap: wrap; gap: 8px; }
+.hf-admin .hfi-ticks .hfh-tick, .hf-admin .hfi-dl .hfh-tick { font-size: var(--fs-small); }
+.hf-admin .hfh-tick.off { background: #fde8e8; color: var(--a-bad); }
+
+.hf-admin .hfi-acts { margin-top: 6px; }
+.hf-admin .hfi-big { min-height: 56px; padding-inline: clamp(22px, 2vw, 36px); }
+.hf-admin .hfi-confirm { padding: 16px 20px; border-radius: 22px; background: var(--a-teatint); border: 1.5px solid #cfe9eb; display: flex; flex-direction: column; gap: 12px; }
+.hf-admin .hfi-confirm p { margin: 0; }
+.hf-admin .hfi-reject { border: 1.5px solid #f6c2d8; background: linear-gradient(165deg, #fff 30%, var(--a-blush)); border-radius: 24px; padding: clamp(14px, 1.6vw, 24px); margin: 0; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.hf-admin .hfi-reject legend { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: var(--fs-h2); color: var(--a-plum); padding: 0 8px; }
+.hf-admin .hfi-reasons { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); }
+.hf-admin .hfi-reason { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; min-height: 52px; border-radius: 18px; background: #fff; border: 1.5px solid var(--a-line); cursor: pointer; font-size: var(--fs-small); line-height: 1.4; }
+.hf-admin .hfi-reason.on { border-color: var(--a-rani); background: #fff4f8; }
+.hf-admin .hfi-reason input { width: 24px; height: 24px; flex: none; margin-top: 1px; accent-color: var(--a-rani); }
+.hf-admin .hfi-reason:focus-within { outline: 3px solid var(--a-haldi); outline-offset: 1px; }
+.hf-admin .hfi-wa { border-radius: 20px; background: #fffdf8; border: 1.5px dashed #e6c9a1; padding: 12px 16px; }
+.hf-admin .hfi-wa-h { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--a-plum); }
+.hf-admin .hfi-wa pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); line-height: 1.55; }
+
+@media (max-width: 900px) {
+  .hf-admin .hfi-grid { grid-template-columns: minmax(0, 1fr); }
+  .hf-admin .hfi-video { max-width: min(100%, 340px); }
+}
+@media (max-width: 640px) {
+  .hf-admin .hfi-head { grid-template-columns: auto minmax(0, 1fr); padding-bottom: 54px; }
+  .hf-admin .hfi-badges { grid-column: 1 / -1; justify-content: flex-start; max-width: none; padding-right: 48px; }
+  .hf-admin .hfi-chev { bottom: 12px; }
+  .hf-admin .hfi-dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .hf-admin .hfi-dl dd { margin-bottom: 10px; }
+  .hf-admin .hfi-acts > *, .hf-admin .hfi-reject .hfh-acts > *, .hf-admin .hfi-confirm .hfh-acts > * { flex: 1 1 100%; }
+}

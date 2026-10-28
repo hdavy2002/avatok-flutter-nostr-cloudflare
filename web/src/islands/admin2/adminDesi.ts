@@ -46,6 +46,7 @@ consultants: { line: 'Gyaani log', sticker: 'mohmaya', rot: 5, tone: 'tea', ghos
 'desk-money': { line: 'Hisaab mein gadbad?', sticker: 'chugli', rot: -5, tone: 'gold', ghost: 'Hisaab' },
 'host-desk': { line: 'Kaun aaya, kya kiya', sticker: 'nazar', rot: 4, tone: 'tea', ghost: 'Log' }, // [HF-ADMIN-SWEEP-1]
 'host-review': { line: 'Naye chehre, pehli nazar', sticker: 'nazar', rot: -5, tone: 'rani', ghost: 'Chehre' },
+'host-intro': { line: 'Naye sitare, intro dekho', sticker: 'girlboss', rot: -4, tone: 'rani', ghost: 'Sitare' }, // [HF-INTRO-B2]
 'host-kyc': { line: 'Pehchaan pakki karo', sticker: 'peace', rot: 5, tone: 'tea', ghost: 'Pehchaan' },
 'host-avatars': { line: 'Chehre hazaar', sticker: 'fav', rot: -5, tone: 'lav', ghost: 'Chehre' },
 'host-demo': { line: 'Dikhawe ke sitare', sticker: 'girlboss', rot: 5, tone: 'rani', ghost: 'Sitare' },

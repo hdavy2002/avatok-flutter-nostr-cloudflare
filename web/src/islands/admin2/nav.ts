@@ -2,7 +2,7 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon, ClipboardCheck, ReceiptIndianRupee, Flag, Siren, House,
+  CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon, ClipboardCheck, ReceiptIndianRupee, Flag, Siren, House, Clapperboard,
 } from 'lucide-react';
 import { PackageCheck, Brush, SlidersHorizontal, Landmark } from 'lucide-react'; // [HF-MERCH-ADMIN-1]
 
@@ -10,7 +10,7 @@ export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refund
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
   | 'desk-wallets' | 'desk-bookings' | 'desk-topups' | 'desk-support' | 'desk-reports' | 'desk-money'
-  | 'host-desk' | 'host-review' | 'host-kyc' | 'host-avatars' | 'host-demo' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
+  | 'host-desk' | 'host-review' | 'host-intro' | 'host-kyc' | 'host-avatars' | 'host-demo' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
   | 'merch-orders' | 'merch-products' | 'merch-settings' | 'merch-wallet' | 'merch-ai' // [HF-MERCH-ADMIN-1]
   | 'preview-help' | 'preview-legal';
 
@@ -56,6 +56,7 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'desk-reports', label: 'Reports & blocks', short: 'Reports', href: '/admin/hosts/desk?tab=reports', icon: Flag, group: 'Hosts' },
   { key: 'desk-money', label: 'Money alerts', short: 'Money', href: '/admin/hosts/desk?tab=money', icon: Siren, group: 'Hosts' },
   { key: 'host-review', label: 'Host review', short: 'Hosts', href: '/admin/hosts', icon: UserCheck, group: 'Hosts' },
+  { key: 'host-intro', label: 'New influencers', short: 'New', href: '/admin/hosts/new-influencers', icon: Clapperboard, group: 'Hosts' }, // [HF-INTRO-B2]
   { key: 'host-kyc', label: 'Video KYC reviews', short: 'KYC', href: '/admin/hosts/kyc', icon: ShieldCheck, group: 'Hosts' },
   { key: 'host-avatars', label: 'Avatars', short: 'Avatars', href: '/admin/hosts/avatars', icon: Images, group: 'Hosts' },
   { key: 'host-demo', label: 'Demo influencers', short: 'Demo', href: '/admin/hosts/demo-influencers', icon: Sparkles, group: 'Hosts' }, // [HF-WIRE-14]

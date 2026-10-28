@@ -165,6 +165,43 @@ function NeedsDot() {
   return <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{n}</span>;
 }
 
+/** [HF-INTRO-B2] Gold "N new" count on New influencers. The page announces it (`hf-intro-admin:pending`); other pages show the last
+ * known number for the tab and refresh it once per tab with one small admin GET. A failed refresh just leaves the badge off (it is only a hint). */
+const INTRO_KEY = 'admin2:hf-intro-pending';
+function useIntroPending(): number {
+  const [n, setN] = useState(() => {
+    try { return Number(sessionStorage.getItem(INTRO_KEY)) || 0; } catch { return 0; }
+  });
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<number>).detail;
+      if (typeof d !== 'number') return;
+      setN(d);
+      try { sessionStorage.setItem(INTRO_KEY, String(d)); } catch { /* storage blocked */ }
+    };
+    window.addEventListener('hf-intro-admin:pending', on);
+    let seen = false;
+    try { seen = sessionStorage.getItem(INTRO_KEY) !== null; } catch { /* storage blocked */ }
+    if (!seen && !/\/admin\/hosts\/new-influencers/.test(window.location.pathname)) {
+      adminApi<{ items?: unknown[] }>('/api/admin/hf/intro-applications', { query: { status: 'submitted' } })
+        .then((r) => on(new CustomEvent('x', { detail: (r.items ?? []).length })))
+        .catch(() => { /* badge is a hint only; the page itself reports errors */ });
+    }
+    return () => window.removeEventListener('hf-intro-admin:pending', on);
+  }, []);
+  return n;
+}
+function IntroBadge({ className }: { className?: string }) {
+  const n = useIntroPending();
+  if (!n) return null;
+  return <span className={cn('hf-admin-navpill relative ml-auto rounded-full bg-grand-gold px-[7px] py-[3px] font-dash text-[14px] font-black leading-none text-foreground', className)}>{n} new</span>;
+}
+function IntroDot() {
+  const n = useIntroPending();
+  if (n <= 0) return null;
+  return <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{n}</span>;
+}
+
 function useToPrint(_ready: boolean, _active: AdminKey): number {
   const [n, setN] = useState(() => {
     try { return Number(sessionStorage.getItem(TO_PRINT_KEY)) || 0; } catch { return 0; }
@@ -234,6 +271,7 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
               <span className="relative min-w-0 flex-1">{it.label}</span>
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
               {it.key === 'merch-products' && <NeedsBadge />}
+              {it.key === 'host-intro' && <IntroBadge />}
               <NavPill label={it.pill} />
               {on && <span className="hf-admin-flw" aria-hidden="true"><Marigold size={22} tone={1} /></span>}
             </a>
@@ -295,6 +333,7 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
                     {on && <span aria-hidden className="pointer-events-none absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
                     {it.key === 'merch-products' && <NeedsDot />}
+                    {it.key === 'host-intro' && <IntroDot />}
                     {it.key === 'shop-orders' && toPrint > 0 && (
                       <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{toPrint}</span>
                     )}
@@ -349,6 +388,7 @@ function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | nul
                   <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
                   {it.key === 'merch-products' && <NeedsBadge />}
+              {it.key === 'host-intro' && <IntroBadge />}
                   <NavPill label={it.pill} />
                 </a>
               </Fragment>

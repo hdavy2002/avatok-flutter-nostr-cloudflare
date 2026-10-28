@@ -1,0 +1,9 @@
+---
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import NewInfluencers from '../../../islands/admin2/hosts/NewInfluencers.tsx';
+---
+
+<Admin2 title="New influencers" active="host-intro" subtitle="People who sent a 10 to 20 second intro video and want to go live. Watch it, check the details, then approve or send it back with a reason.">
+  <NewInfluencers client:load />
+</Admin2>
