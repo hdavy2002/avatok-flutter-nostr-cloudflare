@@ -12,6 +12,7 @@ import '../../../data/api_exception.dart';
 import '../../../data/models/intro_onboarding.dart';
 import '../../../data/repos/intro_onboarding_repo.dart';
 import '../../../data/telemetry.dart';
+import '../../desi.dart';
 import '../../theme.dart';
 import 'intro_onb_kit.dart';
 
@@ -592,7 +593,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
           child: Container(
             width: 48,
             height: 48,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: IO.camScrim),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: IO.camScrim, border: Border.all(color: IO.camLine, width: 2)),
             child: Icon(icon, color: IO.onCamera, size: 26),
           ),
         ),
@@ -612,7 +613,23 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
     );
   }
 
-  Widget _darkPage({required Widget child}) => Scaffold(backgroundColor: IO.cameraBg, body: SafeArea(child: child));
+  Widget _darkPage({required Widget child}) => Scaffold(
+        backgroundColor: IO.cameraBg,
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF6B2468), IO.cameraBg])),
+          child: SafeArea(child: child),
+        ),
+      );
+
+  /// [HF-DESI-ONB] The saffron frame and the two corner marigolds of the camera design (Record). Never over text: the
+  /// flowers sit in the screen corners above the safe area, the frame is a thin edge.
+  Widget _frame() => IgnorePointer(
+        child: Stack(children: [
+          Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(border: Border.all(color: IO.camLine, width: 5)))),
+          const Positioned(left: -18, top: -18, child: Marigold(size: 60, yellow: true)),
+          const Positioned(right: -18, top: -18, child: Marigold(size: 60, yellow: true)),
+        ]),
+      );
 
   Widget _permissionView() {
     return _darkPage(
@@ -621,16 +638,16 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Align(alignment: Alignment.centerLeft, child: OnbBackButton(onTap: () => unawaited(_close()), dark: true)),
           const Spacer(),
-          const Icon(Icons.videocam_rounded, color: IO.yellow, size: 72),
+          const Icon(Icons.videocam_rounded, color: IO.gold, size: 72),
           const SizedBox(height: 18),
-          Text('We need your camera and microphone', textAlign: TextAlign.center, style: t(26, color: IO.onCamera, w: FontWeight.w900, h: 1.15)),
+          Text('We need your camera and microphone', textAlign: TextAlign.center, style: t(26, color: IO.onCamera, w: FontWeight.w800, h: 1.15)),
           const SizedBox(height: 12),
           Text(
             'You record a short live video of yourself. Nothing is uploaded from your gallery, and nobody sees it until our team approves it.',
             textAlign: TextAlign.center,
             style: t(16, color: IO.onCameraSoft, w: FontWeight.w600, h: 1.5),
           ),
-          if (_error != null) ...[const SizedBox(height: 14), Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.yellow, w: FontWeight.w800, h: 1.4))],
+          if (_error != null) ...[const SizedBox(height: 14), Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.gold, w: FontWeight.w800, h: 1.4))],
           const Spacer(),
           if (_permanentlyDenied)
             OnbPrimaryButton(label: 'Open Settings', onTap: () {
@@ -645,37 +662,48 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
   }
 
   Widget _uprightView() {
-    return Container(
-      color: IO.cameraBg,
-      padding: const EdgeInsets.all(24),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        SizedBox(
-          width: 180,
-          height: 180,
-          child: Stack(children: [
-            Positioned(left: 30, top: 62, child: Container(width: 120, height: 66, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: IO.camLine, width: 5)))),
-            Positioned(
-              left: 62,
-              top: 24,
-              child: Container(width: 66, height: 128, decoration: BoxDecoration(color: IO.yellow.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(16), border: Border.all(color: IO.yellow, width: 5))),
+    return DecoratedBox(
+      decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF4A1747), IO.cameraBg])),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(26), border: Border.all(color: IO.line, width: 1.5), boxShadow: IO.shadow),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: Stack(children: [
+                const Positioned(left: -16, top: -16, child: Marigold(size: 62, yellow: true)),
+                const Positioned(right: -16, top: -16, child: Marigold(size: 74)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 30, 22, 24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 92,
+                      height: 92,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFF6E3C0)),
+                      child: const Icon(Icons.screen_rotation_rounded, color: IO.plum, size: 44),
+                    ),
+                    const SizedBox(height: 16),
+                    Semantics(liveRegion: true, child: Text('Please hold your phone upright', textAlign: TextAlign.center, style: t(24, color: IO.ink, w: FontWeight.w800, h: 1.15))),
+                    const SizedBox(height: 10),
+                    Text('Reels are tall, like your phone. Turn it upright and recording will start working again.', textAlign: TextAlign.center, style: t(15, color: IO.muted, w: FontWeight.w700, h: 1.5)),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      height: 52,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: C.sand, borderRadius: BorderRadius.circular(999), border: Border.all(color: IO.line, width: 1.5)),
+                      child: Text('Record button is paused', style: t(15, color: IO.plum, w: FontWeight.w800)),
+                    ),
+                  ]),
+                ),
+              ]),
             ),
-            const Positioned(right: 0, top: 4, child: Icon(Icons.screen_rotation_rounded, color: IO.yellow, size: 44)),
-          ]),
+          ),
         ),
-        const SizedBox(height: 22),
-        Semantics(liveRegion: true, child: Text('Please hold your phone upright', textAlign: TextAlign.center, style: t(30, color: IO.onCamera, w: FontWeight.w900, h: 1.1))),
-        const SizedBox(height: 22),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 300),
-          child: Text('Reels are tall, like your phone. Turn it upright and recording will start working again.', textAlign: TextAlign.center, style: t(16, color: IO.onCameraSoft, w: FontWeight.w600, h: 1.55)),
-        ),
-        const SizedBox(height: 22),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(color: IO.camTrack, borderRadius: BorderRadius.circular(999), border: Border.all(color: IO.camLine, width: 2)),
-          child: Text('Record button is paused', style: t(15, color: IO.onCamera, w: FontWeight.w800)),
-        ),
-      ]),
+      ),
     );
   }
 
@@ -690,7 +718,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
             height: 20,
             child: Stack(clipBehavior: Clip.none, alignment: Alignment.centerLeft, children: [
               Container(height: 8, decoration: BoxDecoration(color: IO.camTrack, borderRadius: BorderRadius.circular(99))),
-              Container(width: box.maxWidth * frac, height: 8, decoration: BoxDecoration(color: IO.yellow, borderRadius: BorderRadius.circular(99))),
+              Container(width: box.maxWidth * frac, height: 8, decoration: BoxDecoration(gradient: const LinearGradient(colors: [IO.orange, IO.yellow]), borderRadius: BorderRadius.circular(99))),
               Positioned(left: box.maxWidth * minFrac - 1.5, top: 0, child: Container(width: 3, height: 20, color: IO.onCamera)),
             ]),
           ),
@@ -714,18 +742,18 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
         child: Opacity(
           opacity: onTap == null ? 0.45 : 1,
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(999),
             onTap: onTap,
             child: Container(
               width: 72,
               height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: filled ? IO.yellow : null,
-                borderRadius: BorderRadius.circular(14),
+                color: filled ? IO.yellow : IO.camScrim,
+                borderRadius: BorderRadius.circular(999),
                 border: filled ? null : Border.all(color: IO.camLine, width: 2),
               ),
-              child: Text(label, style: t(14, color: filled ? IO.ink : IO.onCamera, w: FontWeight.w900)),
+              child: Text(label, style: t(15, color: filled ? IO.onYellow : IO.onCamera, w: FontWeight.w800)),
             ),
           ),
         ),
@@ -770,9 +798,9 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(color: IO.camScrim, borderRadius: BorderRadius.circular(16)),
+                      decoration: BoxDecoration(color: IO.camScrim, borderRadius: BorderRadius.circular(16), border: Border.all(color: IO.gold, width: 1.2)),
                       child: Text.rich(TextSpan(children: [
-                        TextSpan(text: 'Hint · ', style: t(14, color: IO.yellow, w: FontWeight.w900)),
+                        TextSpan(text: 'Hint · ', style: t(14, color: IO.gold, w: FontWeight.w800)),
                         TextSpan(text: hint, style: t(14, color: IO.onCamera, w: FontWeight.w600, h: 1.45)),
                       ])),
                     ),
@@ -783,7 +811,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                child: Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.yellow, w: FontWeight.w800, h: 1.35)),
+                child: Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.gold, w: FontWeight.w800, h: 1.35)),
               ),
             _progressBar(),
             Padding(
@@ -803,8 +831,10 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
                       width: 86,
                       height: 86,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: IO.recDot, border: Border.all(color: IO.onCamera, width: 6)),
-                      child: recording ? Container(width: 28, height: 28, decoration: BoxDecoration(color: IO.onCamera, borderRadius: BorderRadius.circular(6))) : null,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: IO.white, border: Border.all(color: IO.yellow, width: 6)),
+                      child: recording
+                          ? Container(width: 32, height: 32, decoration: BoxDecoration(color: IO.pink, borderRadius: BorderRadius.circular(8)))
+                          : Container(width: 58, height: 58, decoration: const BoxDecoration(color: IO.pink, shape: BoxShape.circle)),
                     ),
                   ),
                 ),
@@ -815,13 +845,14 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
               child: Text(
-                recording ? 'Live recording only · keep your phone upright' : 'Tap the red button to start · live recording only',
+                recording ? 'Live recording only · keep your phone upright' : 'Tap the big button to start · live recording only',
                 textAlign: TextAlign.center,
                 style: t(14, color: IO.onCameraSoft, w: FontWeight.w700),
               ),
             ),
           ]),
         ),
+        _frame(),
         if (_sideways)
           Positioned.fill(
             child: Stack(children: [
@@ -870,7 +901,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-                child: Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.yellow, w: FontWeight.w800, h: 1.4)),
+                child: Text(_error!, textAlign: TextAlign.center, style: t(15, color: IO.gold, w: FontWeight.w800, h: 1.4)),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
@@ -878,13 +909,13 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
                 SizedBox(
                   width: 110,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(999),
                     onTap: uploading ? null : () => unawaited(_redo()),
                     child: Container(
                       height: 58,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: IO.camLine, width: 2)),
-                      child: Text('Redo', style: t(17, color: IO.onCamera, w: FontWeight.w900)),
+                      decoration: BoxDecoration(color: IO.camScrim, borderRadius: BorderRadius.circular(999), border: Border.all(color: IO.camLine, width: 2)),
+                      child: Text('Redo', style: t(17, color: IO.onCamera, w: FontWeight.w800)),
                     ),
                   ),
                 ),
@@ -908,7 +939,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const SizedBox(width: 44, height: 44, child: CircularProgressIndicator(strokeWidth: 4, color: IO.yellow)),
                   const SizedBox(height: 14),
-                  Text('Sending your video…', style: t(18, color: IO.onCamera, w: FontWeight.w900)),
+                  Text('Sending your video…', style: t(18, color: IO.onCamera, w: FontWeight.w800)),
                   const SizedBox(height: 4),
                   Text('Please keep the app open.', style: t(14, color: IO.onCameraSoft, w: FontWeight.w700)),
                 ]),

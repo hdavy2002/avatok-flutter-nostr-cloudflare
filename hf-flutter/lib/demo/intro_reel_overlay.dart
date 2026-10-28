@@ -4,6 +4,7 @@ import '../data/call_flags.dart';
 import '../data/models/queue.dart';
 import '../data/models/reel.dart';
 import 'data.dart';
+import 'desi.dart';
 import 'reels_real.dart';
 import 'theme.dart';
 import 'verified_tick.dart';
@@ -116,39 +117,24 @@ class IntroReelOverlay extends StatelessWidget {
         ),
       );
 
+  /// [HF-DESI-ONB] Category chip on the video: translucent plum with a gold border.
   Widget _chip(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(color: C.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(999)),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(color: Gota.darkFill, borderRadius: BorderRadius.circular(999), border: Border.all(color: Gota.gold, width: 1.2)),
         child: Text(label, maxLines: 1, style: t(14, color: C.white, w: FontWeight.w800)),
       );
 
-  Widget _mainButton(String label, VoidCallback onTap, {Key? key, bool outlined = false}) => Expanded(
-        child: Semantics(
-          button: true,
+  /// [HF-DESI-ONB] Solid saffron gota-patti pill (marigolds at the ends when it is the only button), or the dark plum pill
+  /// with a gold border for the second choice.
+  Widget _mainButton(String label, VoidCallback onTap, {Key? key, bool outlined = false, bool flowers = true}) => Expanded(
+        child: GotaButton(
           label: label,
-          child: Material(
-            color: outlined ? C.clear : C.marigold,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: outlined ? const BorderSide(color: C.white, width: 2.5) : BorderSide.none,
-            ),
-            child: InkWell(
-              key: key,
-              customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              onTap: onTap,
-              child: SizedBox(
-                height: 56,
-                child: Center(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t(17, color: outlined ? C.white : C.deep, w: FontWeight.w900),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          onTap: onTap,
+          inkKey: key,
+          kind: outlined ? GotaKind.dark : GotaKind.saffron,
+          height: 56,
+          fontSize: 17,
+          flowers: !outlined && flowers,
         ),
       );
 
@@ -159,11 +145,11 @@ class IntroReelOverlay extends StatelessWidget {
         return Row(children: [_mainButton('Call now · $rate', onCall, key: const ValueKey('intro-call'))]);
       case 'queue_or_book':
         return Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Busy right now · $rate', key: const ValueKey('intro-busy'), textAlign: TextAlign.center, style: t(15, color: C.white, w: FontWeight.w800).copyWith(shadows: _shadow)),
+          Text('Busy right now · $rate', key: const ValueKey('intro-busy'), textAlign: TextAlign.center, style: t(15, color: Gota.gold, w: FontWeight.w800).copyWith(shadows: _shadow)),
           const SizedBox(height: 8),
           Row(children: [
             if (CallFlags.queue) ...[
-              _mainButton('Join queue', onQueue, key: const ValueKey('intro-queue')),
+              _mainButton('Join queue', onQueue, key: const ValueKey('intro-queue'), flowers: false),
               const SizedBox(width: 10),
             ],
             _mainButton('Book a time', onBook, key: const ValueKey('intro-book'), outlined: CallFlags.queue),
@@ -215,9 +201,9 @@ class IntroReelOverlay extends StatelessWidget {
                   child: Container(
                     width: 44,
                     height: 44,
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: C.white),
-                    child: ClipOval(child: Avatar(who, size: 40, ring: false)),
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: const BoxDecoration(shape: BoxShape.circle, color: C.marigold),
+                    child: ClipOval(child: Avatar(who, size: 39, ring: false)),
                   ),
                 ),
                 ConstrainedBox(
@@ -227,7 +213,7 @@ class IntroReelOverlay extends StatelessWidget {
                     key: const ValueKey('intro-name'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t(19, color: C.white, w: FontWeight.w900).copyWith(shadows: _shadow),
+                    style: t(19, color: C.white, w: FontWeight.w800).copyWith(shadows: _shadow),
                   ),
                 ),
                 VerifiedTick(
@@ -243,8 +229,8 @@ class IntroReelOverlay extends StatelessWidget {
                   Container(
                     key: const ValueKey('intro-women-tag'),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: C.rani, borderRadius: BorderRadius.circular(999)),
-                    child: Text('♀ Women only', maxLines: 1, style: t(14, color: C.white, w: FontWeight.w900)),
+                    decoration: BoxDecoration(color: const Color(0xFFF8D3E2), borderRadius: BorderRadius.circular(999), border: Border.all(color: C.rani, width: 1.2)),
+                    child: Text('♀ Women only', maxLines: 1, style: t(14, color: const Color(0xFF8A1250), w: FontWeight.w800)),
                   ),
               ]),
               if (chips.isNotEmpty || status != null) ...[
@@ -252,11 +238,18 @@ class IntroReelOverlay extends StatelessWidget {
                 Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                   for (final c in chips) _chip(c.label),
                   if (status != null)
-                    Row(key: const ValueKey('intro-status'), mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: status.$2)),
-                      const SizedBox(width: 5),
-                      Text(status.$1, maxLines: 1, style: t(14, color: C.white, w: FontWeight.w800).copyWith(shadows: _shadow)),
-                    ]),
+                    // a rich text (not a Row) so a long status wraps instead of overflowing on a narrow phone
+                    Text.rich(
+                      key: const ValueKey('intro-status'),
+                      TextSpan(children: [
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Container(width: 10, height: 10, margin: const EdgeInsets.only(right: 5), decoration: BoxDecoration(shape: BoxShape.circle, color: status.$2)),
+                        ),
+                        TextSpan(text: status.$1),
+                      ]),
+                      style: t(14, color: C.white, w: FontWeight.w800).copyWith(shadows: _shadow),
+                    ),
                 ]),
               ],
               if (desc.isNotEmpty) ...[
@@ -275,104 +268,107 @@ class IntroReelOverlay extends StatelessWidget {
 /// [HF-INTRO-A2] (D15, Reel5Info) The ⓘ sheet "Verified owner of": every verified account with an Open button. Returns the
 /// account the person chose to open (the caller opens it inside the app), or null.
 Future<ReelSocial?> showIntroInfoSheet(BuildContext context, {required FeedReel reel, required Influencer who}) {
+  // [HF-DESI-ONB] Design Reel5Info: parchment sheet, white rows with a sand border, solid saffron "Open" pills, a marigold in
+  // the top-right corner with the header padded so no text sits under it.
   return showModalBottomSheet<ReelSocial>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
-    backgroundColor: C.paper,
+    backgroundColor: C.page,
     showDragHandle: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      side: BorderSide(color: C.deep, width: 3),
-    ),
+    clipBehavior: Clip.antiAlias,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (sheet) => SafeArea(
-      child: SingleChildScrollView(
-        key: const ValueKey('intro-info-sheet'),
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Container(
-              width: 52,
-              height: 52,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.deep, width: 2.5)),
-              child: ClipOval(child: Avatar(who, size: 46, ring: false)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(child: Text(reel.host.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(20, color: C.deep, w: FontWeight.w900))),
-                  const SizedBox(width: 6),
-                  VerifiedTick(name: reel.host.name, videoKyc: reel.greenTick, channel: reel.socials.isNotEmpty, surface: 'intro_info', size: 20, interactive: false),
-                ]),
-                Text('Approved by our team', style: t(14, color: C.muted, w: FontWeight.w700)),
-              ]),
-            ),
-          ]),
-          const SizedBox(height: 14),
-          Text('VERIFIED OWNER OF', style: t(14, color: C.tan, w: FontWeight.w900, ls: 0.16)),
-          const SizedBox(height: 8),
-          if (reel.socials.isEmpty)
-            Text('No linked accounts yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
-          for (final s in reel.socials)
-            Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(border: Border.all(color: C.deep, width: 2.5), borderRadius: BorderRadius.circular(18)),
+      child: Stack(clipBehavior: Clip.none, children: [
+        const Positioned(right: -18, top: -30, child: IgnorePointer(child: Marigold(size: 76))),
+        SingleChildScrollView(
+          key: const ValueKey('intro-info-sheet'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 56),
               child: Row(children: [
                 Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(color: IntroReelOverlay.socialColor(s.platform), borderRadius: BorderRadius.circular(14)),
-                  child: Icon(IntroReelOverlay.socialIcon(s.platform), color: C.white, size: 26),
+                  width: 56,
+                  height: 56,
+                  padding: const EdgeInsets.all(2.5),
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: C.marigold),
+                  child: ClipOval(child: Avatar(who, size: 51, ring: false)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(IntroReelOverlay.socialName(s.platform), style: t(16, color: C.deep, w: FontWeight.w900)),
-                    Text(
-                      [
-                        if (s.handle.isNotEmpty) s.handle,
-                        if (s.followers != null) '${compactCount(s.followers!)} ${s.platform == 'youtube' ? 'subscribers' : 'followers'}',
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t(14, color: C.deep, w: FontWeight.w600),
-                    ),
+                    Row(children: [
+                      Flexible(child: Text(reel.host.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(20, color: C.deep, w: FontWeight.w800))),
+                      const SizedBox(width: 6),
+                      VerifiedTick(name: reel.host.name, videoKyc: reel.greenTick, channel: reel.socials.isNotEmpty, surface: 'intro_info', size: 20, interactive: false),
+                    ]),
+                    Text('Approved by our team', style: t(14, color: C.muted, w: FontWeight.w700)),
                   ]),
-                ),
-                const SizedBox(width: 8),
-                Material(
-                  color: C.marigold,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: C.deep, width: 2.5)),
-                  child: InkWell(
-                    key: ValueKey('intro-info-open-${s.platform}'),
-                    customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    onTap: () => Navigator.of(sheet).pop(s),
-                    child: SizedBox(height: 44, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Center(child: Text('Open', style: t(15, color: C.deep, w: FontWeight.w900))))),
-                  ),
                 ),
               ]),
             ),
-          Text(
-            'She logged in to each account to prove it is hers. Links open inside the app.',
-            style: t(14, color: C.muted, w: FontWeight.w600, h: 1.5),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            key: const ValueKey('intro-info-close'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              foregroundColor: C.deep,
-              side: const BorderSide(color: C.deep, width: 2.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            const SizedBox(height: 16),
+            Row(children: [
+              const Marigold(size: 20),
+              const SizedBox(width: 8),
+              Flexible(child: Text('VERIFIED OWNER OF', style: t(14, color: C.tan, w: FontWeight.w800, ls: 0.14))),
+            ]),
+            const SizedBox(height: 10),
+            if (reel.socials.isEmpty)
+              Text('No linked accounts yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
+            for (final s in reel.socials)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: C.white, border: Border.all(color: C.line, width: 1.5), borderRadius: BorderRadius.circular(20), boxShadow: desiShadow),
+                child: Row(children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(color: IntroReelOverlay.socialColor(s.platform), borderRadius: BorderRadius.circular(14)),
+                    child: Icon(IntroReelOverlay.socialIcon(s.platform), color: C.white, size: 26),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(IntroReelOverlay.socialName(s.platform), style: t(16, color: C.deep, w: FontWeight.w800)),
+                      Text(
+                        [
+                          if (s.handle.isNotEmpty) s.handle,
+                          if (s.followers != null) '${compactCount(s.followers!)} ${s.platform == 'youtube' ? 'subscribers' : 'followers'}',
+                        ].join(' · '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  GotaPill(
+                    label: 'Open',
+                    semanticLabel: 'Open ${IntroReelOverlay.socialName(s.platform)}',
+                    inkKey: ValueKey('intro-info-open-${s.platform}'),
+                    onTap: () => Navigator.of(sheet).pop(s),
+                  ),
+                ]),
+              ),
+            Text(
+              'She logged in to each account to prove it is hers. Links open inside the app.',
+              style: t(14, color: C.muted, w: FontWeight.w700, h: 1.5),
             ),
-            onPressed: () => Navigator.of(sheet).pop(),
-            child: Text('Close', style: t(16, color: C.deep, w: FontWeight.w900)),
-          ),
-        ]),
-      ),
+            const SizedBox(height: 14),
+            GotaButton(
+              key: const ValueKey('intro-info-close'),
+              label: 'Close',
+              kind: GotaKind.ghost,
+              height: 52,
+              fontSize: 16,
+              onTap: () => Navigator.of(sheet).pop(),
+            ),
+          ]),
+        ),
+      ]),
     ),
   );
 }

@@ -843,3 +843,240 @@ class DesiIconSquare extends StatelessWidget {
         child: Icon(icon, size: size * .5, color: desiInk(tone)),
       );
 }
+
+// ─── gota-patti buttons ([HF-DESI-ONB]) ─────────────────────────────────────
+// Owner rule 2026-10-28: buttons are SOLID colours, no gradients. The main button is solid saffron with a thin dashed
+// inner line (like gota-patti trim) and a small marigold at each end of the label.
+
+/// Dashed outline of a rounded rectangle, inset by [inset] from the widget's edges.
+class DesiDashedRRectPainter extends CustomPainter {
+  const DesiDashedRRectPainter({required this.color, required this.radius, this.width = 1.5, this.inset = 0, this.dash = 6, this.gap = 4});
+  final Color color;
+  final double radius;
+  final double width;
+  final double inset;
+  final double dash;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width;
+    final e = inset + width / 2;
+    if (size.width <= e * 2 || size.height <= e * 2) return;
+    final rect = Rect.fromLTWH(e, e, size.width - e * 2, size.height - e * 2);
+    final r = math.min(math.max(radius - inset, 0.0), rect.shortestSide / 2);
+    final path = Path()..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(r)));
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(metric.extractPath(d, math.min(d + dash, metric.length)), paint);
+        d += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant DesiDashedRRectPainter old) =>
+      old.color != color || old.radius != radius || old.width != width || old.inset != inset || old.dash != dash || old.gap != gap;
+}
+
+/// Colours of the gota-patti design.
+abstract final class Gota {
+  static const saffron = Color(0xFFF59E0B); // solid main button
+  static const onSaffron = Color(0xFF3B1600); // text on it
+  static const trim = Color(0xFFFFF7E6); // the dashed inner line
+  static const shadow = Color(0x80B45309);
+  static const plum = Color(0xFF4A1747);
+  static const line = Color(0xFFD8C5A9);
+  static const darkFill = Color(0xCC3A1238); // translucent plum on a video
+  static const gold = Color(0xFFFBBF24);
+}
+
+enum GotaKind { saffron, ghost, dark }
+
+/// Pill button: [GotaKind.saffron] solid saffron + dashed inner line + a marigold at each end of the label (the one main
+/// button of a screen); [GotaKind.ghost] white with a sand border and plum text; [GotaKind.dark] translucent plum with a
+/// gold border and white text (for use on top of a video).
+class GotaButton extends StatelessWidget {
+  const GotaButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.kind = GotaKind.saffron,
+    this.height = 58,
+    this.fontSize = 18,
+    this.flowers,
+    this.enabled = true,
+    this.busy = false,
+    this.inkKey,
+  });
+  final String label;
+  final VoidCallback? onTap;
+  final GotaKind kind;
+  final double height;
+  final double fontSize;
+
+  /// Marigolds at the ends of the label. Defaults to on for [GotaKind.saffron].
+  final bool? flowers;
+  final bool enabled;
+  final bool busy;
+
+  /// Key put on the tappable InkWell (tests find buttons by it).
+  final Key? inkKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = enabled && !busy && onTap != null;
+    final saffron = kind == GotaKind.saffron;
+    final (Color bg, Color fg, Color? border) = switch (kind) {
+      GotaKind.saffron => (Gota.saffron, Gota.onSaffron, null),
+      GotaKind.ghost => (C.white, Gota.plum, Gota.line),
+      GotaKind.dark => (Gota.darkFill, C.white, Gota.gold),
+    };
+    final showFlowers = (flowers ?? saffron) && !busy;
+    final flower = height >= 50 ? 26.0 : 20.0;
+    final text = Text(label, maxLines: 1, softWrap: false, textAlign: TextAlign.center, style: t(fontSize, color: fg, w: FontWeight.w800));
+    return Semantics(
+      button: true,
+      enabled: active,
+      label: busy ? '$label, please wait' : label,
+      onTap: active ? onTap : null,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.5,
+        child: Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(999),
+            border: border == null ? null : Border.all(color: border, width: kind == GotaKind.dark ? 2 : 1.5),
+            boxShadow: saffron ? const [BoxShadow(color: Gota.shadow, offset: Offset(0, 6), blurRadius: 14, spreadRadius: -8)] : null,
+          ),
+          child: CustomPaint(
+            foregroundPainter: saffron ? const DesiDashedRRectPainter(color: Gota.trim, radius: 999, inset: 4) : null,
+            child: Material(
+              color: C.clear,
+              child: InkWell(
+                key: inkKey,
+                customBorder: const StadiumBorder(),
+                onTap: active ? onTap : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Center(
+                    child: busy
+                        ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: fg))
+                        : Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (showFlowers) ...[Marigold(size: flower), const SizedBox(width: 10)],
+                            Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: text)),
+                            if (showFlowers) ...[const SizedBox(width: 10), Marigold(size: flower)],
+                          ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small solid saffron pill with the dashed inner line ("Log in", "Open").
+class GotaPill extends StatelessWidget {
+  const GotaPill({super.key, required this.label, required this.onTap, this.busy = false, this.semanticLabel, this.inkKey});
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+  final String? semanticLabel;
+  final Key? inkKey;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        enabled: onTap != null && !busy,
+        label: semanticLabel ?? label,
+        onTap: busy ? null : onTap,
+        excludeSemantics: true,
+        child: Opacity(
+          opacity: busy ? 0.6 : 1,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 76, minHeight: 48),
+            decoration: BoxDecoration(
+              color: Gota.saffron,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: const [BoxShadow(color: Gota.shadow, offset: Offset(0, 4), blurRadius: 10, spreadRadius: -6)],
+            ),
+            child: CustomPaint(
+              foregroundPainter: const DesiDashedRRectPainter(color: Gota.trim, radius: 999, width: 1.2, inset: 3, dash: 5, gap: 3),
+              child: Material(
+                color: C.clear,
+                child: InkWell(
+                  key: inkKey,
+                  customBorder: const StadiumBorder(),
+                  onTap: busy ? null : onTap,
+                  child: Center(
+                    child: busy
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Gota.onSaffron))
+                        : Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(label, style: t(15, color: Gota.onSaffron, w: FontWeight.w800))),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Rangoli step number: a gold disc with a plum number and a dotted rani ring just outside it. [done] shows a tick.
+class RangoliNumber extends StatelessWidget {
+  const RangoliNumber(this.n, {super.key, this.done = false, this.size = 32});
+  final String n;
+  final bool done;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+        child: SizedBox(
+          width: size + 10,
+          height: size + 10,
+          child: CustomPaint(
+            painter: const _DottedRingPainter(),
+            child: Center(
+              child: Container(
+                width: size,
+                height: size,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(center: Alignment(-.3, -.4), colors: [Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFEA6A12)], stops: [0, .6, 1]),
+                ),
+                child: done
+                    ? Icon(Icons.check_rounded, size: size * .6, color: Gota.plum)
+                    : Text(n, style: t(size * .47, color: Gota.plum, w: FontWeight.w800, h: 1)),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _DottedRingPainter extends CustomPainter {
+  const _DottedRingPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide / 2 - 1.5;
+    final p = Paint()..color = C.rani;
+    final n = (2 * math.pi * r / 4.5).floor();
+    for (var i = 0; i < n; i++) {
+      final a = i * 2 * math.pi / n;
+      canvas.drawCircle(c + Offset(math.cos(a) * r, math.sin(a) * r), 1.1, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

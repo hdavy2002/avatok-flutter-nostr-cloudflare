@@ -556,9 +556,7 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
       Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(title, textAlign: TextAlign.center, style: t(26, color: IO.ink, w: FontWeight.w900, h: 1.1)),
-          const SizedBox(height: 10),
-          Text(body, textAlign: TextAlign.center, style: t(16, color: IO.ink, w: FontWeight.w600, h: 1.5)),
+          OnbHero(title: title, subtitle: body, titleSize: 26),
           const SizedBox(height: 24),
           OnbPrimaryButton(label: button, onTap: onTap),
           OnbLinkButton(label: 'Go back', onTap: _leave),

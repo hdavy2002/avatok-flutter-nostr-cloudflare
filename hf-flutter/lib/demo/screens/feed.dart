@@ -1012,7 +1012,7 @@ class _ReelPageState extends State<ReelPage>
             ),
             // [HF-INTRO-A2] a stronger dark wash under the text of an intro video (the taps still fall through to the player)
             if (intro)
-              Positioned(
+              const Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
@@ -1023,7 +1023,7 @@ class _ReelPageState extends State<ReelPage>
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [C.clear, C.cinema.withValues(alpha: 0.8)],
+                        colors: [C.clear, Color(0xE62A0F2E)], // [HF-DESI-ONB] dark plum scrim
                       ),
                     ),
                   ),
@@ -1055,6 +1055,7 @@ class _ReelPageState extends State<ReelPage>
                         _likeBusy ? null : () => _toggleLike(context, engageId, engageRepo),
                         color: eState.liked ? C.rani : C.ivory,
                         key: const ValueKey('reel-like'),
+                        desi: true,
                         text: compactCount(eState.likes.total),
                         count: true,
                       ),
@@ -1064,6 +1065,7 @@ class _ReelPageState extends State<ReelPage>
                         Icons.chat_bubble_outline_rounded,
                         () => _whileCovered(() => _openComments(context, engageId, engageRepo)),
                         key: const ValueKey('reel-comment'),
+                        desi: true,
                         text: compactCount(eState.comments.total),
                         count: true,
                       ),
@@ -1072,6 +1074,7 @@ class _ReelPageState extends State<ReelPage>
                       Icons.send_outlined,
                       () => _shareIntro(context, widget.real!),
                       key: const ValueKey('reel-share'),
+                        desi: true,
                       text: 'Share',
                     ),
                     _railBtn(
@@ -1079,6 +1082,7 @@ class _ReelPageState extends State<ReelPage>
                       Icons.info_outline_rounded,
                       () => _openIntroInfo(context),
                       key: const ValueKey('reel-info'),
+                        desi: true,
                       text: 'Info',
                     ),
                   ],
@@ -1255,6 +1259,7 @@ class _ReelPageState extends State<ReelPage>
     Key? key,
     required String text,
     bool count = false,
+    bool desi = false, // [HF-DESI-ONB] intro reels: translucent plum circle with a saffron ring
   }) {
     final k = key;
     final Key? countKey = (count && k is ValueKey) ? ValueKey('${k.value}-count') : null;
@@ -1269,10 +1274,11 @@ class _ReelPageState extends State<ReelPage>
           onPressed: tap,
           iconSize: 26,
           style: IconButton.styleFrom(
-            backgroundColor: C.cinema.withValues(alpha: 0.72),
+            backgroundColor: desi ? const Color(0xB33A1238) : C.cinema.withValues(alpha: 0.72),
             fixedSize: const Size(50, 50),
             minimumSize: const Size(50, 50),
             padding: EdgeInsets.zero,
+            side: desi ? const BorderSide(color: C.marigold, width: 2) : null,
           ),
           icon: Icon(icon, color: color),
         ),

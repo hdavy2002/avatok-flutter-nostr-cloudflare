@@ -7,6 +7,7 @@ import '../data/services.dart';
 import '../data/telemetry.dart';
 import 'booking_kit.dart';
 import 'call_kit.dart';
+import 'desi.dart';
 import 'theme.dart';
 
 /// [HF-CREATOR-SPACES-1] Shared pieces of the Women-only / LGBTQ+ channels: the green "Video KYC verified" pill, the channel tag,
@@ -282,7 +283,8 @@ Future<bool> handleLaneRequired(BuildContext context, Object error) async {
 Future<bool> showWomenOnlyGate(BuildContext context, {required String need}) async {
   final aadhaar = need != 'female_only';
   Telemetry.event('hf_women_gate', {'result': aadhaar ? 'blocked_aadhaar' : 'blocked_female_only'});
-  // Owner design Reel4Gate: white card, ink border, rose offset shadow, round rose symbol, title, body, Verify now / Not now.
+  // [HF-DESI-ONB] Owner design Reel4Gate: plum header (round rose symbol, white title, marigolds in the two top corners away
+  // from the text), cream body, solid saffron gota-patti "Verify now", quiet "Not now".
   final go = await showDialog<bool>(
     context: context,
     builder: (dialog) => Dialog(
@@ -291,58 +293,79 @@ Future<bool> showWomenOnlyGate(BuildContext context, {required String need}) asy
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
         decoration: BoxDecoration(
-          color: C.white,
-          border: Border.all(color: C.deep, width: 3),
+          color: C.cream,
+          border: Border.all(color: C.line, width: 1.5),
           borderRadius: BorderRadius.circular(28),
-          boxShadow: const [BoxShadow(color: C.rani, offset: Offset(8, 8))],
+          boxShadow: desiShadow,
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: C.blush, border: Border.all(color: C.rani, width: 3)),
-              child: Text('♀', style: t(34, color: C.tan, w: FontWeight.w900)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26.5),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            DecoratedBox(
+              decoration: BoxDecoration(gradient: desiFill(DesiTone.plum)),
+              child: Stack(children: [
+                const Positioned(left: -16, top: -16, child: IgnorePointer(child: Marigold(size: 64, yellow: true))),
+                const Positioned(right: -16, top: -16, child: IgnorePointer(child: Marigold(size: 64, yellow: true))),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Center(
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFF8D3E2), border: Border.all(color: C.marigold, width: 3)),
+                        child: Text('♀', style: t(32, color: const Color(0xFF8A1250), w: FontWeight.w800)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      aadhaar ? 'This is a women-only channel' : 'Sorry, this channel is for women only.',
+                      key: const ValueKey('women-gate-title'),
+                      textAlign: TextAlign.center,
+                      style: t(aadhaar ? 23 : 20, color: C.white, w: FontWeight.w800, h: 1.15),
+                    ),
+                  ]),
+                ),
+              ]),
             ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            aadhaar ? 'This is a women-only channel' : 'Sorry, this channel is for women only.',
-            key: const ValueKey('women-gate-title'),
-            textAlign: TextAlign.center,
-            style: t(aadhaar ? 24 : 20, color: C.deep, w: FontWeight.w900, h: 1.15),
-          ),
-          if (aadhaar) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Only Aadhaar-verified women can talk to her. It takes about a minute. Your Aadhaar number is never shown to anyone.',
-              textAlign: TextAlign.center,
-              style: t(15, color: C.deep, w: FontWeight.w600, h: 1.55),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (aadhaar) ...[
+                  Text(
+                    'Only Aadhaar-verified women can talk to her. It takes about a minute. Your Aadhaar number is never shown to anyone.',
+                    textAlign: TextAlign.center,
+                    style: t(15, color: C.deep, w: FontWeight.w700, h: 1.5),
+                  ),
+                  const SizedBox(height: 14),
+                  GotaButton(
+                    label: 'Verify now',
+                    inkKey: const ValueKey('women-gate-verify'),
+                    height: 56,
+                    onTap: () => Navigator.of(dialog).pop(true),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    key: const ValueKey('women-gate-close'),
+                    style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48), foregroundColor: C.maroon),
+                    onPressed: () => Navigator.of(dialog).pop(false),
+                    child: Text('Not now', style: t(16, color: C.maroon, w: FontWeight.w800)),
+                  ),
+                ] else
+                  GotaButton(
+                    key: const ValueKey('women-gate-close'),
+                    label: 'OK',
+                    kind: GotaKind.ghost,
+                    height: 52,
+                    fontSize: 16,
+                    onTap: () => Navigator.of(dialog).pop(false),
+                  ),
+              ]),
             ),
-            const SizedBox(height: 14),
-            FilledButton(
-              key: const ValueKey('women-gate-verify'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(56),
-                backgroundColor: C.marigold,
-                foregroundColor: C.deep,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: C.deep, width: 3)),
-              ),
-              onPressed: () => Navigator.of(dialog).pop(true),
-              child: Text('Verify now', style: t(18, color: C.deep, w: FontWeight.w900)),
-            ),
-          ],
-          const SizedBox(height: 10),
-          TextButton(
-            key: const ValueKey('women-gate-close'),
-            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            onPressed: () => Navigator.of(dialog).pop(false),
-            child: Text(aadhaar ? 'Not now' : 'OK', style: t(16, color: C.deep, w: FontWeight.w900)),
-          ),
-        ]),
+          ]),
+        ),
       ),
     ),
   );

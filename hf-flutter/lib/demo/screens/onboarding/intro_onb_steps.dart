@@ -12,6 +12,7 @@ import '../../../data/repos/intro_onboarding_repo.dart';
 import '../../../data/services.dart';
 import '../../../data/telemetry.dart';
 import '../../../data/youtube_sign_in.dart';
+import '../../desi.dart';
 import '../../theme.dart';
 import 'intro_onb_hints.dart';
 import 'intro_onb_kit.dart';
@@ -60,34 +61,39 @@ class OnbCategoriesStep extends StatelessWidget {
       error: null,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (notice != null) ...[
-          OnbCard(color: IO.pinkWash, border: IO.pink, radius: 18, child: Text(notice!, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45))),
+          OnbCard(color: IO.pinkWash, border: IO.pink, radius: 20, child: Text(notice!, style: t(15, color: IO.pinkInk, w: FontWeight.w700, h: 1.45))),
           const SizedBox(height: 12),
         ],
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final c in normal) OnbChip(label: c.label, selected: selected.contains(c.id), onTap: () => onToggle(c)),
-        ]),
-        if (sensitive.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          const Divider(height: 2, thickness: 2, color: IO.softLine),
-          const SizedBox(height: 12),
-          Text('These need an Aadhaar check', style: t(14, color: IO.muted, w: FontWeight.w800)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 10, runSpacing: 10, children: [
-            for (final c in sensitive)
-              OnbChip(
-                label: c.label,
-                selected: selected.contains(c.id),
-                soft: true,
-                pinkOutline: c.id == kWomenToWomenId,
-                onTap: () => onToggle(c),
-              ),
+        OnbSection(
+          title: 'Categories',
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final c in normal) OnbChip(label: c.label, selected: selected.contains(c.id), onTap: () => onToggle(c)),
           ]),
-          const SizedBox(height: 10),
-          Text(
-            womenBlocked
-                ? 'Your Aadhaar does not show Female, so Women-to-Women is not open for you.'
-                : 'Women-to-Women is for women only — your Aadhaar must show Female.',
-            style: t(14, color: IO.muted, w: FontWeight.w600, h: 1.45),
+        ),
+        if (sensitive.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          OnbSection(
+            title: 'These need an Aadhaar check',
+            gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [IO.white, Color(0xFFFFF6EA)]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final c in sensitive)
+                  OnbChip(
+                    label: c.label,
+                    selected: selected.contains(c.id),
+                    soft: true,
+                    pinkOutline: c.id == kWomenToWomenId,
+                    onTap: () => onToggle(c),
+                  ),
+              ]),
+              const SizedBox(height: 10),
+              Text(
+                womenBlocked
+                    ? 'Your Aadhaar does not show Female, so Women-to-Women is not open for you.'
+                    : 'Women-to-Women is for women only — your Aadhaar must show Female.',
+                style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.45),
+              ),
+            ]),
           ),
         ],
       ]),
@@ -249,52 +255,34 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
     final handle = s?.handle;
     final who = (handle == null || handle.isEmpty) ? '' : ' · ${handle.startsWith('@') ? handle : '@$handle'}';
     final followers = (s?.followers ?? 0) > 0 ? ' · ${_compact(s!.followers!)}' : '';
-    return OnbCard(
-      padding: const EdgeInsets.all(14),
-      radius: 20,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 64),
       child: Row(children: [
-        Container(width: 48, height: 48, decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(14)), alignment: Alignment.center, child: glyph),
+        Container(width: 46, height: 46, decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(14)), alignment: Alignment.center, child: glyph),
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_name(platform), style: t(17, color: IO.ink, w: FontWeight.w900)),
+            Text(_name(platform), style: t(17, color: IO.ink, w: FontWeight.w800)),
             if (verified)
-              Text('✓ Verified$who$followers', style: t(14, color: IO.ok, w: FontWeight.w700))
+              Text('✓ Verified$who$followers', style: t(14, color: IO.ok, w: FontWeight.w800))
             else
-              Text(waiting ? 'Finish logging in, then come back here' : 'Not added', style: t(14, color: IO.ink, w: FontWeight.w600, h: 1.3)),
+              Text(waiting ? 'Finish logging in, then come back here' : 'Not added', style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.3)),
           ]),
         ),
         if (!verified) ...[
           const SizedBox(width: 8),
-          Semantics(
-            button: true,
-            label: 'Log in with ${_name(platform)}',
-            onTap: working ? null : () => unawaited(_login(platform)),
-            excludeSemantics: true,
-            child: Opacity(
-              opacity: working ? 0.6 : 1,
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 74, minHeight: 48),
-                decoration: BoxDecoration(color: IO.yellow, borderRadius: BorderRadius.circular(14), border: Border.all(color: IO.ink, width: 2.5)),
-                child: Material(
-                  color: C.clear,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(11),
-                    onTap: working ? null : () => unawaited(_login(platform)),
-                    child: Center(
-                      child: working
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: IO.ink))
-                          : Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Text('Log in', style: t(15, color: IO.ink, w: FontWeight.w900))),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          GotaPill(
+            label: 'Log in',
+            semanticLabel: 'Log in with ${_name(platform)}',
+            busy: working,
+            onTap: () => unawaited(_login(platform)),
           ),
         ],
       ]),
     );
   }
+
+  static const Widget _rowLine = Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, thickness: 1, color: Color(0xFFEFE3D2)));
 
   static String _compact(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
@@ -317,20 +305,26 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
       onSecondary: widget.onNext,
       error: _error,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _row('youtube', IO.youtubeRed, const Icon(Icons.play_arrow_rounded, color: IO.white, size: 30)),
-        if (_igOn) ...[const SizedBox(height: 12), _row('instagram', IO.pink, const Icon(Icons.photo_camera_rounded, color: IO.white, size: 26))],
-        if (CallFlags.facebookLogin) ...[
-          const SizedBox(height: 12),
-          _row('facebook', IO.facebookBlue, Text('f', style: t(26, color: IO.white, w: FontWeight.w900))),
-        ],
+        OnbSection(
+          title: 'Your accounts',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _row('youtube', const Color(0xFFFDE2E2), const Icon(Icons.play_arrow_rounded, color: IO.youtubeRed, size: 32)),
+            if (_igOn) ...[_rowLine, _row('instagram', IO.pinkFill, const Icon(Icons.camera_alt_outlined, color: IO.pink, size: 24))],
+            if (CallFlags.facebookLogin) ...[
+              _rowLine,
+              _row('facebook', const Color(0xFFE4E3FB), Text('f', style: t(24, color: IO.facebookBlue, w: FontWeight.w800))),
+            ],
+          ]),
+        ),
         if (_note != null) ...[const SizedBox(height: 12), Text(_note!, style: t(15, color: IO.ok, w: FontWeight.w800))],
         const SizedBox(height: 14),
         OnbDashed(
           color: IO.orange,
           fill: IO.cream,
+          radius: 20,
           child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text('No social media? That’s fine. We’ll ask for a quick Aadhaar check instead.', style: t(14, color: IO.ink, w: FontWeight.w600, h: 1.5)),
+            padding: const EdgeInsets.all(16),
+            child: Text('No social media? That’s fine. We’ll ask for a quick Aadhaar check instead.', style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45)),
           ),
         ),
       ]),
@@ -433,16 +427,7 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
     }
   }
 
-  InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        counterText: '',
-        filled: true,
-        fillColor: IO.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.ink, width: 2.5)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.pink, width: 2.5)),
-        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.softLine, width: 2.5)),
-      );
+  InputDecoration _dec(String hint) => onbInputDecoration(hint);
 
   Widget _label(String text) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: t(15, color: IO.ink, w: FontWeight.w800)));
 
@@ -463,14 +448,14 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
           OnbCard(
             color: IO.cream,
             border: IO.orange,
-            radius: 18,
+            radius: 20,
             child: Text('Your WhatsApp number is not verified yet. Log out and log in with your WhatsApp number to verify it, then come back.',
                 style: t(14, color: IO.ink, w: FontWeight.w600, h: 1.5)),
           ),
           const SizedBox(height: 14),
         ],
-        OnbCard(
-          padding: const EdgeInsets.all(16),
+        OnbSection(
+          title: 'Your Aadhaar',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _label('Aadhaar number'),
             TextField(
@@ -507,7 +492,7 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
             ] else
               TextButton(
                 onPressed: _busy ? null : () => setState(() { _sent = false; _error = null; }),
-                child: Text('Start again', style: t(15, color: IO.pink, w: FontWeight.w900)),
+                child: Text('Start again', style: t(15, color: IO.pinkInk, w: FontWeight.w800)),
               ),
           ]),
         ),
@@ -516,16 +501,14 @@ class _OnbAadhaarStepState extends State<OnbAadhaarStep> {
           OnbCard(
             color: IO.pinkWash,
             border: IO.pink,
-            radius: 18,
-            padding: const EdgeInsets.all(14),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(width: 34, height: 34, decoration: const BoxDecoration(color: IO.pink, shape: BoxShape.circle), alignment: Alignment.center, child: Text('♀', style: t(18, color: IO.white, w: FontWeight.w900))),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Women-to-Women is only for women. If your Aadhaar doesn’t show Female, we’ll untick that category and you can carry on with the others.',
-                  style: t(14, color: IO.ink, w: FontWeight.w600, h: 1.5),
-                ),
+            radius: 20,
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('♀ Women-to-Women', style: t(17, color: IO.pinkInk, w: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text(
+                'Women-to-Women is only for women. If your Aadhaar doesn’t show Female, we’ll untick that category and you can carry on with the others.',
+                style: t(14, color: IO.pinkInk, w: FontWeight.w700, h: 1.5),
               ),
             ]),
           ),
@@ -576,36 +559,24 @@ class OnbPrepStep extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('•  ', style: t(15, color: IO.ink, w: FontWeight.w800)),
-              Expanded(child: Text(l, style: t(15, color: IO.ink, w: FontWeight.w600, h: 1.5))),
+              Text('•  ', style: t(15, color: IO.orangeInk, w: FontWeight.w800)),
+              Expanded(child: Text(l, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45))),
             ]),
           ),
       ]);
 
-  Widget _topicTab(String id, String label) {
-    final on = topic == id;
-    return Semantics(
-      button: true,
-      selected: on,
-      label: label,
-      onTap: () => onTopic(id),
-      excludeSemantics: true,
-      child: Material(
-        color: C.clear,
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: () => onTopic(id),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: on ? IO.ink : IO.white, borderRadius: BorderRadius.circular(999), border: Border.all(color: IO.ink, width: 2.5)),
-            child: Text(label, style: t(14, color: on ? IO.white : IO.ink, w: FontWeight.w800)),
+  /// The "ideas" rows of the design: each line in its own soft cream box.
+  Widget _ideas(List<String> lines) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (final l in lines)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(color: IO.cream, borderRadius: BorderRadius.circular(16)),
+            child: Text(l, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45)),
           ),
-        ),
-      ),
-    );
-  }
+      ]);
+
+  Widget _topicTab(String id, String label) => OnbChip(label: label, selected: topic == id, onTap: () => onTopic(id));
 
   @override
   Widget build(BuildContext context) {
@@ -614,6 +585,7 @@ class OnbPrepStep extends StatelessWidget {
     final selectedLang = onbLang(lang);
     return OnbScaffold(
       step: OnbStep.prep,
+      eyebrow: 'Get ready',
       title: 'What is this video about?',
       titleSize: 27,
       onBack: onBack,
@@ -623,51 +595,51 @@ class OnbPrepStep extends StatelessWidget {
       onSecondary: onKeep,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (notice != null) ...[
-          OnbCard(color: IO.pinkWash, border: IO.pink, radius: 18, child: Text(notice!, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45))),
+          OnbCard(color: IO.pinkWash, border: IO.pink, radius: 20, child: Text(notice!, style: t(15, color: IO.pinkInk, w: FontWeight.w700, h: 1.45))),
           const SizedBox(height: 14),
         ],
-        Text('Language you’ll speak in', style: t(14, color: IO.ink, w: FontWeight.w800)),
-        const SizedBox(height: 6),
-        Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(color: IO.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: IO.ink, width: 2.5)),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: shown.any((l) => l.code == lang) ? lang : null,
-              hint: Text(selectedLang.label, style: t(16, color: IO.ink, w: FontWeight.w800)),
-              iconEnabledColor: IO.ink,
-              dropdownColor: IO.white,
-              style: t(16, color: IO.ink, w: FontWeight.w800),
-              items: [for (final l in shown) DropdownMenuItem<String>(value: l.code, child: Text(l.label, style: t(16, color: IO.ink, w: FontWeight.w800)))],
-              onChanged: (v) {
-                if (v != null) onLang(v);
-              },
+        OnbSection(
+          title: 'Language you’ll speak in',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              height: 52,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(color: IO.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: IO.line, width: 1.5)),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: shown.any((l) => l.code == lang) ? lang : null,
+                  hint: Text(selectedLang.label, style: t(16, color: IO.ink, w: FontWeight.w800)),
+                  iconEnabledColor: IO.plum,
+                  dropdownColor: IO.white,
+                  borderRadius: BorderRadius.circular(16),
+                  style: t(16, color: IO.ink, w: FontWeight.w800),
+                  items: [for (final l in shown) DropdownMenuItem<String>(value: l.code, child: Text(l.label, style: t(16, color: IO.ink, w: FontWeight.w800)))],
+                  onChanged: (v) {
+                    if (v != null) onLang(v);
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          _topicTab(kTopicGeneral, 'General'),
-          for (final c in categories) _topicTab(c.id, c.label),
-        ]),
-        const SizedBox(height: 14),
-        OnbCard(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('You could say…', style: t(16, color: IO.pink, w: FontWeight.w900)),
+            const SizedBox(height: 14),
+            Text('Topic', style: t(15, color: IO.muted, w: FontWeight.w800)),
             const SizedBox(height: 8),
-            _bullets(hint.say),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _topicTab(kTopicGeneral, 'General'),
+              for (final c in categories) _topicTab(c.id, c.label),
+            ]),
           ]),
         ),
+        const SizedBox(height: 12),
+        OnbSection(title: 'You could say…', child: _ideas(hint.say)),
         const SizedBox(height: 12),
         OnbCard(
           color: IO.cream,
           border: IO.orange,
+          radius: 20,
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Please avoid', style: t(16, color: IO.orangeInk, w: FontWeight.w900)),
+            Text('Please avoid', style: t(16, color: IO.orangeInk, w: FontWeight.w800)),
             const SizedBox(height: 8),
             _bullets(hint.avoid),
           ]),
@@ -677,7 +649,7 @@ class OnbPrepStep extends StatelessWidget {
           Text(englishFallbackNote(selectedLang.english), textAlign: TextAlign.center, style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.45)),
         ],
         const SizedBox(height: 12),
-        Text('These are only ideas — say it in your own words.', textAlign: TextAlign.center, style: t(15, color: IO.ink, w: FontWeight.w800, h: 1.4)),
+        Text('These are only ideas — say it in your own words.', textAlign: TextAlign.center, style: t(15, color: IO.plum, w: FontWeight.w800, h: 1.4)),
       ]),
     );
   }

@@ -1,38 +1,53 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../core/brand.dart';
 import '../../../data/call_flags.dart';
 import '../../../data/demo_mode.dart';
 import '../../../data/services.dart';
+import '../../desi.dart';
 import '../../theme.dart';
 
-/// [HF-INTRO-A1] Tokens and small widgets shared by the influencer onboarding screens. The values are the owner-approved screen designs
-/// (Specs/hf-intro-screens/*.dc.html): ink, rose, saffron and marigold on the "Deep parchment" page ([C.page]).
+/// [HF-INTRO-A1] Tokens and small widgets shared by the influencer onboarding screens.
+/// [HF-DESI-ONB] Restyled to the owner's desi designs (2026-10-28): parchment page, white cards with a sand border and soft plum
+/// shadow, a plum hero card on every step, marigold corners that never sit over text, SOLID saffron gota-patti buttons (no
+/// gradients), rose selected chips and rangoli step numbers. Names kept so the screens did not change shape.
 abstract final class IO {
-  static const ink = Color(0xFF30245F); // text, borders, hard shadows
-  static const pink = Color(0xFFBE246E); // eyebrow, selected chip, "pick" cards
-  static const orange = Color(0xFFFF793C); // progress fill
-  static const yellow = Color(0xFFFBD447); // the one main button
-  static const muted = Color(0xFF6B5A8A); // helper text (passes 4.5:1 on the page)
+  static const ink = Color(0xFF2A1530); // text
+  static const plum = Color(0xFF4A1747); // headings on white, ghost-button text, numbers
+  static const line = Color(0xFFD8C5A9); // card, chip and field borders
+  static const pink = Color(0xFFD81B72); // rani: selected chip border, focus, eyebrow on white
+  static const pinkInk = Color(0xFF8A1250); // text on a selected chip / rose note
+  static const pinkFill = Color(0xFFF8D3E2); // selected chip fill, Women-to-Women note
+  static const orange = Color(0xFFEA6A12); // progress fill start, dashed tip border
+  static const yellow = Color(0xFFF59E0B); // solid saffron: the one main button
+  static const onYellow = Color(0xFF3B1600); // text on saffron
+  static const gold = Color(0xFFFBBF24); // eyebrow on the plum hero
+  static const heroBody = Color(0xD9FFFAF3); // body text on the plum hero (~85%)
+  static const muted = Color(0xFF6F5B6F); // helper text (passes 4.5:1 on white and the page)
   static const white = Color(0xFFFFFFFF);
-  static const cream = Color(0xFFFFF7E2); // tip and "please avoid" cards
-  static const pinkWash = Color(0xFFFDE8F2); // Women-to-Women note
-  static const orangeInk = Color(0xFFB8471A); // "Please avoid" heading
-  static const tagBg = Color(0xFFF1ECFB); // little tags on the call option cards
-  static const bookingsIcon = Color(0xFFBFC2EE); // Bookings only icon tile
+  static const cream = Color(0xFFFFF4E3); // tip and "please avoid" cards, idea rows
+  static const pinkWash = Color(0xFFF8D3E2); // Women-to-Women note
+  static const orangeInk = Color(0xFFB45309); // "Please avoid" heading
+  static const tagBg = Color(0xFFF8EEE6); // little tags on the call option cards
+  static const bookingsIcon = Color(0xFFF1EBFF); // Bookings only icon tile
   static const ok = C.onlineInk; // "Verified" text (the one allowed green)
-  static const cameraBg = Color(0xFF1B1430); // behind the camera
-  static const recDot = Color(0xFFFF3B3B); // REC dot and the stop button
+  static const cameraBg = Color(0xFF2A0F2E); // behind the camera: deep plum
+  static const recDot = Color(0xFFFF3B3B); // REC dot
   static const onCamera = Color(0xFFFFFFFF);
   static const onCameraSoft = Color(0xD9FFFFFF);
-  static const camScrim = Color(0x66000000); // round buttons and the hint strip on the camera
-  static const camLine = Color(0x88FFFFFF);
+  static const camScrim = Color(0x993A1238); // translucent plum: round buttons and strips on the camera
+  static const camLine = Color(0xFFF59E0B); // saffron ring / outline on the camera
   static const camTrack = Color(0x33FFFFFF);
-  static const softLine = Color(0x5530245F); // dashed-looking divider above the "needs an Aadhaar check" group
+  static const softLine = Color(0xFFD8C5A9); // divider
   static const youtubeRed = Color(0xFFD62B2B); // brand tile colours of the three login rows
   static const facebookBlue = Color(0xFF2F4FB5);
+  static const heroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF4A1747), Color(0xFF7A2470), Color(0xFFB0216F)],
+    stops: [0, .6, 1],
+  );
+  static List<BoxShadow> get shadow => desiShadow;
 }
 
 /// The steps of the flow. `n` is the number shown in "n of 7" (0 = no number).
@@ -99,7 +114,7 @@ abstract final class IntroOnbSession {
 
 /// A dashed rounded border around [child] (Flutter has none built in).
 class OnbDashed extends StatelessWidget {
-  const OnbDashed({super.key, required this.child, this.color = IO.ink, this.radius = 18, this.width = 2, this.fill});
+  const OnbDashed({super.key, required this.child, this.color = IO.line, this.radius = 18, this.width = 1.5, this.fill});
 
   final Widget child;
   final Color color;
@@ -109,7 +124,7 @@ class OnbDashed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-        foregroundPainter: _DashedPainter(color: color, radius: radius, width: width),
+        foregroundPainter: DesiDashedRRectPainter(color: color, radius: radius, width: width),
         child: DecoratedBox(
           decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(radius)),
           child: child,
@@ -117,38 +132,7 @@ class OnbDashed extends StatelessWidget {
       );
 }
 
-class _DashedPainter extends CustomPainter {
-  const _DashedPainter({required this.color, required this.radius, required this.width});
-
-  final Color color;
-  final double radius;
-  final double width;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width;
-    final inset = width / 2;
-    final rrect = RRect.fromRectAndRadius(Rect.fromLTWH(inset, inset, size.width - width, size.height - width), Radius.circular(radius));
-    final path = Path()..addRRect(rrect);
-    const dash = 7.0;
-    const gap = 5.0;
-    for (final metric in path.computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(metric.extractPath(d, math.min(d + dash, metric.length)), paint);
-        d += dash + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedPainter old) => old.color != color || old.radius != radius || old.width != width;
-}
-
-/// The one main button: 58 dp, marigold with an ink outline and a hard ink shadow.
+/// The one main button: solid saffron gota-patti pill, 58 dp, a marigold at each end of the label.
 class OnbPrimaryButton extends StatelessWidget {
   const OnbPrimaryButton({super.key, required this.label, required this.onTap, this.enabled = true, this.busy = false});
 
@@ -158,40 +142,7 @@ class OnbPrimaryButton extends StatelessWidget {
   final bool busy;
 
   @override
-  Widget build(BuildContext context) {
-    final active = enabled && !busy && onTap != null;
-    return Semantics(
-      button: true,
-      enabled: active,
-      label: busy ? '$label, please wait' : label,
-      onTap: active ? onTap : null,
-      excludeSemantics: true,
-      child: Opacity(
-        opacity: enabled ? 1 : 0.5,
-        child: Container(
-          height: 58,
-          decoration: BoxDecoration(
-            color: IO.yellow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: IO.ink, width: 3),
-            boxShadow: const [BoxShadow(color: IO.ink, offset: Offset(5, 5))],
-          ),
-          child: Material(
-            color: C.clear,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(13),
-              onTap: active ? onTap : null,
-              child: Center(
-                child: busy
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: IO.ink))
-                    : Text(label, textAlign: TextAlign.center, style: t(18, color: IO.ink, w: FontWeight.w900)),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => GotaButton(label: label, onTap: onTap, enabled: enabled, busy: busy);
 }
 
 /// A quiet underlined text button under the main button ("Skip ...").
@@ -209,18 +160,20 @@ class OnbLinkButton extends StatelessWidget {
         excludeSemantics: true,
         child: InkWell(
           onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           child: SizedBox(
             height: 48,
             width: double.infinity,
             child: Center(
-              child: Text(label, textAlign: TextAlign.center, style: t(16, color: IO.ink, w: FontWeight.w800).copyWith(decoration: TextDecoration.underline)),
+              child: Text(label, textAlign: TextAlign.center, style: t(16, color: IO.plum, w: FontWeight.w800).copyWith(decoration: TextDecoration.underline, decorationColor: IO.plum)),
             ),
           ),
         ),
       );
 }
 
-/// A pill the person can tick (categories, topics). [soft] draws the dashed outline of the "needs an Aadhaar check" group.
+/// A pill the person can tick (categories, topics). Selected: rose fill and border with a tick. [pinkOutline] gives the
+/// Women-to-Women chip its rose border and text while unselected. [soft] is kept for callers; the look is the same.
 class OnbChip extends StatelessWidget {
   const OnbChip({super.key, required this.label, required this.selected, required this.onTap, this.soft = false, this.pinkOutline = false});
 
@@ -232,28 +185,26 @@ class OnbChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final edge = pinkOutline ? IO.pink : IO.ink;
-    final ink = selected ? IO.white : edge;
+    final edge = selected || pinkOutline ? IO.pink : IO.line;
+    final ink = selected || pinkOutline ? IO.pinkInk : IO.ink;
     final content = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (selected) ...[const Icon(Icons.check_rounded, size: 18, color: IO.white), const SizedBox(width: 6)],
+          if (selected) ...[const Icon(Icons.check_rounded, size: 18, color: IO.pinkInk), const SizedBox(width: 6)],
           Flexible(child: Text(label, style: t(15, color: ink, w: FontWeight.w800))),
         ]),
       ),
     );
-    final Widget body = (soft && !selected)
-        ? OnbDashed(color: edge, radius: 999, width: 2.5, fill: IO.white, child: content)
-        : DecoratedBox(
-            decoration: BoxDecoration(
-              color: selected ? IO.pink : IO.white,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: selected ? IO.pink : edge, width: 2.5),
-            ),
-            child: content,
-          );
+    final Widget body = DecoratedBox(
+      decoration: BoxDecoration(
+        color: selected ? IO.pinkFill : IO.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: edge, width: 1.5),
+      ),
+      child: content,
+    );
     return Semantics(
       button: true,
       selected: selected,
@@ -268,9 +219,20 @@ class OnbChip extends StatelessWidget {
   }
 }
 
-/// White card with an ink outline.
+/// White card with a sand border and a soft plum shadow. [corner] adds a small orange marigold top-right (give any title
+/// inside right padding — see [OnbSection]). [shadow] (a colour) gives a selected card a rose glow.
 class OnbCard extends StatelessWidget {
-  const OnbCard({super.key, required this.child, this.color = IO.white, this.border = IO.ink, this.padding = const EdgeInsets.all(16), this.radius = 22, this.shadow});
+  const OnbCard({
+    super.key,
+    required this.child,
+    this.color = IO.white,
+    this.border = IO.line,
+    this.padding = const EdgeInsets.all(16),
+    this.radius = 24,
+    this.shadow,
+    this.corner = false,
+    this.gradient,
+  });
 
   final Widget child;
   final Color color;
@@ -278,18 +240,102 @@ class OnbCard extends StatelessWidget {
   final EdgeInsets padding;
   final double radius;
   final Color? shadow;
+  final bool corner;
+  final Gradient? gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    final box = BoxDecoration(
+      color: gradient == null ? color : null,
+      gradient: gradient,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: border, width: 1.5),
+      boxShadow: shadow == null ? IO.shadow : [BoxShadow(color: shadow!.withValues(alpha: .28), offset: const Offset(0, 10), blurRadius: 24, spreadRadius: -10)],
+    );
+    if (!corner) return Container(width: double.infinity, padding: padding, decoration: box, child: child);
+    return Container(
+      width: double.infinity,
+      decoration: box,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius - 1.5),
+        child: Stack(children: [
+          const Positioned(right: -20, top: -20, child: IgnorePointer(child: Marigold(size: 66))),
+          Padding(padding: padding, child: child),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A white card with a section title ("✿ Categories") and the orange marigold corner. The title keeps clear of the flower.
+class OnbSection extends StatelessWidget {
+  const OnbSection({super.key, required this.title, required this.child, this.color = IO.white, this.border = IO.line, this.gradient});
+
+  final String title;
+  final Widget child;
+  final Color color;
+  final Color border;
+  final Gradient? gradient;
+
+  @override
+  Widget build(BuildContext context) => OnbCard(
+        corner: true,
+        color: color,
+        border: border,
+        gradient: gradient,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 44, bottom: 12),
+            child: Row(children: [
+              const Marigold(size: 22),
+              const SizedBox(width: 8),
+              Flexible(child: Semantics(header: true, child: Text(title, style: t(19, color: IO.ink, w: FontWeight.w800, h: 1.2)))),
+            ]),
+          ),
+          child,
+        ]),
+      );
+}
+
+/// The plum hero card at the top of each step: gold eyebrow, white title, soft body, a yellow marigold top-right (the title and
+/// body are padded so they never run under it).
+class OnbHero extends StatelessWidget {
+  const OnbHero({super.key, required this.title, this.eyebrow, this.subtitle, this.titleSize = 28});
+
+  final String title;
+  final String? eyebrow;
+  final String? subtitle;
+  final double titleSize;
 
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: border, width: 2.5),
-          boxShadow: shadow == null ? null : [BoxShadow(color: shadow!, offset: const Offset(6, 6))],
+        decoration: BoxDecoration(gradient: IO.heroGradient, borderRadius: BorderRadius.circular(26), boxShadow: IO.shadow),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: Stack(children: [
+            const Positioned(right: -22, top: -22, child: IgnorePointer(child: Marigold(size: 86, yellow: true))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (eyebrow != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 56, bottom: 6),
+                    child: Text(eyebrow!.toUpperCase(), style: t(14, color: IO.gold, w: FontWeight.w800, ls: 0.12)),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 56),
+                  child: Semantics(header: true, child: Text(title, style: t(titleSize, color: IO.white, w: FontWeight.w800, h: 1.1))),
+                ),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(subtitle!, style: t(15, color: IO.heroBody, w: FontWeight.w600, h: 1.4)),
+                  ),
+              ]),
+            ),
+          ]),
         ),
-        child: child,
       );
 }
 
@@ -306,19 +352,19 @@ class OnbError extends StatelessWidget {
       );
 }
 
-/// The text box look of the designs: white, ink outline, rose when focused.
+/// The text box look of the designs: white, sand outline, rose when focused.
 InputDecoration onbInputDecoration(String hint, {bool enabled = true}) => InputDecoration(
       hintText: hint,
       counterText: '',
       filled: true,
       fillColor: enabled ? IO.white : C.sand,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.ink, width: 2.5)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.pink, width: 2.5)),
-      disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: IO.softLine, width: 2.5)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: IO.line, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: IO.pink, width: 2)),
+      disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: IO.line, width: 1.5)),
     );
 
-/// Back arrow in a white circle (48 dp tap target).
+/// Back arrow in a round white button with a sand border (48 dp tap target).
 class OnbBackButton extends StatelessWidget {
   const OnbBackButton({super.key, required this.onTap, this.dark = false});
 
@@ -338,15 +384,19 @@ class OnbBackButton extends StatelessWidget {
             width: 48,
             height: 48,
             alignment: Alignment.center,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? IO.camScrim : IO.white, border: dark ? null : Border.all(color: IO.ink, width: 2.5)),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: dark ? IO.camScrim : IO.white,
+              border: Border.all(color: dark ? IO.camLine : IO.line, width: dark ? 2 : 1.5),
+            ),
             child: Icon(Icons.chevron_left_rounded, size: 30, color: dark ? IO.onCamera : IO.ink),
           ),
         ),
       );
 }
 
-/// The page every step sits on: back arrow + progress bar + "n of 7", eyebrow, title, intro line, a scrolling body, and the buttons at
-/// the bottom (a main button, and an optional quiet link under it).
+/// The page every step sits on: back button + progress bar + "n of 7", then a scrolling body that starts with the plum hero
+/// (eyebrow, title, intro line), and the buttons at the bottom (a main button, and an optional quiet link under it).
 class OnbScaffold extends StatelessWidget {
   const OnbScaffold({
     super.key,
@@ -363,7 +413,7 @@ class OnbScaffold extends StatelessWidget {
     this.onSecondary,
     this.onBack,
     this.error,
-    this.titleSize = 30,
+    this.titleSize = 28,
   });
 
   final Widget child;
@@ -391,7 +441,7 @@ class OnbScaffold extends StatelessWidget {
       body: SafeArea(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Row(children: [
               if (onBack != null) OnbBackButton(onTap: onBack!) else const SizedBox(width: 48, height: 48),
               const SizedBox(width: 12),
@@ -400,12 +450,16 @@ class OnbScaffold extends StatelessWidget {
                   label: n == 0 ? null : 'Step $n of ${onbTotalSteps()}',
                   child: Container(
                     height: 10,
-                    decoration: BoxDecoration(color: IO.white, borderRadius: BorderRadius.circular(99), border: Border.all(color: IO.ink, width: 2)),
+                    decoration: BoxDecoration(color: IO.white, borderRadius: BorderRadius.circular(99), border: Border.all(color: IO.line, width: 1.5)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(99),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(widthFactor: (n / onbTotalSteps()).clamp(0.0, 1.0).toDouble(), heightFactor: 1, child: const ColoredBox(color: IO.orange)),
+                        child: FractionallySizedBox(
+                          widthFactor: (n / onbTotalSteps()).clamp(0.0, 1.0).toDouble(),
+                          heightFactor: 1,
+                          child: const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [IO.orange, IO.yellow]))),
+                        ),
                       ),
                     ),
                   ),
@@ -415,22 +469,13 @@ class OnbScaffold extends StatelessWidget {
               Text(n == 0 ? '' : '$n of ${onbTotalSteps()}', style: t(14, color: IO.ink, w: FontWeight.w800)),
             ]),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (eyebrow != null) Text(eyebrow!.toUpperCase(), style: t(14, color: IO.pink, w: FontWeight.w900, ls: 0.14)),
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 4),
-                child: Semantics(header: true, child: Text(title, style: t(titleSize, color: IO.ink, w: FontWeight.w900, h: 1.08))),
-              ),
-              if (subtitle != null) Text(subtitle!, style: t(15, color: IO.ink, w: FontWeight.w600, h: 1.45)),
-            ]),
-          ),
           Expanded(
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                OnbHero(title: title, eyebrow: eyebrow, subtitle: subtitle, titleSize: titleSize),
+                const SizedBox(height: 12),
                 child,
                 if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: OnbError(error!)),
               ]),

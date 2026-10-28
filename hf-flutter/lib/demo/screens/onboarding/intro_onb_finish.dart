@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../data/models/intro_onboarding.dart';
+import '../../desi.dart';
 import '../../theme.dart';
 import 'intro_onb_kit.dart';
 
@@ -109,6 +110,7 @@ class _OnbProfileStepState extends State<OnbProfileStep> {
       error: _localError ?? widget.error,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         OnbCard(
+          corner: true,
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
@@ -125,10 +127,10 @@ class _OnbProfileStepState extends State<OnbProfileStep> {
                     height: 88,
                     child: ClipOval(
                       child: DecoratedBox(
-                        decoration: BoxDecoration(color: IO.tagBg, border: Border.all(color: IO.ink, width: 2.5), shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: IO.tagBg, border: Border.all(color: IO.yellow, width: 3), shape: BoxShape.circle),
                         child: hasPhoto
-                            ? Image.network(photo, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 44, color: IO.ink))
-                            : const Icon(Icons.add_a_photo_rounded, size: 34, color: IO.ink),
+                            ? Image.network(photo, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 44, color: IO.plum))
+                            : const Icon(Icons.add_a_photo_rounded, size: 34, color: IO.plum),
                       ),
                     ),
                   ),
@@ -137,7 +139,10 @@ class _OnbProfileStepState extends State<OnbProfileStep> {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(hasPhoto ? 'Your photo' : 'Add your photo', style: t(16, color: IO.ink, w: FontWeight.w900)),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 36),
+                    child: Text(hasPhoto ? 'Your photo' : 'Add your photo', style: t(17, color: IO.ink, w: FontWeight.w800)),
+                  ),
                   const SizedBox(height: 2),
                   Text('A clear photo of your face. No sunglasses.', style: t(14, color: IO.muted, w: FontWeight.w600, h: 1.4)),
                   OnbLinkButton(label: hasPhoto ? 'Change photo' : 'Choose photo', onTap: widget.onPhoto),
@@ -147,8 +152,8 @@ class _OnbProfileStepState extends State<OnbProfileStep> {
           ]),
         ),
         const SizedBox(height: 14),
-        OnbCard(
-          padding: const EdgeInsets.all(16),
+        OnbSection(
+          title: 'About you',
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _label('Your name'),
             TextField(
@@ -224,13 +229,23 @@ class OnbOptionStep extends StatelessWidget {
   final VoidCallback onBack;
 
   Widget _tag(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: IO.tagBg, borderRadius: BorderRadius.circular(999)),
-        child: Text(text, style: t(14, color: IO.ink, w: FontWeight.w700)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(color: IO.tagBg, borderRadius: BorderRadius.circular(999), border: Border.all(color: IO.line)),
+        child: Text(text, style: t(14, color: IO.plum, w: FontWeight.w700)),
+      );
+
+  /// The round radio of the design: sand ring, or a rose ring with a rose dot when picked.
+  Widget _radio(bool on) => Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: IO.white, border: Border.all(color: on ? IO.pink : IO.line, width: 2.5)),
+        child: on ? Container(width: 16, height: 16, decoration: const BoxDecoration(color: IO.pink, shape: BoxShape.circle)) : null,
       );
 
   Widget _card({
     required String id,
+    required String letter,
     required IconData icon,
     required Color tile,
     required String title,
@@ -244,38 +259,40 @@ class OnbOptionStep extends StatelessWidget {
       label: title,
       excludeSemantics: true,
       onTap: () => onPick(id),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: busy ? null : () => onPick(id),
-        child: OnbCard(
-          border: on ? IO.pink : IO.ink,
-          shadow: on ? IO.pink : null,
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(14)),
-                alignment: Alignment.center,
-                child: Icon(icon, size: 26, color: IO.ink),
-              ),
+      child: Material(
+        color: C.clear,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: busy ? null : () => onPick(id),
+          child: OnbCard(
+            border: on ? IO.pink : IO.line,
+            shadow: on ? IO.pink : null,
+            gradient: on ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [IO.white, Color(0xFFFDEAF2)]) : null,
+            padding: const EdgeInsets.all(16),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(padding: const EdgeInsets.only(top: 2), child: _radio(on)),
               const SizedBox(width: 12),
-              Expanded(child: Text(title, style: t(20, color: IO.ink, w: FontWeight.w900, h: 1.15))),
-              if (on)
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: const BoxDecoration(color: IO.pink, shape: BoxShape.circle),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.check_rounded, size: 20, color: IO.white),
-                ),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: Text('$letter · $title', style: t(19, color: IO.ink, w: FontWeight.w800, h: 1.2))),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(12)),
+                      alignment: Alignment.center,
+                      child: Icon(icon, size: 22, color: IO.plum),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(body, style: t(15, color: IO.muted, w: FontWeight.w700, h: 1.45)),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 6, runSpacing: 6, children: [for (final x in tags) _tag(x)]),
+                ]),
+              ),
             ]),
-            const SizedBox(height: 10),
-            Text(body, style: t(15, color: IO.ink, w: FontWeight.w600, h: 1.5)),
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [for (final x in tags) _tag(x)]),
-          ]),
+          ),
         ),
       ),
     );
@@ -285,6 +302,7 @@ class OnbOptionStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return OnbScaffold(
       step: OnbStep.option,
+      eyebrow: 'Almost done',
       title: 'How do you want to take calls?',
       titleSize: 27,
       subtitle: 'You can change this any time from your Home screen.',
@@ -296,6 +314,7 @@ class OnbOptionStep extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _card(
           id: 'A',
+          letter: 'A',
           icon: Icons.calendar_month_rounded,
           tile: IO.bookingsIcon,
           title: 'Bookings only',
@@ -305,8 +324,9 @@ class OnbOptionStep extends StatelessWidget {
         const SizedBox(height: 16),
         _card(
           id: 'B',
+          letter: 'B',
           icon: Icons.call_rounded,
-          tile: IO.yellow,
+          tile: const Color(0xFFFFF1D6),
           title: 'Bookings + live calls',
           body: 'When you switch Online, fans can call you right away. On a call? They join a queue or book a time. Offline? They can still book.',
           tags: const ['“Call now” when online', 'Queue when busy', 'Hidden from Reels when offline'],
@@ -318,16 +338,18 @@ class OnbOptionStep extends StatelessWidget {
           excludeSemantics: true,
           onTap: onSlots,
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(999),
             onTap: busy ? null : onSlots,
             child: OnbDashed(
-              radius: 14,
-              width: 2.5,
+              radius: 999,
+              width: 1.5,
+              color: IO.plum,
+              fill: IO.white,
               child: Container(
                 constraints: const BoxConstraints(minHeight: 52),
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text('Set your free time slots →', style: t(16, color: IO.ink, w: FontWeight.w900)),
+                child: Text('Set your free time slots →', style: t(16, color: IO.plum, w: FontWeight.w800)),
               ),
             ),
           ),
@@ -350,24 +372,14 @@ class _StatusRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-      Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: done ? IO.ink : (current ? IO.yellow : IO.white),
-          shape: BoxShape.circle,
-          border: Border.all(color: IO.ink, width: 2),
-        ),
-        alignment: Alignment.center,
-        child: done ? const Icon(Icons.check_rounded, size: 18, color: IO.white) : Text(mark, style: t(14, color: IO.ink, w: FontWeight.w900)),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Text(text, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.35))),
+      Opacity(opacity: done || current ? 1 : 0.75, child: RangoliNumber(mark, done: done)),
+      const SizedBox(width: 10),
+      Expanded(child: Text(text, style: t(15, color: IO.ink, w: current ? FontWeight.w800 : FontWeight.w700, h: 1.35))),
     ]);
   }
 }
 
-/// A big round badge with an icon, used by the sent / rejected / approved screens.
+/// The round badge inside the plum hero of the sent / rejected / approved screens: a white disc with a saffron ring.
 class _Badge extends StatelessWidget {
   const _Badge({required this.icon, required this.fill, required this.shadow});
 
@@ -378,16 +390,16 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
         child: Container(
-          width: 150,
-          height: 150,
+          width: 128,
+          height: 128,
           decoration: BoxDecoration(
             color: fill,
             shape: BoxShape.circle,
-            border: Border.all(color: IO.ink, width: 4),
-            boxShadow: [BoxShadow(color: shadow, offset: const Offset(8, 8))],
+            border: Border.all(color: IO.yellow, width: 5),
+            boxShadow: [BoxShadow(color: shadow.withValues(alpha: .45), blurRadius: 24, spreadRadius: -6, offset: const Offset(0, 10))],
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 64, color: IO.ink),
+          child: Icon(icon, size: 56, color: IO.plum),
         ),
       );
 }
@@ -417,25 +429,43 @@ class _ResultPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Plum hero with the badge in the middle; the two marigolds sit in the top corners beside the badge, away from all text.
+    final hero = Container(
+      width: double.infinity,
+      decoration: BoxDecoration(gradient: IO.heroGradient, borderRadius: BorderRadius.circular(26), boxShadow: IO.shadow),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Stack(children: [
+          const Positioned(left: -18, top: -18, child: IgnorePointer(child: Marigold(size: 84))),
+          const Positioned(right: -18, top: -18, child: IgnorePointer(child: Marigold(size: 84, yellow: true))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              badge,
+              const SizedBox(height: 18),
+              Text(eyebrow.toUpperCase(), textAlign: TextAlign.center, style: t(14, color: IO.gold, w: FontWeight.w800, ls: 0.14)),
+              const SizedBox(height: 6),
+              Semantics(header: true, child: Text(title, textAlign: TextAlign.center, style: t(28, color: IO.white, w: FontWeight.w800, h: 1.1))),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 340),
+                child: Text(body, textAlign: TextAlign.center, style: t(15, color: IO.heroBody, w: FontWeight.w600, h: 1.5)),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
     return Scaffold(
       backgroundColor: C.page,
       body: SafeArea(
         child: Column(children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 40, 20, 12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                badge,
-                const SizedBox(height: 18),
-                Text(eyebrow.toUpperCase(), style: t(14, color: IO.pink, w: FontWeight.w900, ls: 0.18)),
-                const SizedBox(height: 6),
-                Semantics(header: true, child: Text(title, textAlign: TextAlign.center, style: t(32, color: IO.ink, w: FontWeight.w900, h: 1.08))),
-                const SizedBox(height: 12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 340),
-                  child: Text(body, textAlign: TextAlign.center, style: t(16, color: IO.ink, w: FontWeight.w600, h: 1.55)),
-                ),
-                if (extra != null) ...[const SizedBox(height: 18), extra!],
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                hero,
+                if (extra != null) ...[const SizedBox(height: 14), extra!],
               ]),
             ),
           ),
@@ -461,16 +491,16 @@ class OnbSentScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ResultPage(
-      badge: const _Badge(icon: Icons.mark_email_read_rounded, fill: IO.yellow, shadow: IO.pink),
+      badge: const _Badge(icon: Icons.mark_email_read_rounded, fill: IO.white, shadow: IO.yellow),
       eyebrow: 'All done',
       title: 'Sent for approval',
       body: 'A person from our team will watch your video and check your profile. Once approved, you can receive calls. We’ll tell you on WhatsApp.',
       extra: const OnbCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _StatusRow(mark: '1', text: 'Video and profile sent', done: true),
-          SizedBox(height: 14),
+          SizedBox(height: 10),
           _StatusRow(mark: '2', text: 'Our team checks it (usually within a day)', current: true),
-          SizedBox(height: 14),
+          SizedBox(height: 10),
           _StatusRow(mark: '3', text: 'You’re live — your reel appears for fans'),
         ]),
       ),
@@ -499,12 +529,13 @@ class OnbRejectedScreen extends StatelessWidget {
       extra: OnbCard(
         color: IO.cream,
         border: IO.orange,
+        radius: 20,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (var i = 0; i < reasons.length; i++)
             Padding(
               padding: EdgeInsets.only(bottom: i == reasons.length - 1 && (note == null) ? 0 : 10),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('•  ', style: t(15, color: IO.orangeInk, w: FontWeight.w900)),
+                Text('•  ', style: t(15, color: IO.orangeInk, w: FontWeight.w800)),
                 Expanded(child: Text(reasons[i].text, style: t(15, color: IO.ink, w: FontWeight.w700, h: 1.45))),
               ]),
             ),
@@ -530,7 +561,7 @@ class OnbApprovedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ResultPage(
-      badge: const _Badge(icon: Icons.celebration_rounded, fill: IO.yellow, shadow: IO.pink),
+      badge: const _Badge(icon: Icons.celebration_rounded, fill: IO.white, shadow: IO.yellow),
       eyebrow: 'You’re in',
       title: 'You’re approved',
       body: 'Your reel is on its way to fans. Open your dashboard to switch Online and see your bookings.',

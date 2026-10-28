@@ -9,6 +9,7 @@ import '../data/repos/intro_home_repo.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
 import 'call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
+import 'desi.dart';
 import 'presence_bridge.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -140,43 +141,44 @@ class IntroBanner extends StatelessWidget {
       button = 'Record now';
       tap = onRecord;
     }
+    // [HF-DESI-ONB] Plum hero card (design App8Home): gold eyebrow, white title, yellow marigold top-right with the text padded
+    // clear of it, and the solid saffron gota-patti button.
     final card = Container(
       key: const ValueKey('intro-banner'),
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: C.maroon,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [BoxShadow(color: C.rani, offset: Offset(6, 6))],
+        gradient: desiFill(DesiTone.plum),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: desiShadow,
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(eyebrow, style: t(14, color: C.lemon, w: FontWeight.w900, ls: .16)),
-        const SizedBox(height: 10),
-        Text(title, style: t(22, color: C.white, w: FontWeight.w900, h: 1.15)),
-        const SizedBox(height: 10),
-        Text(body, style: t(15, color: C.cream, w: FontWeight.w700, h: 1.5)),
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: tap,
-          style: FilledButton.styleFrom(
-            backgroundColor: C.lemon,
-            foregroundColor: C.maroon,
-            minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Stack(children: [
+          const Positioned(right: -22, top: -22, child: IgnorePointer(child: Marigold(size: 86, yellow: true))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(padding: const EdgeInsets.only(right: 56), child: Text(eyebrow, style: t(14, color: C.lemon, w: FontWeight.w800, ls: .12))),
+              const SizedBox(height: 6),
+              Padding(padding: const EdgeInsets.only(right: 56), child: Text(title, style: t(22, color: C.white, w: FontWeight.w800, h: 1.15))),
+              const SizedBox(height: 8),
+              Text(body, style: t(15, color: const Color(0xD9FFFAF3), w: FontWeight.w600, h: 1.45)),
+              const SizedBox(height: 14),
+              GotaButton(label: button, onTap: tap, height: 52, fontSize: 17),
+            ]),
           ),
-          child: Text(button, style: t(17, color: C.maroon, w: FontWeight.w900)),
-        ),
-      ]),
+        ]),
+      ),
     );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(padding: const EdgeInsets.only(right: 6, bottom: 6), child: card),
+      card,
       if (rejected && (state.rejectReasons.isNotEmpty || state.rejectNote != null)) ...[
         const SizedBox(height: 8),
         Container(
           key: const ValueKey('intro-reject-reasons'),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.saffron, width: 2.5)),
+          decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.saffron, width: 1.5), boxShadow: desiShadow),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Why it was not approved', style: t(15, color: C.amber, w: FontWeight.w900)),
+            Text('Why it was not approved', style: t(15, color: C.amber, w: FontWeight.w800)),
             for (final r in state.rejectReasons)
               Padding(padding: const EdgeInsets.only(top: 6), child: Text('• $r', style: t(15, w: FontWeight.w700, h: 1.4))),
             if (state.rejectNote != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(state.rejectNote!, style: t(15, w: FontWeight.w700, h: 1.4))),
@@ -219,25 +221,41 @@ class CallOptionCard extends StatelessWidget {
       listenable: Listenable.merge([store, presence]),
       builder: (context, _) {
         final option = store.active ?? 'B';
+        // [HF-DESI-ONB] White card, sand border, orange marigold corner (title padded clear of it), solid saffron "on" segment.
         return Container(
           key: const ValueKey('call-option-card'),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: C.maroon, width: 2.5)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('How do you take calls?', style: t(18, color: C.maroon, w: FontWeight.w900)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(color: C.lavtint, borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [
-                _seg(context, 'Bookings only', option == 'A', 'A'),
-                const SizedBox(width: 6),
-                _seg(context, 'Bookings + live', option == 'B', 'B'),
-              ]),
-            ),
-            const SizedBox(height: 12),
-            if (option == 'A') ..._bookingsOnly(context) else ..._live(context),
-          ]),
+          decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: C.line, width: 1.5), boxShadow: desiShadow),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22.5),
+            child: Stack(children: [
+              const Positioned(right: -20, top: -20, child: IgnorePointer(child: Marigold(size: 66))),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 44),
+                    child: Row(children: [
+                      const Marigold(size: 22),
+                      const SizedBox(width: 8),
+                      Flexible(child: Text('How do you take calls?', style: t(19, color: C.deep, w: FontWeight.w800))),
+                    ]),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: const Color(0xFFF3E6D6), borderRadius: BorderRadius.circular(999)),
+                    child: Row(children: [
+                      _seg(context, 'Bookings only', option == 'A', 'A'),
+                      const SizedBox(width: 6),
+                      _seg(context, 'Bookings + live', option == 'B', 'B'),
+                    ]),
+                  ),
+                  const SizedBox(height: 12),
+                  if (option == 'A') ..._bookingsOnly(context) else ..._live(context),
+                ]),
+              ),
+            ]),
+          ),
         );
       },
     );
@@ -250,17 +268,17 @@ class CallOptionCard extends StatelessWidget {
           label: label,
           excludeSemantics: true,
           child: Material(
-            color: on ? C.maroon : C.clear,
-            borderRadius: BorderRadius.circular(11),
+            color: on ? Gota.saffron : C.clear,
+            borderRadius: BorderRadius.circular(999),
             child: InkWell(
-              borderRadius: BorderRadius.circular(11),
+              customBorder: const StadiumBorder(),
               onTap: store.saving ? null : () => unawaited(_pick(context, value)),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, style: t(15, color: on ? C.white : C.maroon, w: FontWeight.w900))),
+                    child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, style: t(15, color: on ? Gota.onSaffron : C.muted, w: FontWeight.w800))),
                   ),
                 ),
               ),
@@ -305,13 +323,13 @@ class CallOptionCard extends StatelessWidget {
       Container(
         key: const ValueKey('call-option-live-bar'),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(16), border: Border.all(color: line, width: 2)),
+        decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(18), border: Border.all(color: line, width: 1.5)),
         child: Row(children: [
           Container(width: 14, height: 14, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(head, style: t(16, color: ink, w: FontWeight.w900)),
+              Text(head, style: t(16, color: ink, w: FontWeight.w800)),
               Text(sub, style: t(14, color: ink, w: FontWeight.w700, h: 1.3)),
             ]),
           ),
@@ -324,9 +342,9 @@ class CallOptionCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 backgroundColor: online ? C.white : C.onlineInk,
                 side: const BorderSide(color: C.onlineInk, width: 2),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: const StadiumBorder(),
               ),
-              child: Text(online ? 'Go offline' : 'Go online', style: t(14, color: online ? C.onlineInk : C.white, w: FontWeight.w900)),
+              child: Text(online ? 'Go offline' : 'Go online', style: t(14, color: online ? C.onlineInk : C.white, w: FontWeight.w800)),
             ),
         ]),
       ),
@@ -340,11 +358,11 @@ class CallOptionCard extends StatelessWidget {
         Container(
           key: const ValueKey('call-option-bookings-pill'),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.deep, width: 2)),
+          decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.line, width: 1.5)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.event_available_rounded, color: C.deep, size: 22),
             const SizedBox(width: 8),
-            Flexible(child: Text('Bookings only', style: t(16, color: C.deep, w: FontWeight.w900))),
+            Flexible(child: Text('Bookings only', style: t(16, color: C.deep, w: FontWeight.w800))),
           ]),
         ),
         const SizedBox(height: 10),
@@ -352,7 +370,7 @@ class CallOptionCard extends StatelessWidget {
         TextButton(
           onPressed: () => StatefulNavigationShell.of(context).goBranch(3),
           style: TextButton.styleFrom(minimumSize: const Size(48, 48), alignment: Alignment.centerLeft, padding: EdgeInsets.zero),
-          child: Text('Open Availability', style: t(15, color: C.rani, w: FontWeight.w900)),
+          child: Text('Open Availability', style: t(15, color: C.rani, w: FontWeight.w800)),
         ),
       ];
 }
