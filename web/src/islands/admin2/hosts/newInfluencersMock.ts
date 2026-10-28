@@ -6,7 +6,7 @@ const REASONS: RejectReason[] = [
   { code: 'video_dark', text: 'The video is too dark. Please record in good light.' },
   { code: 'audio_unclear', text: 'We could not hear you clearly.' },
   { code: 'contact_shared', text: 'Please do not share phone numbers or social handles in the video.' },
-  { code: 'unsuitable', text: 'The content is not suitable for Hello Fraands.' },
+  { code: 'unsuitable', text: 'The content is not suitable for our platform.' },
   { code: 'wrong_category', text: 'Your categories do not match what you talk about.' },
   { code: 'description_fix', text: 'Please improve your description.' },
   { code: 'rate_fix', text: 'Please change your rate per minute.' },

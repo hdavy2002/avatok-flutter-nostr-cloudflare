@@ -18,7 +18,7 @@ import 'widgets.dart';
 // shows [fallback] (the presence card it always had) and nothing else.
 
 /// Where "Record now" / "Fix and send again" go. Lane A1 registers this route; the path is the contract between the two lanes.
-const String kInfluencerOnboardingPath = '/onboarding/influencer';
+const String kInfluencerOnboardingPath = '/influencer/join'; // [HF-INTRO-INT] A1 registered the new flow on this route
 
 /// Call from a build method of the influencer shell: reads the flag, then her option, once. Quiet when the flag is off or in the demo build.
 void ensureCallOptionLoaded() {

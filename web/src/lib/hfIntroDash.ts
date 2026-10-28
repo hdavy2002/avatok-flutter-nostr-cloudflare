@@ -35,7 +35,7 @@ export const facebookStart = (): Promise<HfResult<{ ok: true; url: string }>> =>
 export const FB_ERROR_TEXT: Record<string, string> = {
   cancelled: 'You cancelled the Facebook login. You can try again any time.',
   no_page: 'We could not find a Facebook Page on that account. Log in with the account that manages your Page.',
-  claimed: 'That Facebook Page is already linked to another Hello Fraands account.',
+  claimed: 'That Facebook Page is already linked to another account.',
   limit_reached: 'You have reached the most social accounts you can connect. Remove one first.',
   bad_state: 'That login link expired. Please try again.',
   not_enabled: 'Facebook login is not open yet.',

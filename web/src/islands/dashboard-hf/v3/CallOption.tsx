@@ -91,7 +91,7 @@ export function IntroBannerView({ me }: { me: IntroMe }) {
   }
   if (me.needsIntroVideo) {
     return <aside className="h3-safe" style={{ background: 'var(--goldtint)', borderColor: 'var(--rani)' }}><div><h3>Record your 20-second intro video</h3>
-      <p className="small">Fans now find you through it. Until a person approves it, you’re hidden from Reels. You record it in the Hello Fraands app.</p></div>
+      <p className="small">Fans now find you through it. Until a person approves it, you’re hidden from Reels. You record it in our app.</p></div>
       <a className="h3-btn rani" href={HF_PLAY_URL} target="_blank" rel="noopener" onClick={click}>Record it in the app</a></aside>;
   }
   return null;
