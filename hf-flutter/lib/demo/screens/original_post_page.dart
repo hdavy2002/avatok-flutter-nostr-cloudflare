@@ -27,8 +27,7 @@ class OriginalPostPage extends StatefulWidget {
     );
   }
 
-  /// True for the hosts the page may show: the platform the post lives on.
-  @visibleForTesting
+  /// True for the hosts the page may show: the platform the post lives on. Also used by the intro-reel social icons ([HF-INTRO-INT]).
   static bool allowed(Uri u) {
     if (u.scheme != 'https') return false;
     final h = u.host.toLowerCase();

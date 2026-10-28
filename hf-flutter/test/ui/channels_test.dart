@@ -183,7 +183,7 @@ void main() {
       await _pump(tester, ChannelsListScreen(repo: f.repo));
       await tester.pumpAndSettle();
       expect(find.text('Nothing verified yet'), findsOneWidget);
-      expect(find.text('Add your Instagram or YouTube so fans can see your reels.'), findsOneWidget);
+      expect(find.text('Add your Instagram, YouTube or Facebook so fans can see your reels.'), findsOneWidget); // [HF-INTRO-INT]
       await tester.tap(find.text('+ ADD SOCIAL MEDIA'));
       await tester.pumpAndSettle();
       expect(find.text('PICK PLATFORM'), findsOneWidget);
