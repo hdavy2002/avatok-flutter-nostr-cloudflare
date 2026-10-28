@@ -38,6 +38,7 @@ channel is a category: creator and fan must both be Aadhaar-verified Female.
 | D18 | **Existing influencers** must record an intro and be re-approved; hidden from Reels until then (dashboard banner + WhatsApp). |
 | D19 | Video storage: Cloudflare **R2** (vertical MP4 + poster), long cache. Not Cloudflare Stream. |
 | D20 | Server never rings an Offline / Bookings-only / busy influencer except a booked call (already true — keep and re-test). |
+| D22 | **Onboarding is in the APP ONLY (owner 2026-10-28, after approving the screens).** The 7 onboarding screens are native Flutter screens in hf-flutter (camera recording native). The website does NOT onboard: /hosts/onboarding and every web "Become an influencer" entry show an info panel "Download our app to become an influencer" with the Play Store button (when hfIntroOnboardingEnabled). Approved screens: design canvas "Hello Fraands — Intro Video Screens". |
 | D21 | Deploy only after the owner reads the final plain-English summary. Everything new ships dark behind flags. |
 
 ## 2. Phases
