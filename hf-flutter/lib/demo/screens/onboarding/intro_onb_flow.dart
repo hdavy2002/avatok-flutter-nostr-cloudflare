@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/api_exception.dart';
+import '../../../data/call_flags.dart'; // [HF-CALL-SAFETY-APP]
 import '../../../data/intro_onboarding_draft.dart';
 import '../../../data/models/intro_onboarding.dart';
 import '../../../data/repos/intro_onboarding_repo.dart';
@@ -12,6 +13,7 @@ import '../../../data/telemetry.dart';
 import '../../theme.dart';
 import '../../widgets.dart';
 import '../availability_real.dart';
+import '../call_rules.dart'; // [HF-CALL-SAFETY-APP]
 import 'intro_onb_finish.dart';
 import 'intro_onb_hints.dart';
 import 'intro_onb_kit.dart';
@@ -19,7 +21,7 @@ import 'intro_onb_recorder.dart';
 import 'intro_onb_steps.dart';
 
 /// Which page of the flow is showing.
-enum _V { loading, gate, loadError, categories, social, aadhaar, prep, profile, option, sent, rejected, approved }
+enum _V { loading, gate, loadError, categories, social, aadhaar, prep, profile, option, rules, sent, rejected, approved }
 
 /// [HF-INTRO-A1] The influencer onboarding with an intro video (Specs/HF-INTRO-VIDEO-1.md), used while `hfIntroOnboardingEnabled` is on:
 /// categories -> social media (optional) -> Aadhaar (only when needed) -> get ready -> recorder -> profile -> how to take calls -> sent.
@@ -280,6 +282,8 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
         _goto(_V.prep);
       case _V.option:
         _goto(_V.profile);
+      case _V.rules:
+        _goto(_V.option);
       default:
         _leave();
     }
@@ -640,9 +644,19 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
             _saveDraft();
           },
           onSlots: () => unawaited(_openSlots()),
-          onSubmit: () => unawaited(_submit()),
+          // [HF-CALL-SAFETY-APP] With call recording on, "Next" opens step 7 "Our call rules"; agreeing there sends the application.
+          primaryLabel: CallFlags.callRecording ? 'Next' : 'Send for approval',
+          onSubmit: () {
+            if (CallFlags.callRecording) {
+              _goto(_V.rules);
+            } else {
+              unawaited(_submit());
+            }
+          },
           onBack: _back,
         );
+      case _V.rules:
+        return OnbRulesStep(onBack: _back, onAgreed: () => unawaited(_submit()), busy: _busy, error: _error);
       case _V.sent:
         return OnbSentScreen(onHome: () => context.go('/reels'));
       case _V.rejected:

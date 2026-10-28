@@ -22,7 +22,12 @@ abstract final class CallFlags {
   /// [HF-INTRO-A1] `hfFacebookLoginEnabled`: "Log in with Facebook" under Social media verification.
   static bool facebookLogin = false;
 
+  /// [HF-CALL-SAFETY-APP] `hfCallRecordingEnabled`: calls are recorded and checked, so the fan sees the pre-call notice, the
+  /// influencer agrees to the call rules, and the Safety screens appear. Off = the app looks and behaves as before.
+  static bool callRecording = false;
+
   static void apply(AppConfig c) {
+    callRecording = c.callRecordingEnabled;
     introOnboarding = c.introOnboardingEnabled;
     facebookLogin = c.facebookLoginEnabled;
     modes = c.callModesEnabled;
@@ -33,6 +38,7 @@ abstract final class CallFlags {
 
   /// Tests: back to the all-off state.
   static void reset() {
+    callRecording = false;
     introOnboarding = false;
     facebookLogin = false;
     modes = false;

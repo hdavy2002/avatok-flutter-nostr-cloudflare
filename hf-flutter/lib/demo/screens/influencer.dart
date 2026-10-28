@@ -16,6 +16,7 @@ import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../data.dart';
 import '../my_reels_section.dart';
+import '../call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import '../presence_bridge.dart';
 import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import '../space_kit.dart'; // [HF-CREATOR-BADGES-1]
@@ -478,8 +479,10 @@ class InfluencerShell extends StatelessWidget {
     }
     if (option == 'B') {
       final goOnline = !myOnline;
+      final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP]
       final err = await PresenceStore.instance.setMode(goOnline ? 'online' : 'bookings_only');
       if (!context.mounted) return;
+      if (err != null && SafetyGate.handle(go, PresenceStore.instance.lastErrorCode, surface: 'footer')) return;
       if (err != null) {
         toast(context, err);
       } else {

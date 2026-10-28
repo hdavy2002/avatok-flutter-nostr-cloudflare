@@ -121,6 +121,15 @@ abstract final class Telemetry {
     'merch_receipt_opened', // [HF-APP-PARITY-MERCH-1] {order_id, ok}
     'merch_checkout_failed', // [HF-APP-PARITY-MERCH-1] {code, status, surface}
     'merch_gstin_saved', // [HF-APP-PARITY-MERCH-1] {has_gstin}
+    // [HF-CALL-SAFETY-APP] strikes, appeals, call rules and the pre/post-call screens (never carries the quote, the appeal text or a name)
+    'hf_safety_view', // {surface: strikes|paused|rules|post_call, status?, strikes?}
+    'hf_safety_gate_shown', // {code: account_paused|call_rules_required, surface}
+    'hf_safety_appeal', // {outcome: ok|failed, reason?}
+    'hf_safety_rules_accepted', // {version, surface: onboarding|gate|me, outcome: ok|failed, reason?}
+    'hf_call_notice_shown', // {surface: call|booking}
+    'hf_call_notice_ack', // {surface, dont_show_again}
+    'hf_call_report_sent', // {outcome: ok|failed, reasons, n, reason?}
+    'hf_call_report_good', // {}
   };
 
   static TelemetrySink sink = _debugSink;

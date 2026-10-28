@@ -25,7 +25,11 @@ class AppConfig {
     this.bookingLengthsEnabled = false,
     this.introOnboardingEnabled = false,
     this.facebookLoginEnabled = false,
+    this.callRecordingEnabled = false,
   });
+
+  /// [HF-CALL-SAFETY-APP] `hfCallRecordingEnabled`: true only when the server says exactly `true`.
+  final bool callRecordingEnabled;
 
   /// [HF-INTRO-A1] `hfIntroOnboardingEnabled` (the in-app intro-video onboarding) and `hfFacebookLoginEnabled` ("Log in with Facebook").
   /// Each is true only when the server says exactly `true`.
@@ -55,6 +59,7 @@ class AppConfig {
         bookingLengthsEnabled: j['hfBookingLengthsEnabled'] == true,
         introOnboardingEnabled: j['hfIntroOnboardingEnabled'] == true,
         facebookLoginEnabled: j['hfFacebookLoginEnabled'] == true,
+        callRecordingEnabled: j['hfCallRecordingEnabled'] == true,
       );
 
   static int _int(Object? v) {

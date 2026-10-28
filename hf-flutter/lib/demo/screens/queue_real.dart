@@ -11,6 +11,7 @@ import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../booking_kit.dart';
 import '../call_kit.dart';
+import '../call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import '../desi.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -196,6 +197,9 @@ class _QueueScreenState extends State<QueueScreen> {
 
   Future<void> _join() async {
     if (_busy) return;
+    // [HF-CALL-SAFETY-APP] The same "Keep your call safe" sheet as Call now (only while recording is on).
+    final okToJoin = await showFanCallNotice(context, name: _name, surface: 'queue');
+    if (!okToJoin || !mounted) return;
     setState(() {
       _busy = true;
       _problem = null;
@@ -209,6 +213,12 @@ class _QueueScreenState extends State<QueueScreen> {
     } catch (e) {
       Telemetry.event('hf_app_queue_failed', {'reason': e is ApiException ? e.code : 'error'});
       if (!mounted) return;
+      // [HF-CALL-SAFETY-APP] 403 account_paused / call_rules_required: open the matching screen.
+      if (e is ApiException && (e.code == 'account_paused' || e.code == 'call_rules_required')) {
+        setState(() => _busy = false);
+        SafetyGate.handle(GoRouter.of(context), e.code, surface: 'queue');
+        return;
+      }
       // [HF-CREATOR-SPACES-1] 403 lane_required: the locked prompt with "Verify to call".
       if (await handleLaneRequired(context, e)) {
         if (mounted) setState(() => _busy = false);

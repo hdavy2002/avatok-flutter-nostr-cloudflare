@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/demo_mode.dart';
 import '../data/presence_store.dart';
+import 'call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import 'state.dart';
 import 'widgets.dart';
 
@@ -42,7 +44,9 @@ Future<void> togglePresence(BuildContext context) async {
   }
   final store = PresenceStore.instance;
   final messenger = ScaffoldMessenger.of(context);
+  final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP] captured before the await
   final error = await store.setOnline(goOnline);
+  if (error != null && SafetyGate.handle(go, store.lastErrorCode)) return;
   final msg = error ?? (goOnline ? 'You are online. Fans can call you now.' : 'You are offline. Bookings stay open.');
   messenger
     ..hideCurrentSnackBar()

@@ -12,6 +12,7 @@ import '../data/repos/queue_repo.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
 import 'call_kit.dart';
+import 'call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import 'data.dart';
 import 'notify_me_button.dart';
 import 'theme.dart';
@@ -102,9 +103,11 @@ class HostModeSheet extends StatelessWidget {
         if (!ok || !context.mounted) return;
       }
     }
+    final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP] captured before the sheet closes
     Navigator.of(context).pop();
     final from = st.mode;
     final err = await st.setMode(mode);
+    if (err != null && SafetyGate.handle(go, st.lastErrorCode, surface: surface)) return;
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(err ?? hostModeToast(mode))));

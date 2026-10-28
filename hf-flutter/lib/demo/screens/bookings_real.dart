@@ -18,6 +18,7 @@ import '../booking_kit.dart';
 import '../list_kit.dart';
 import '../inf_kit.dart';
 import '../call_kit.dart';
+import '../call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import '../settings_kit.dart';
 import '../desi.dart';
 import '../profile_kit.dart';
@@ -407,6 +408,9 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       context.push('/topup');
       return;
     }
+    // [HF-CALL-SAFETY-APP] "Keep your call safe" before the booking is sent (only while recording is on).
+    final okToBook = await showFanCallNotice(context, name: _name, surface: 'booking');
+    if (!okToBook || !mounted) return;
     setState(() => _busy = true);
     try {
       final r = await _repo.bookRequest(widget.id, istToInstant(widget.day, widget.slot), note: _note.text, topic: widget.topic, durationMinutes: _lengthOn ? widget.length : null);
@@ -433,6 +437,11 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       setState(() => _busy = false);
       if (e is ApiException && e.code == 'age_confirmation_required') {
         await recoverHfAgeConfirmation(context);
+        return;
+      }
+      // [HF-CALL-SAFETY-APP] 403 account_paused / call_rules_required: open the matching screen.
+      if (e is ApiException && (e.code == 'account_paused' || e.code == 'call_rules_required')) {
+        SafetyGate.handle(GoRouter.of(context), e.code, surface: 'booking');
         return;
       }
       if (await handleLaneRequired(context, e)) return; // [HF-CREATOR-SPACES-1]

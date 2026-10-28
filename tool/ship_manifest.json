@@ -12577,5 +12577,22 @@
         "note": "A fan saw the pre-call safety notice (flag hfCallRecordingEnabled)."
       }
     ]
+  },
+  "HF-CALL-SAFETY-APP": {
+    "description": "Call safety, app side: influencer Safety (strikes + appeal), Account paused, Call rules (onboarding step 7 + gate), the fan's pre-call safety notice and the post-call report. Ships dark behind hfCallRecordingEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallRecordingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_notice_ack",
+        "property": "surface",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan tapped OK on the Keep your call safe sheet before calling or booking (flag hfCallRecordingEnabled)."
+      }
+    ]
   }
 }

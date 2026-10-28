@@ -31,6 +31,10 @@ class PresenceStore extends ChangeNotifier {
   bool loaded = false;
   bool saving = false;
 
+  /// [HF-CALL-SAFETY-APP] The server's error code of the last refused [setOnline] / [setMode] (`account_paused`,
+  /// `call_rules_required`, ...), or null after a success. The caller opens the matching safety screen.
+  String? lastErrorCode;
+
   /// Busy counts as online: she is on a call and fans see her as in the feed.
   bool get online => presence == 'online' || presence == 'busy';
   bool get busy => presence == 'busy';
@@ -68,6 +72,7 @@ class PresenceStore extends ChangeNotifier {
     if (saving) return null;
     final before = presence;
     final beforeMode = mode;
+    lastErrorCode = null;
     presence = value ? 'online' : 'offline';
     mode = value ? 'online' : 'bookings_only';
     saving = true;
@@ -77,6 +82,7 @@ class PresenceStore extends ChangeNotifier {
       mode = presence == 'offline' ? 'bookings_only' : 'online';
       return null;
     } on ApiException catch (e) {
+      lastErrorCode = e.code;
       presence = before;
       mode = beforeMode;
       return e.userMessage;
@@ -97,6 +103,7 @@ class PresenceStore extends ChangeNotifier {
     final beforePresence = presence;
     final beforeMode = mode;
     final beforeWaiting = queueWaiting;
+    lastErrorCode = null;
     mode = value;
     presence = onCall ? 'busy' : (value == 'online' ? 'online' : 'offline');
     if (value != 'online') queueWaiting = 0;
@@ -106,6 +113,7 @@ class PresenceStore extends ChangeNotifier {
       _apply(await _repo.setMode(value));
       return null;
     } on ApiException catch (e) {
+      lastErrorCode = e.code;
       presence = beforePresence;
       mode = beforeMode;
       queueWaiting = beforeWaiting;

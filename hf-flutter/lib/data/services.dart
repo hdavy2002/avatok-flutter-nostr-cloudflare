@@ -11,6 +11,7 @@ import 'intro_store.dart';
 import 'models/me.dart';
 import 'repos/auth_repo.dart';
 import 'repos/bookings_repo.dart';
+import 'repos/call_safety_repo.dart'; // [HF-CALL-SAFETY-APP]
 import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
 import 'youtube_sign_in.dart';
@@ -71,6 +72,7 @@ class Services {
   late final MerchRepo merchRepo = MerchRepo(api); // [HF-MERCH-APP-1]
   late final SafetyRepo safetyRepo = SafetyRepo(api); // [HF-APP-PARITY-SAFETY]
   late final SpacesRepo spacesRepo = SpacesRepo(api); // [HF-CREATOR-SPACES-1]
+  late final CallSafetyRepo callSafetyRepo = CallSafetyRepo(api); // [HF-CALL-SAFETY-APP]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   /// Session changes can precede /me, including an offline or slow restore.

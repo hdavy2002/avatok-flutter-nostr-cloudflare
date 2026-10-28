@@ -8,6 +8,7 @@ import '../data/presence_store.dart';
 import '../data/repos/intro_home_repo.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
+import 'call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import 'presence_bridge.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -205,8 +206,10 @@ class CallOptionCard extends StatelessWidget {
 
   Future<void> _toggleOnline(BuildContext context) async {
     final goOnline = !presence.online;
+    final go = GoRouter.of(context); // [HF-CALL-SAFETY-APP]
     final err = await presence.setMode(goOnline ? 'online' : 'bookings_only');
     if (!context.mounted) return;
+    if (err != null && SafetyGate.handle(go, presence.lastErrorCode)) return;
     toast(context, err ?? (goOnline ? 'You are online. Fans can call you now.' : 'You are offline. Fans can still book a time.'));
   }
 

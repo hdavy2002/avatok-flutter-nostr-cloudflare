@@ -207,7 +207,11 @@ class OnbOptionStep extends StatelessWidget {
     required this.onSlots,
     required this.onSubmit,
     required this.onBack,
+    this.primaryLabel = 'Send for approval',
   });
+
+  /// [HF-CALL-SAFETY-APP] "Next" while the call rules step follows (hfCallRecordingEnabled), else "Send for approval".
+  final String primaryLabel;
 
   final String selected;
   final bool busy;
@@ -285,7 +289,7 @@ class OnbOptionStep extends StatelessWidget {
       titleSize: 27,
       subtitle: 'You can change this any time from your Home screen.',
       onBack: busy ? null : onBack,
-      primaryLabel: 'Send for approval',
+      primaryLabel: primaryLabel,
       primaryBusy: busy,
       onPrimary: onSubmit,
       error: error,

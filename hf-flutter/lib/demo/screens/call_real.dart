@@ -19,6 +19,8 @@ import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../theme.dart';
 import '../widgets.dart';
 import '../call_kit.dart';
+import '../call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
+import 'call_report.dart'; // [HF-CALL-SAFETY-APP]
 
 /// Explicit 18+ recovery; callers must tap their transaction action again afterwards.
 Future<void> recoverHfAgeConfirmation(BuildContext context, {Future<void> Function()? acknowledge}) async {
@@ -161,6 +163,14 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
 
   Future<void> _start() async {
     if (_starting) return;
+    // [HF-CALL-SAFETY-APP] "Keep your call safe" first (only while recording is on, and not once she ticked "Don't show this again").
+    final okToCall = await showFanCallNotice(
+      context,
+      name: widget.who.name,
+      surface: 'call',
+      rate: _est == null ? null : '${_rateText(_est!.ratePerMinRupees)}/min',
+    );
+    if (!okToCall || !mounted) return;
     setState(() => _starting = true);
     final sw = Stopwatch()..start();
     try {
@@ -183,6 +193,13 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
       if (e is ApiException && e.code == 'age_confirmation_required') {
         await recoverHfAgeConfirmation(context);
         if (mounted) setState(() { _problem = null; _starting = false; });
+        return;
+      }
+      // [HF-CALL-SAFETY-APP] 403 account_paused / call_rules_required: open the matching screen.
+      if (e is ApiException && (e.code == 'account_paused' || e.code == 'call_rules_required')) {
+        final go = GoRouter.of(context);
+        Navigator.of(context).pop();
+        SafetyGate.handle(go, e.code, surface: 'call');
         return;
       }
       // [HF-CREATOR-SPACES-1] 403 lane_required: the locked prompt with "Verify to call".
@@ -488,6 +505,19 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
           return;
         }
       }
+      if (mounted) setState(() => _busy = false);
+    }
+    // [HF-CALL-SAFETY-APP] "How was the call?" once, after a call that connected (only while recording is on).
+    if (mounted && s != null && s.wasConnected && CallFlags.callRecording) {
+      setState(() => _busy = true);
+      await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
+        builder: (_) => PostCallReportScreen(
+          callId: widget.callId,
+          name: s.hostName ?? '',
+          minutes: s.billedMinutes > 0 ? s.billedMinutes : null,
+          paid: s.costPaise > 0 ? paiseText(s.costPaise) : null,
+        ),
+      ));
       if (mounted) setState(() => _busy = false);
     }
     if (mounted) _leave(context);

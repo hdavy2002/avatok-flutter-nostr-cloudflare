@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-SAFETY-APP]
+import '../../data/call_safety_store.dart'; // [HF-CALL-SAFETY-APP]
 import '../../data/demo_mode.dart';
 import '../../data/models/wallet.dart';
 import '../../data/repos/merch_repo.dart'; // [HF-HELP-MERCH-1]
@@ -177,6 +179,8 @@ class _Dashboard extends StatelessWidget {
                 tone: DesiTone.lav,
                 onTap: () => unawaited(context.push('/inf/verifications')),
               ),
+            // [HF-CALL-SAFETY-APP] Safety (strikes) and Call rules; only while call recording is on.
+            if (live && isInfluencer && CallFlags.callRecording) const _SafetyRows(),
           ]),
           if (live && isInfluencer) const SharePageCard(), // [HF-SHARE-APP-1]
           if (live) MerchMeSection(isInfluencer: isInfluencer), // [HF-MERCH-APP-1] hidden while hfMerchEnabled is off
@@ -189,6 +193,47 @@ class _Dashboard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// [HF-CALL-SAFETY-APP] The "Safety" row (amber "N of 3 strikes" chip, or "No strikes") and the "Call rules" row of the Influencer card
+/// (artboard AppHostHome). A paused or closed account opens the paused page instead of the strikes page.
+class _SafetyRows extends StatefulWidget {
+  const _SafetyRows();
+
+  @override
+  State<_SafetyRows> createState() => _SafetyRowsState();
+}
+
+class _SafetyRowsState extends State<_SafetyRows> {
+  @override
+  void initState() {
+    super.initState();
+    CallSafetyStore.instance.addListener(_changed);
+    unawaited(CallSafetyStore.instance.load());
+  }
+
+  @override
+  void dispose() {
+    CallSafetyStore.instance.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = CallSafetyStore.instance.me;
+    final blocked = m != null && (m.isPaused || m.isBanned);
+    final chip = m == null
+        ? ''
+        : (m.isBanned ? 'Closed' : (m.isPaused ? 'Paused' : (m.activeStrikes == 0 ? 'No strikes' : '${m.activeStrikes} of ${m.strikesToPause} strikes')));
+    return Column(children: [
+      _MenuRow(icon: Icons.shield_rounded, label: 'Safety', meta: chip, tone: DesiTone.gold, onTap: () => unawaited(context.push(blocked ? '/safety/paused' : '/safety'))),
+      _MenuRow(icon: Icons.menu_book_rounded, label: 'Call rules', meta: '', tone: DesiTone.tea, onTap: () => unawaited(context.push('/safety/rules'))),
+    ]);
   }
 }
 

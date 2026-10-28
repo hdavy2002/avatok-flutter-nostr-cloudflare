@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
 import 'screens/blocked_people.dart'; // [HF-BLOCK-PROFILE-1]
+import 'screens/call_rules.dart'; // [HF-CALL-SAFETY-APP]
+import 'screens/safety_strikes.dart'; // [HF-CALL-SAFETY-APP]
 import '../data/models/reel.dart';
 import '../data/services.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
@@ -264,6 +266,14 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/inf/verifications',
       builder: (_, __) => const MyVerificationsScreen(),
+    ),
+    // [HF-CALL-SAFETY-APP] Strikes and appeals, the paused-account page, and the call rules (`?gate=1` = the one-time gate before going Online).
+    GoRoute(parentNavigatorKey: rootKey, path: '/safety', builder: (_, __) => const SafetyScreen()),
+    GoRoute(parentNavigatorKey: rootKey, path: '/safety/paused', builder: (_, __) => const AccountPausedScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/safety/rules',
+      builder: (_, s) => CallRulesScreen(gate: s.uri.queryParameters['gate'] == '1'),
     ),
     // [HF-WIRE-3] Channels. `?from=join` keeps the person inside "Join as influencer".
     GoRoute(

@@ -50,6 +50,10 @@ enum OnbStep {
   final int n;
 }
 
+/// [HF-CALL-SAFETY-APP] How many steps the flow has: 7, or 8 while `hfCallRecordingEnabled` is on (step 7 "Our call rules" sits
+/// between "How do you want to take calls?" and "Sent for approval").
+int onbTotalSteps() => CallFlags.callRecording ? 8 : 7;
+
 /// Where the rest of the app asks "should this person land in onboarding?".
 abstract final class IntroOnbEntry {
   /// True when the intro-video onboarding is on and this person already has a draft or rejected influencer row, so she must go back into
@@ -393,7 +397,7 @@ class OnbScaffold extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Semantics(
-                  label: n == 0 ? null : 'Step $n of 7',
+                  label: n == 0 ? null : 'Step $n of ${onbTotalSteps()}',
                   child: Container(
                     height: 10,
                     decoration: BoxDecoration(color: IO.white, borderRadius: BorderRadius.circular(99), border: Border.all(color: IO.ink, width: 2)),
@@ -401,14 +405,14 @@ class OnbScaffold extends StatelessWidget {
                       borderRadius: BorderRadius.circular(99),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(widthFactor: (n / 7).clamp(0.0, 1.0).toDouble(), heightFactor: 1, child: const ColoredBox(color: IO.orange)),
+                        child: FractionallySizedBox(widthFactor: (n / onbTotalSteps()).clamp(0.0, 1.0).toDouble(), heightFactor: 1, child: const ColoredBox(color: IO.orange)),
                       ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              Text(n == 0 ? '' : '$n of 7', style: t(14, color: IO.ink, w: FontWeight.w800)),
+              Text(n == 0 ? '' : '$n of ${onbTotalSteps()}', style: t(14, color: IO.ink, w: FontWeight.w800)),
             ]),
           ),
           Padding(
