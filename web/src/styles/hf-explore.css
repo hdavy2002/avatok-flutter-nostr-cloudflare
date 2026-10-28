@@ -132,3 +132,72 @@ html[data-site-auth="in"] .ex-out{display:none!important}
 .ex.ex-inline .ex-gate{pointer-events:auto;position:fixed}
 .ex a.ex-b-wa,.ex a.ex-b-wa:hover{color:var(--ink);text-decoration:none}
 .ex a.ex-b-g,.ex a.ex-b-g:hover{color:#1F1630;text-decoration:none}
+
+/* [HF-INTRO-B3] Intro-video reels (kind 'intro'): native <video>, details bottom-left, ONE main button, rail with Like / Comment / Share / Info.
+ * Designs: Specs/hf-intro-screens/Reel1Call..Reel5Info. Same dark theme, marigold main button, pink Women-only tag. */
+.ex-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:block}
+.ex-vtap{position:absolute;inset:0;z-index:3;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:none}
+.ex-introshade{position:absolute;left:0;right:0;bottom:0;height:min(62%,420px);background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));z-index:4;pointer-events:none}
+.ex-topbtn{position:absolute;top:14px;right:12px;z-index:8;width:44px;height:44px;border-radius:50%;border:0;background:rgba(20,12,30,.62);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ex-intro{position:absolute;left:0;right:0;bottom:0;z-index:8;padding:0 16px calc(22px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;pointer-events:none;color:#fff}
+.ex-intro button,.ex-intro a,.ex-intro .ex-qwrap{pointer-events:auto}
+.ex-itext{display:flex;flex-direction:column;gap:8px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.ex-iname{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.ex-iname h2{margin:0;font-weight:900;font-size:19px;line-height:1.15;overflow-wrap:anywhere;font-family:Nunito,system-ui,sans-serif}
+.ex-iname .hf-vt{margin:0}
+.ex-iav{width:40px;height:40px;border-radius:50%;border:2px solid #fff;overflow:hidden;background:#33253b;display:flex;align-items:center;justify-content:center;font-family:Nunito,system-ui,sans-serif;font-weight:900;flex:none}
+.ex-iav img{width:100%;height:100%;object-fit:cover}
+.ex .ex-soc{width:26px;height:26px;display:inline-flex;flex:none;border-radius:7px;position:relative}
+.ex .ex-soc svg{width:100%;height:100%;display:block}
+.ex .ex-soc::after{content:"";position:absolute;inset:-9px}
+.ex-wtag{display:inline-flex;align-items:center;background:#E94F8F;color:#fff;border-radius:999px;padding:4px 10px;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:13px;text-shadow:none}
+.ex-ichips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ex-chip{font-family:Nunito,system-ui,sans-serif;font-weight:800;font-size:13px;border-radius:999px;padding:5px 10px;background:rgba(255,255,255,.18);color:#fff}
+.ex-stat{font-family:Nunito,system-ui,sans-serif;font-weight:800;font-size:13px;display:inline-flex;align-items:center;gap:5px;margin-left:2px}
+.ex-stat i{width:9px;height:9px;border-radius:50%;background:#3FA868;display:inline-block}
+.ex-stat i[data-s="busy"]{background:#F4CF73}
+.ex-idesc{margin:0;font-size:14px;line-height:1.45;font-weight:600;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.ex .ex-main,.ex .ex-qwrap .hfc-queue{width:100%;min-height:56px;height:56px;border:0;border-radius:16px;background:var(--mari);color:var(--ink);font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:18px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:none;padding:0 12px}
+.ex .ex-main svg{flex:none}
+.ex-bonly{margin:-2px 0 0;text-align:center;font-family:Nunito,system-ui,sans-serif;font-weight:700;font-size:13px;color:rgba(255,255,255,.85)}
+.ex-busy{display:flex;flex-direction:column;gap:8px}
+.ex-busyl{margin:0;text-align:center;font-family:Nunito,system-ui,sans-serif;font-weight:800;font-size:15px}
+.ex-brow{display:flex;gap:10px}
+.ex-brow>*{flex:1;min-width:0}
+.ex .ex-qwrap .hfc-queue{min-height:54px;height:54px;font-size:17px}
+.ex .ex-qwrap .hfc-queue svg{display:none}
+.ex .ex-main.ex-alt{height:54px;min-height:54px;background:transparent;color:#fff;border:2.5px solid #fff;font-size:17px}
+/* rail sits above the details; the offset follows the height of the button block below it */
+.ex-rail[data-intro="1"]{bottom:calc(248px + env(safe-area-inset-bottom,0px))}
+.ex-rail[data-intro="1"][data-ia="queue_or_book"]{bottom:calc(292px + env(safe-area-inset-bottom,0px))}
+.ex-rail[data-intro="1"][data-ia="book"]{bottom:calc(270px + env(safe-area-inset-bottom,0px))}
+.ex-rail[data-intro="1"][data-ia="none"]{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
+.ex-rail[data-intro="1"] .ex-act svg{background:rgba(0,0,0,.35)}
+/* (i) sheet: "Verified owner of" */
+.ex-shwrap{position:absolute;inset:0;z-index:45;background:rgba(18,12,34,.72);display:flex;align-items:flex-end}
+.ex-sheet{position:relative;width:100%;background:#fff;color:#30245f;border-top:3px solid #30245f;border-radius:28px 28px 0 0;padding:14px 16px calc(26px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.ex-sheet .ex-x{top:6px;right:6px;color:#30245f}
+.ex-shteam{display:flex;align-items:center;gap:8px;font-family:Nunito,system-ui,sans-serif;font-size:15px;padding-right:44px}
+.ex-shteam .hf-vt{margin:0}
+.ex-shh{margin:4px 0 0;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:#BE246E}
+.ex-shlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ex-shlist li{display:flex;align-items:center;gap:12px}
+.ex-shic{width:40px;height:40px;border-radius:12px;display:flex;flex:none}
+.ex-shic svg{width:100%;height:100%}
+.ex-shtx{flex:1;min-width:0;display:flex;flex-direction:column}
+.ex-shtx b{font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:16px}
+.ex-shtx small{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.ex .ex-shopen{min-height:44px;padding:0 16px;border-radius:12px;border:2.5px solid #30245f;background:var(--mari);color:#30245f;display:flex;align-items:center;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:15px;flex:none}
+.ex-shnote{margin:0;font-size:14px;line-height:1.5;font-weight:600;color:#6B5A8A}
+/* women-only pop-ups (Reel4Gate) */
+.ex-wgate{z-index:50;background:rgba(18,12,34,.72)}
+.ex-wcard{width:100%;max-width:350px;background:#fff;color:#30245f;border:3px solid #30245f;border-radius:28px;box-shadow:8px 8px 0 #E94F8F;padding:24px 20px 20px;align-items:center;gap:14px}
+.ex-wcard h2,.ex-wsmall h2{margin:0;color:#30245f;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:24px;line-height:1.15}
+.ex-wcard p{margin:0;color:#30245f;font-size:15px;line-height:1.55;font-weight:600}
+.ex-wmark{width:72px;height:72px;border-radius:50%;background:#FDE8F2;border:3px solid #E94F8F;display:flex;align-items:center;justify-content:center;font-family:Nunito,system-ui,sans-serif;font-size:34px;font-weight:900;color:#BE246E}
+.ex .ex-wcard .ex-b-wa{width:100%;min-height:56px;border-radius:16px;border:3px solid #30245f;background:var(--mari);color:#30245f;font-size:18px}
+.ex .ex-b-n{width:100%;min-height:48px;border:0;background:none;color:#30245f;font-family:Nunito,system-ui,sans-serif;font-weight:800;font-size:16px;cursor:pointer}
+.ex-wgate-b{align-items:flex-end;padding-bottom:40px}
+.ex-wsmall{width:100%;max-width:350px;background:#fff;color:#30245f;border:3px solid #30245f;border-radius:22px;padding:18px;gap:12px;align-items:stretch;text-align:left}
+.ex-wsmall h2{font-size:18px}
+.ex .ex-b-ok{min-height:48px;border-radius:14px;border:2.5px solid #30245f;background:#fff;color:#30245f;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:16px;cursor:pointer}

@@ -3,14 +3,37 @@
 import { embedFor, type ChannelReel } from './channelKit';
 import { BRAND } from './brand';
 
-export interface ReelHost { slug: string; name: string; handle: string | null; avatar: string | null; followers?: number; presence?: string }
+export interface ReelHost { slug: string; name: string; handle: string | null; avatar: string | null; followers?: number; presence?: string; greenTick?: boolean; ratePaise?: number; callState?: string; queue?: { open?: boolean; waiting?: number } }
 export interface ReelCreator { platform: string; handle: string; name: string; avatar: string | null; followers: number; votes: number; joinedSlug?: string }
 /** One item of GET /api/hf/reels (network items have `host`, invite items have `kind:"invite"` + `creator`). */
+/** [HF-INTRO-B3] One verified social account on an intro reel (platform = youtube | instagram | facebook). */
+export interface IntroSocial { platform: string; handle: string; url: string; followers?: number }
+export type MainAction = 'call' | 'queue_or_book' | 'book' | 'none';
 export interface ReelItem {
-  id: string; kind?: 'invite'; host?: ReelHost; creator?: ReelCreator;
+  id: string; kind?: 'invite' | 'intro'; host?: ReelHost; creator?: ReelCreator;
   platform: string; url: string; embedUrl?: string | null; thumbUrl: string | null; title: string; caption: string;
   likes: number; comments: number; views: number; publishedAt: number | null; likedByMe?: boolean;
+  /** [HF-INTRO-B3] intro-video fields (kind 'intro', flag hfIntroReelsEnabled) */
+  videoUrl?: string | null; posterUrl?: string | null; categories?: { id: string; label: string }[]; description?: string;
+  ratePaise?: number; callOption?: 'A' | 'B' | null; callState?: string; mainAction?: MainAction; womenOnly?: boolean; greenTick?: boolean;
+  socials?: IntroSocial[]; shareUrl?: string;
 }
+
+export const isIntro = (r: ReelItem | null | undefined): boolean => r?.kind === 'intro';
+/** "20" -> "₹20/min", 3.99 rupees -> "₹3.99/min". */
+export const introRate = (paise: number | undefined): string => `₹${((paise ?? 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/min`;
+/** The one main button of an intro reel. Older servers send no mainAction: derive it from callOption + callState (same table as the API notes). */
+export function mainActionOf(r: ReelItem): MainAction {
+  if (r.mainAction) return r.mainAction;
+  if (r.callOption === 'A') return 'book';
+  const s = r.callState ?? r.host?.callState;
+  if (s === 'available') return 'call';
+  if (s === 'on_call' || s === 'connecting' || s === 'queue_only') return 'queue_or_book';
+  return 'book';
+}
+/** Only https links to the three social platforms are opened (the value comes from our server, but never trust a URL blindly). */
+export const safeSocialUrl = (u: string | undefined): string | null => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
+export const PLATFORM_NAME: Record<string, string> = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook' };
 
 /** Who the reel belongs to, with the page their photo and Call button open. Network host -> /h/<slug>; invite creator -> /i/<platform>/<handle>. */
 export function whoOf(item: ReelItem): { name: string; avatar: string | null; href: string } {
@@ -42,7 +65,7 @@ export function playerFor(r: ReelItem): PlayerSpec | null {
 }
 
 /** Items the page can actually play. */
-export const playable = (items: ReelItem[]): ReelItem[] => items.filter(i => !!playerFor(i));
+export const playable = (items: ReelItem[]): ReelItem[] => items.filter(i => (isIntro(i) ? !!i.videoUrl : !!playerFor(i)));
 
 /** [HF-REEL-OVERLAY-WEB-1] YouTube: the player is shown as it is, fitted in a 9:16 box (it draws its own title / channel, like / share, sound icon, menu).
  * Instagram: the embed is a card (header on top, caption / likes below). Make it wide enough that its media box is as tall as the frame: the reel then fills
@@ -79,11 +102,12 @@ export const signInHref = (backPath: string, google = false): string => `/sign-i
 /** The WhatsApp gate every like / comment / vote needs when the account has no verified WhatsApp number yet. */
 export const whatsappGateHref = (backPath: string): string => `/sign-up?finish=1&redirect_url=${encodeURIComponent(backPath)}`;
 
-export type GateAction = 'like' | 'comment' | 'save' | 'vote';
+export type GateAction = 'like' | 'comment' | 'save' | 'vote' | 'call';
 export const GATE_COPY: Record<GateAction, { title: string; line: string }> = {
   like: { title: 'Loved this reel?', line: 'Sign in to like it and tell the creator.' },
   comment: { title: 'Want to say something?', line: 'Sign in to join the conversation.' },
   save: { title: 'Keep it for later?', line: 'Sign in to save this reel.' },
+  call: { title: 'Want to talk to them?', line: 'Sign in to call, join the queue or book a time.' },
   vote: { title: 'Want them here?', line: `Sign in to vote for them to join ${BRAND.name}.` },
 };
 

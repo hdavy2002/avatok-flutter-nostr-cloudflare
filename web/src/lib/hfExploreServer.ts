@@ -16,7 +16,7 @@ async function getJson<T>(path: string): Promise<{ status: number; body: T | nul
 export async function loadReels(startId?: string): Promise<{ items: ReelItem[]; nextCursor: string | null; start: ReelItem | null }> {
   const [feed, one] = await Promise.all([
     getJson<{ items?: ReelItem[]; nextCursor?: string | null }>('/api/hf/reels?limit=10'),
-    startId && /^(hfrl|hfiv)_[a-z0-9]{8,40}$/.test(startId) ? getJson<{ item?: ReelItem }>(`/api/hf/reels/${startId}`) : Promise.resolve({ status: 0, body: null }),
+    startId && /^(hfrl|hfiv|hfin)_[a-z0-9]{8,40}$/.test(startId) ? getJson<{ item?: ReelItem }>(`/api/hf/reels/${startId}`) : Promise.resolve({ status: 0, body: null }),
   ]);
   const start = one.body?.item && playable([one.body.item]).length ? one.body.item : null;
   const rest = playable(feed.body?.items ?? []).filter(i => i.id !== start?.id);

@@ -5,8 +5,8 @@ import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
 import { signInHref, type ReelItem } from '../../lib/hfExplore';
 import '../../styles/hf-explore.css';
-interface Props { items: ReelItem[]; nextCursor: string | null; path: string }
-const { items, nextCursor, path } = Astro.props;
+interface Props { items: ReelItem[]; nextCursor: string | null; path: string; preview?: boolean }
+const { items, nextCursor, path, preview = false } = Astro.props;
 const logo = publicImage('/assets/branding/hf-logo.png', { width: 320, fit: 'scale-down' });
 ---
 <style is:global>
@@ -34,6 +34,6 @@ const logo = publicImage('/assets/branding/hf-logo.png', { width: 320, fit: 'sca
     </nav>
   </header>
   {items.length > 0
-    ? <ExploreReels client:load initial={items} nextCursor={nextCursor} />
+    ? <ExploreReels client:load initial={items} nextCursor={nextCursor} preview={preview} />
     : <p class="ex-empty">No reels to show yet. Please check back soon.</p>}
 </div>

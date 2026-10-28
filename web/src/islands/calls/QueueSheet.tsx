@@ -15,7 +15,8 @@ type Entry = NonNullable<MyQueueResponse['entry']>;
 type Phase = 'confirm' | 'joining' | 'waiting' | 'ended' | 'error';
 interface Problem { text: string; link?: { href: string; label: string }; book?: boolean }
 
-export default function QueueSheet({ host, variant, waiting, bookingHref, bookingOn }: { host: { slug: string; displayName: string }; variant: Variant; waiting?: number; bookingHref: string; bookingOn: boolean }) {
+/** [HF-INTRO-B3] idleLabel (optional) replaces the "Join the queue · N waiting" text of the open button (the reels page says "Join queue"). */
+export default function QueueSheet({ host, variant, waiting, bookingHref, bookingOn, idleLabel }: { host: { slug: string; displayName: string }; variant: Variant; waiting?: number; bookingHref: string; bookingOn: boolean; idleLabel?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   const name = firstName(host.displayName);
   const [open, setOpen] = useState(false);
@@ -95,7 +96,7 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
 
   const mine = phase === 'waiting' && entry;
   const calling = mine && (entry.status === 'offered' || entry.status === 'connected');
-  const label = mine ? (calling ? 'Your turn — we’re calling you' : `You’re #${entry.position} in the queue`) : `Join the queue${waiting ? ` · ${waiting} waiting` : ''}`;
+  const label = mine ? (calling ? 'Your turn — we’re calling you' : `You’re #${entry.position} in the queue`) : (idleLabel ?? `Join the queue${waiting ? ` · ${waiting} waiting` : ''}`);
   return <>
     <SessionBridge on={bridge || open} />
     <button type="button" className={btnClass(variant, 'hfc-call hfc-queue')} onClick={openIt}><Icon name="clock" size={22} />{label}</button>

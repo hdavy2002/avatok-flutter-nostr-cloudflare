@@ -10,14 +10,15 @@ import { ClerkIsland, getActiveToken, getActiveTokenWaited, activeSessionSignedO
 import { hfCall } from '../../lib/hfCallsApi';
 import { capture } from '../../lib/analytics';
 import { brandUrl } from '../../lib/brand';
-import { GATE_COPY, compactCount, playable, playerFor, signInHref, sizeFor, tapClipPath, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
+import { GATE_COPY, compactCount, isIntro, mainActionOf, playable, playerFor, signInHref, sizeFor, tapClipPath, whatsappGateHref, whoOf, ytCmd, type GateAction, type ReelItem } from '../../lib/hfExplore';
+import { IntroOverlay, IntroVideo, SoundIcon, InfoIcon } from './IntroReel'; // [HF-INTRO-B3]
 
 const YT_ORIGIN = 'https://www.youtube-nocookie.com';
 /** [HF-EXPLORE-SMOOTH-1] What one YouTube player last told us (it only talks after the "listening" handshake). */
 interface YtState { ready: boolean; state: number; time: number; warm: boolean; seen: boolean; hello: number; tries: number }
 
 interface Comment { id: string; author: { name: string; avatar?: string | null }; body: string; createdAt: number | string; mine?: boolean }
-interface Props { initial: ReelItem[]; nextCursor: string | null }
+interface Props { initial: ReelItem[]; nextCursor: string | null; /** [HF-INTRO-B3] local preview page: signed-in is assumed, no network checks */ preview?: boolean }
 
 const ago = (t: number | string): string => {
   const ms = typeof t === 'number' ? t : Date.parse(t);
@@ -48,7 +49,7 @@ export default function ExploreReels(props: Props) {
   return <ClerkIsland><Reels {...props} /></ClerkIsland>;
 }
 
-function Reels({ initial, nextCursor }: Props) {
+function Reels({ initial, nextCursor, preview = false }: Props) {
   const [items, setItems] = useState<ReelItem[]>(() => playable(initial));
   const [cursor, setCursor] = useState<string | null>(nextCursor);
   const [idx, setIdx] = useState(0);
@@ -70,6 +71,8 @@ function Reels({ initial, nextCursor }: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const frames = useRef<Record<string, HTMLIFrameElement | null>>({});
+  const [infoOpen, setInfoOpen] = useState(false); // [HF-INTRO-B3] the (i) sheet of the current intro reel
+  const vids = useRef<Record<string, HTMLVideoElement | null>>({}); // [HF-INTRO-B3] native <video> of intro slides
   const lastNav = useRef(0);
   const touchY = useRef<number | null>(null);
   const known = useRef(new Set<string>());
@@ -252,10 +255,36 @@ function Reels({ initial, nextCursor }: Props) {
     drive();
   }, [idx, drive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const el = cur && frames.current[cur.id]; if (el) ytCmd(el, muted ? 'mute' : 'unMute'); }, [muted, cur]);
+  // [HF-INTRO-B3] intro videos: the current one plays (muted until the viewer turns sound on), its neighbours stay loaded but paused (warm-next)
+  const syncVideos = useCallback(() => {
+    const { items: its, idx: i, paused: pz, muted: mu } = live.current;
+    for (const [id, v] of Object.entries(vids.current)) {
+      if (!v) continue;
+      if (its[i]?.id === id) {
+        v.muted = mu;
+        if (pz) { if (!v.paused) v.pause(); }
+        else if (v.paused) {
+          void v.play().catch(() => {
+            if (v.muted) return; // autoplay refused even when muted: the poster stays, a tap plays it
+            soundOff.current.add(id); live.current.muted = true; setMuted(true); v.muted = true;
+            say('Sound is off. Tap the speaker to turn it on.');
+            void v.play().catch(() => { /* a tap will start it */ });
+          });
+        }
+      } else if (!v.paused) v.pause();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { syncVideos(); }, [idx, muted, paused, items, syncVideos]);
+  const idx0 = useRef(idx);
+  useEffect(() => { if (idx !== idx0.current) { idx0.current = idx; setInfoOpen(false); } }, [idx]); // closes when the viewer moves on (not on first paint)
+  useEffect(() => { // a reel the viewer comes back to starts from the top
+    const id = items[idx]?.id; const v = id ? vids.current[id] : null;
+    if (v && v.currentTime > 0.5) v.currentTime = 0;
+  }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!cur) return;
-    capture('explore_reel_view', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network', index: idx, platform: cur.platform });
-    if (cur.id.startsWith('hfrl_')) void hfCall('POST', `/api/hf/reels/${cur.id}/view`, undefined, { auth: false });
+    capture('explore_reel_view', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : isIntro(cur) ? 'intro' : 'network', index: idx, platform: cur.platform });
+    if ((cur.id.startsWith('hfrl_') || cur.id.startsWith('hfin_')) && !preview) void hfCall('POST', `/api/hf/reels/${cur.id}/view`, undefined, { auth: false });
   }, [cur?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- moving between reels ----
@@ -274,7 +303,7 @@ function Reels({ initial, nextCursor }: Props) {
     const root = rootRef.current;
     if (!root) return;
     const wheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement | null)?.closest?.('.ex-panel, .ex-gate')) return;
+      if ((e.target as HTMLElement | null)?.closest?.('.ex-panel, .ex-gate, .ex-shwrap')) return;
       e.preventDefault();
       // [HF-EXPLORE-SMOOTH-1] add up small wheel steps (Firefox sends lines, smooth mice send many tiny steps — each was
       // under the old 18 px bar, so it took several scrolls), then one move per gesture so trackpad momentum skips nothing.
@@ -312,7 +341,7 @@ function Reels({ initial, nextCursor }: Props) {
   }, [go]);
 
   // ---- swipe up / down anywhere on the page (the black letterbox too), not only on the tap layer ----
-  const onTouchStart = (e: React.TouchEvent) => { touchY.current = (e.target as HTMLElement).closest('.ex-panel, .ex-gate, .ex-rail, .ex-call, .ex-nav') ? null : (e.touches[0]?.clientY ?? null); };
+  const onTouchStart = (e: React.TouchEvent) => { touchY.current = (e.target as HTMLElement).closest('.ex-panel, .ex-gate, .ex-rail, .ex-call, .ex-nav, .ex-shwrap, .ex-topbtn, .ex-intro a, .ex-intro button') ? null : (e.touches[0]?.clientY ?? null); };
   const onTouchEnd = (e: React.TouchEvent) => {
     const y0 = touchY.current; touchY.current = null;
     const y1 = e.changedTouches[0]?.clientY;
@@ -322,6 +351,7 @@ function Reels({ initial, nextCursor }: Props) {
   // ---- tap layer: play / pause (YouTube only; Instagram's middle belongs to Instagram's own player) ----
   const spec = cur ? playerFor(cur) : null;
   const tap = () => {
+    if (cur && isIntro(cur)) { setPaused(p => !p); return; } // [HF-INTRO-B3]
     if (!cur || !spec) return;
     if (spec.platform !== 'youtube') return;
     const el = frames.current[cur.id];
@@ -330,7 +360,7 @@ function Reels({ initial, nextCursor }: Props) {
 
   // ---- gated actions ----
   const needAuth = async (action: GateAction): Promise<boolean> => {
-    if (signedIn) return true;
+    if (signedIn || preview) return true;
     let ok = false;
     if (!activeSessionSignedOut()) ok = !!(await getActiveTokenWaited(1500).catch(() => null));
     if (ok) { setSignedIn(true); return true; }
@@ -394,6 +424,15 @@ function Reels({ initial, nextCursor }: Props) {
   };
   const share = async () => {
     if (!cur) return;
+    if (isIntro(cur)) { // [HF-INTRO-B3] Web Share API with the link that plays the video; no share sheet -> copy the link
+      const link = cur.shareUrl || brandUrl(`/r/${cur.id}`);
+      const nm = whoOf(cur).name;
+      const native = typeof navigator.share === 'function';
+      capture('hf_reel_share', { reel_id: cur.id, method: native ? 'native' : 'copy', source: 'intro' });
+      if (native) { try { await navigator.share({ url: link, title: nm, text: cur.description || nm }); return; } catch (e) { if ((e as Error)?.name === 'AbortError') return; } }
+      try { await navigator.clipboard.writeText(link); say('Link copied'); } catch { say(link); }
+      return;
+    }
     const url = brandUrl(`/r/${cur.id}`);
     const w = whoOf(cur);
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -409,6 +448,7 @@ function Reels({ initial, nextCursor }: Props) {
   const gateCopy = gate ? GATE_COPY[gate] : null;
   const back = `/r/${cur.id}`;
 
+  const intro = isIntro(cur); // [HF-INTRO-B3]
   const isYt = spec?.platform === 'youtube';
   const isIg = spec?.platform === 'instagram';
   const ytBox = isYt ? sizeFor(size.w, size.h, 'youtube') : null;
@@ -419,6 +459,19 @@ function Reels({ initial, nextCursor }: Props) {
       <div className="ex-wrap">
         <div className="ex-frame" ref={frameRef}>
           {slides.map(it => {
+            if (isIntro(it)) { // [HF-INTRO-B3] our own MP4, native player
+              const act = it.id === cur.id;
+              return <div className="ex-slide" key={it.id} data-active={act ? '1' : undefined}>
+                <IntroVideo item={it} active={act} paused={paused}
+                  register={el => { vids.current[it.id] = el; }}
+                  onPlaying={() => {
+                    if (!act || started.current.has(it.id)) return;
+                    started.current.add(it.id);
+                    capture('hf_reel_start', { source: 'intro', reel_id: it.id, ms: Date.now() - curSince.current, index: live.current.idx });
+                  }}
+                  onTap={tap} />
+              </div>;
+            }
             const p = playerFor(it);
             if (!p) return null;
             const box = sizeFor(size.w, size.h, p.platform);
@@ -446,7 +499,7 @@ function Reels({ initial, nextCursor }: Props) {
             {/* frosted patch: YouTube's own like / share are blurred behind our rail */}
             <div className="ex-frost" aria-hidden="true" style={{ right: Math.max(0, size.w - (ytBox.left + ytBox.width)) }} />
           </>}
-          {paused && isYt && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
+          {paused && (isYt || intro) && <div className="ex-playglyph" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M8 5v14l11-7z" /></svg></div>}
           {isIg && <>
             <div className="ex-igshade" aria-hidden="true" />
             <div className="ex-iglabel" aria-hidden="true">{Icon.igMark}<span>Instagram</span></div>
@@ -462,12 +515,18 @@ function Reels({ initial, nextCursor }: Props) {
             <div className="ex-igstrip" data-pos="bottom" aria-hidden="true" />
           </>}
         </div>
-        <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{cur.kind === 'invite' ? Icon.plus : Icon.phone}<span>{callLabel}</span></a>
-        <div className="ex-rail" data-platform={spec?.platform}>
+        {intro
+          ? <>
+            <button type="button" className="ex-topbtn ex-sndbtn" aria-label={muted ? 'Turn sound on' : 'Turn sound off'} aria-pressed={!muted} onClick={() => setMuted(m => !m)}><SoundIcon on={!muted} /></button>
+            <IntroOverlay key={cur.id} item={cur} needAuth={() => needAuth('call')} back={back} info={infoOpen} setInfo={setInfoOpen} preview={preview} />
+          </>
+          : <a className="ex-call" href={who.href} onClick={() => capture('explore_call_tap', { reel_id: cur.id, kind: cur.kind === 'invite' ? 'invite' : 'network' })}>{cur.kind === 'invite' ? Icon.plus : Icon.phone}<span>{callLabel}</span></a>}
+        <div className="ex-rail" data-platform={spec?.platform} data-intro={intro ? '1' : undefined} data-ia={intro ? mainActionOf(cur) : undefined}>
           <button type="button" className="ex-act" aria-label="Comments" onClick={openComments}>{Icon.comment}<b>{compactCount(commentN[cur.id] ?? cur.comments)}</b></button>
-          <button type="button" className="ex-act" data-on={saved[cur.id] ? '1' : undefined} aria-pressed={saved[cur.id] === true} aria-label="Save" onClick={save}>{Icon.save(saved[cur.id] === true)}<b>Save</b></button>
+          {!intro && <button type="button" className="ex-act" data-on={saved[cur.id] ? '1' : undefined} aria-pressed={saved[cur.id] === true} aria-label="Save" onClick={save}>{Icon.save(saved[cur.id] === true)}<b>Save</b></button>}
           <button type="button" className="ex-act" data-on={isLiked ? '1' : undefined} aria-pressed={isLiked} aria-label="Like" onClick={like}>{isYt ? Icon.thumb(isLiked) : Icon.heart(isLiked)}<b>{compactCount(likeN[cur.id] ?? cur.likes)}</b></button>
           <button type="button" className="ex-act" aria-label="Share" onClick={share}>{isYt ? Icon.ytShare : Icon.plane}<b>Share</b></button>
+          {intro && <button type="button" className="ex-act" aria-label="Verified owner of" aria-haspopup="dialog" onClick={() => { setInfoOpen(true); capture('hf_reel_info_open', { reel_id: cur.id, socials: (cur.socials ?? []).length }); }}>{InfoIcon}<b>Info</b></button>}
         </div>
       </div>
       <div className="ex-nav">

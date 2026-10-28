@@ -83,7 +83,8 @@ function useNow(active: boolean): number {
   return n;
 }
 
-function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false }: { host: CallHost; open: boolean; onClose: () => void; flags?: CallModeFlags; bookingOn?: boolean }) {
+/** [HF-INTRO-B3] exported so the reels page reuses the one call flow. `onLane` (optional): a 403 lane_required hands over to the caller's own pop-up (need = 'aadhaar' | 'female_only') instead of the inline text. */
+export function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false, onLane }: { host: CallHost; open: boolean; onClose: () => void; flags?: CallModeFlags; bookingOn?: boolean; onLane?: (need: string) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [phase, setPhase] = useState<Phase>('confirm');
   const [balance, setBalance] = useState<number | null>(null);
@@ -169,6 +170,7 @@ function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false }:
     if (r.status === 401) { window.location.assign(signInUrl()); return; }
     const lane = typeof r.body.lane === 'string' ? r.body.lane : host.womenOnly ? 'women' : '';
     let p: Problem;
+    if (r.code === 'lane_required' && onLane) { onLane(typeof r.body.need === 'string' ? r.body.need : 'aadhaar'); onClose(); return; } // [HF-INTRO-B3]
     if (r.code === 'not_verified') p = { text: 'Please verify your WhatsApp number first. We use it to ring you.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
     else if (r.code === 'lane_required' || r.code === 'video_kyc_required_caller') { // [HF-CREATOR-SPACES-1] [HF-CREATOR-BADGES-1]
       const ln = gateFromError(r.code, { ...r.body, lane: lane || r.body.lane }, gateOf(host)) ?? 'women';
@@ -346,7 +348,7 @@ function freshHost(slug: string) {
  * everyone else (signed out, no test credits, wallet unreachable) sees "Open the app to call". App mode is never gated.
  * One wallet request per page; a failed request is not cached, so a later card retries. */
 let webCreditsP: Promise<boolean> | null = null;
-function webHasTestCredits(): Promise<boolean> {
+export function webHasTestCredits(): Promise<boolean> {
   if (!webCreditsP) {
     const p = fetchWallet().then(r => {
       if (!r.ok) { if (webCreditsP === p) webCreditsP = null; return false; }

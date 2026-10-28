@@ -1,0 +1,14 @@
+---
+// [HF-INTRO-B3] Noindex local preview of the intro-video reels with mock data (no API, signed-in assumed). ?start=<0..3> picks the first reel,
+// ?sim=aadhaar|female|ok answers the women-only check, ?auto=info|aadhaar|female opens a sheet / pop-up on load.
+export const prerender = false;
+import Base from '../layouts/Base.astro';
+import ReelsView from '../components/explore/ReelsView.astro';
+import { INTRO_PREVIEW_ITEMS } from '../lib/introReelsPreview';
+const n = Number(Astro.url.searchParams.get('start') ?? 0);
+const first = Number.isInteger(n) && n >= 0 && n < INTRO_PREVIEW_ITEMS.length ? n : 0;
+const items = [...INTRO_PREVIEW_ITEMS.slice(first), ...INTRO_PREVIEW_ITEMS.slice(0, first)];
+---
+<Base chrome={false} noindex title="Intro reels preview" description="Local preview of the intro-video reels.">
+  <ReelsView items={items} nextCursor={null} path="/explore-intro-preview" preview />
+</Base>
