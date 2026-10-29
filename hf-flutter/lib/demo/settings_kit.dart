@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'desi.dart';
+import 'person_avatar.dart'; // [HF-ME-SETTINGS-MOVE]
 import 'theme.dart';
 
 /// [HF-APP-DESI-10] Settings and Help pieces, built to the owner-approved canvas previews "10 · Settings" and "10b · Help"
@@ -8,8 +9,11 @@ import 'theme.dart';
 
 /// Pink strip: initial in a rani→marigold circle, name, "Tap to change your name" and a pencil. Tapping edits the name.
 class SettingsMeStrip extends StatelessWidget {
-  const SettingsMeStrip({super.key, required this.name, this.onTap, this.hint = 'Tap to change your name'});
+  const SettingsMeStrip({super.key, required this.name, this.onTap, this.hint = 'Tap to change your name', this.avatarUrl});
   final String name;
+
+  /// [HF-ME-SETTINGS-MOVE] The profile photo; the initial shows while there is none.
+  final String? avatarUrl;
   final VoidCallback? onTap;
   final String hint;
   @override
@@ -31,17 +35,7 @@ class SettingsMeStrip extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: C.white, width: 3),
-                    gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.rani, C.marigold]),
-                  ),
-                  child: Text(name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(), style: t(24, color: C.white, w: FontWeight.w900)),
-                ),
+                PersonAvatar(key: const Key('settings-avatar'), name: name, url: avatarUrl, size: 60, border: true),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

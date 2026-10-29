@@ -8,6 +8,7 @@ import '../../data/services.dart';
 import '../../ui/async_view.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
+import '../person_avatar.dart'; // [HF-ME-SETTINGS-MOVE]
 import '../settings_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -112,10 +113,12 @@ class _BlockedPeopleScreenState extends State<BlockedPeopleScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(border: last ? null : const Border(bottom: BorderSide(color: C.line))),
       child: Row(children: [
+        PersonAvatar(key: Key('blocked-avatar-${p.key}'), name: p.name, url: p.avatarUrl, size: 44), // [HF-ME-SETTINGS-MOVE]
+        const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16, w: FontWeight.w800)),
-            if (p.slug != null) Text('@${p.slug}', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
+            if (p.shownHandle != null) Text('@${p.shownHandle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
           ]),
         ),
         const SizedBox(width: 8),

@@ -45,6 +45,16 @@ void main() {
     expect(find.text('Unblock'), findsNWidgets(2));
   });
 
+  testWidgets('[HF-ME-SETTINGS-MOVE] each row has a round avatar and the @handle', (tester) async {
+    final api = _FakeApi((m, p, b) => _list([
+          {'key': 'k1', 'name': 'Maya Rao', 'slug': 'maya', 'handle': 'maya.rao', 'avatar_url': null, 'at': 1},
+        ]));
+    await _pump(tester, api);
+    expect(find.byKey(const Key('blocked-avatar-k1')), findsOneWidget);
+    expect(find.text('M'), findsOneWidget); // initial fallback while there is no photo
+    expect(find.text('@maya.rao'), findsOneWidget);
+  });
+
   testWidgets('empty list says you have not blocked anyone', (tester) async {
     await _pump(tester, _FakeApi((m, p, b) => _list([])));
     expect(find.text('You haven\'t blocked anyone'), findsOneWidget);

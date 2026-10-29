@@ -23,6 +23,7 @@ class Me {
     this.firstName,
     this.lastName,
     this.handle,
+    this.avatarUrl,
   });
 
   final String uid;
@@ -54,6 +55,10 @@ class Me {
   /// The permanent @handle (server field `username`), without the @, or null while it is not assigned.
   final String? handle;
 
+  /// [HF-ME-SETTINGS-MOVE] The profile picture when `GET /api/hf/me` sends one (`avatarUrl` / `avatar_url`); today it does not,
+  /// so screens read the approved photo from `GET /api/hf/me/photos` (MyProfilePhoto).
+  final String? avatarUrl;
+
   bool get isHost => role == UserRole.host;
 
   factory Me.fromJson(Map<String, dynamic> j) {
@@ -74,6 +79,7 @@ class Me {
       firstName: _s(j['firstName']),
       lastName: _s(j['lastName']),
       handle: _s(j['username'])?.replaceFirst(RegExp(r'^@+'), ''),
+      avatarUrl: _s(j['avatarUrl']) ?? _s(j['avatar_url']),
     );
   }
 

@@ -30,19 +30,33 @@ HostCallState? hostCallStateOf(Object? v) {
 
 /// One waiting fan as the influencer sees her queue: first names only, never numbers.
 class HostQueueEntry {
-  const HostQueueEntry({required this.position, required this.firstName, required this.joinedAt});
+  const HostQueueEntry({required this.position, required this.firstName, required this.joinedAt, this.name, this.handle, this.avatarUrl});
 
-  factory HostQueueEntry.fromJson(Map<String, dynamic> j) =>
-      HostQueueEntry(position: _int(j['position']), firstName: _str(j['firstName']) ?? 'A fan', joinedAt: _int(j['joinedAt']));
+  factory HostQueueEntry.fromJson(Map<String, dynamic> j) => HostQueueEntry(
+        position: _int(j['position']),
+        firstName: _str(j['firstName']) ?? 'A fan',
+        joinedAt: _int(j['joinedAt']),
+        name: _str(j['name']),
+        handle: _str(j['handle'])?.replaceFirst(RegExp(r'^@+'), ''),
+        avatarUrl: _str(j['avatar_url']),
+      );
 
   final int position;
   final String firstName;
   final int joinedAt;
+
+  /// [HF-ME-SETTINGS-MOVE] Full name, @handle (no @) and round picture; null when the server did not send them.
+  final String? name;
+  final String? handle;
+  final String? avatarUrl;
+
+  /// The name to show: the full name, else the first name.
+  String get shownName => name ?? firstName;
 }
 
 /// `GET/PUT /api/hosts/me/queue`.
 class HostQueue {
-  const HostQueue({this.waiting = 0, this.paused = false, this.entries = const []});
+  const HostQueue({this.waiting = 0, this.paused = false, this.entries = const [], this.notLive = false});
 
   factory HostQueue.fromJson(Map<String, dynamic> j) {
     final raw = j['entries'];
@@ -52,8 +66,11 @@ class HostQueue {
           if (e is Map) HostQueueEntry.fromJson(Map<String, dynamic>.from(e)),
     ];
     final w = j['waiting'];
-    return HostQueue(waiting: w is num ? w.toInt() : entries.length, paused: j['paused'] == true, entries: entries);
+    return HostQueue(waiting: w is num ? w.toInt() : entries.length, paused: j['paused'] == true, entries: entries, notLive: j['not_live'] == true);
   }
+
+  /// [HF-ME-SETTINGS-MOVE] The influencer is not live yet: the server answers an empty queue (not an error).
+  final bool notLive;
 
   final int waiting;
   final bool paused;

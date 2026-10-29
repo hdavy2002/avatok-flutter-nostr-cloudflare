@@ -15,6 +15,7 @@ import 'call_kit.dart';
 import 'call_safety_kit.dart'; // [HF-CALL-SAFETY-APP]
 import 'data.dart';
 import 'notify_me_button.dart';
+import 'person_avatar.dart'; // [HF-ME-SETTINGS-MOVE]
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -302,6 +303,39 @@ class HostQueueModel extends ChangeNotifier {
   }
 }
 
+/// [HF-ME-SETTINGS-MOVE] Who is waiting: round picture, name, @handle and the place in line, one row per person.
+class WaitingPeopleList extends StatelessWidget {
+  const WaitingPeopleList({super.key, required this.entries});
+
+  final List<HostQueueEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return Column(children: [
+      for (var i = 0; i < entries.length; i++)
+        Container(
+          key: ValueKey('queue-person-$i'),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(border: i == entries.length - 1 ? null : const Border(bottom: BorderSide(color: C.line))),
+          child: Row(children: [
+            PersonAvatar(name: entries[i].shownName, url: entries[i].avatarUrl, size: 44),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(entries[i].shownName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16, w: FontWeight.w800)),
+                if (entries[i].handle != null) Text('@${entries[i].handle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text('#${entries[i].position}', style: t(15, color: C.maroon, w: FontWeight.w900)),
+          ]),
+        ),
+    ]);
+  }
+}
+
 /// "3 waiting in your queue", the first names, and Pause / Resume. Shown on Home while the queue flag is on.
 class HostQueueCard extends StatefulWidget {
   const HostQueueCard({super.key, this.repo, this.store, this.poll = const Duration(seconds: 30)});
@@ -388,6 +422,7 @@ class _HostQueueCardState extends State<HostQueueCard> {
         Expanded(child: Text(title, key: const ValueKey('queue-title'), style: t(18, color: C.maroon, w: FontWeight.w900))),
       ]),
       if (sub.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4, left: 36), child: Text(sub, style: t(14, color: C.muted, w: FontWeight.w700, h: 1.3))),
+      if (q.entries.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: WaitingPeopleList(entries: q.entries)), // [HF-ME-SETTINGS-MOVE]
       const SizedBox(height: 10),
       SizedBox(
         height: 48,
@@ -458,11 +493,12 @@ class _HostQueueSettingsRowsState extends State<HostQueueSettingsRows> {
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
             child: Text(
-              q.waiting == 0 ? 'No one is waiting in your queue.' : '${q.waiting} waiting in your queue: ${q.namesLine}',
+              q.waiting == 0 ? 'No one is waiting in your queue.' : '${q.waiting} waiting in your queue${q.entries.isEmpty ? ': ${q.namesLine}' : ':'}',
               key: const ValueKey('queue-settings-line'),
               style: t(15, w: FontWeight.w700, h: 1.35),
             ),
           ),
+          WaitingPeopleList(entries: q.entries), // [HF-ME-SETTINGS-MOVE]
           SwitchListTile(
             key: const ValueKey('queue-pause-switch'),
             contentPadding: EdgeInsets.zero,

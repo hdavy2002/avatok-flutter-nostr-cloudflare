@@ -185,6 +185,14 @@ void main() {
       expect(q.namesLine, 'Priya, Amit and 2 more');
       expect(const HostQueue().namesLine, '');
       expect(HostQueue.fromJson(<String, dynamic>{}).waiting, 0);
+      // [HF-ME-SETTINGS-MOVE] the not-live answer is an empty queue, and entries carry name, handle and picture
+      final nl = HostQueue.fromJson({'ok': true, 'waiting': 0, 'paused': false, 'entries': [], 'not_live': true});
+      expect(nl.notLive, isTrue);
+      expect(nl.waiting, 0);
+      final e = HostQueue.fromJson({'waiting': 1, 'entries': [{'position': 1, 'firstName': 'Priya', 'name': 'Priya Shah', 'handle': 'priya', 'avatar_url': 'https://x/y.jpg'}]}).entries.single;
+      expect(e.shownName, 'Priya Shah');
+      expect(e.handle, 'priya');
+      expect(e.avatarUrl, 'https://x/y.jpg');
       expect(HostQueue.fromJson({'entries': [{'position': 1}]}).waiting, 1);
     });
 

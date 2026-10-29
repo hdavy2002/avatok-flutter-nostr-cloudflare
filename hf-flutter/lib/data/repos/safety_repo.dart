@@ -45,15 +45,24 @@ class ReportReceipt {
 }
 
 class BlockedPerson {
-  const BlockedPerson({required this.key, required this.name, this.slug});
+  const BlockedPerson({required this.key, required this.name, this.slug, this.handle, this.avatarUrl});
   final String key;
   final String name;
   final String? slug;
+
+  /// [HF-ME-SETTINGS-MOVE] The @handle (without the @) and the round picture, null when the person has none.
+  final String? handle;
+  final String? avatarUrl;
+
+  /// What to show after the @: the handle, else the slug.
+  String? get shownHandle => handle ?? slug;
 
   factory BlockedPerson.fromJson(Map<String, dynamic> j) => BlockedPerson(
         key: j['key'] is String ? j['key'] as String : '',
         name: j['name'] is String && (j['name'] as String).isNotEmpty ? j['name'] as String : 'Someone',
         slug: j['slug'] is String && (j['slug'] as String).isNotEmpty ? j['slug'] as String : null,
+        handle: j['handle'] is String && (j['handle'] as String).trim().isNotEmpty ? (j['handle'] as String).trim().replaceFirst(RegExp(r'^@+'), '') : null,
+        avatarUrl: j['avatar_url'] is String && (j['avatar_url'] as String).isNotEmpty ? j['avatar_url'] as String : null,
       );
 }
 

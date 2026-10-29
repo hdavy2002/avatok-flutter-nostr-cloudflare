@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
-import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/me.dart';
 import '../../data/repos/settings_repo.dart';
@@ -17,7 +16,7 @@ import '../widgets.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
 import '../settings_kit.dart';
-import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
+import '../person_avatar.dart'; // [HF-ME-SETTINGS-MOVE]
 
 /// Real Settings and Delete account (HF-WIRE-11). While [DemoMode.on] the dummy screens in me.dart stay.
 abstract final class SettingsBridge {
@@ -78,6 +77,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
   void initState() {
     super.initState();
     _name = _me?.name;
+    unawaited(MyProfilePhoto.refresh()); // [HF-ME-SETTINGS-MOVE] the strip shows the approved profile photo
     unawaited(_loadPrefs());
     unawaited(AppVersionInfo.load().then((v) {
       if (mounted) setState(() => _version = v);
@@ -138,6 +138,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
   Future<void> _signOut() async {
     final go = GoRouter.of(context);
     await (widget.signOut ?? _defaultSignOut)();
+    MyProfilePhoto.clear(); // [HF-ME-SETTINGS-MOVE]
     go.go('/reels');
   }
 
@@ -159,29 +160,30 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  SettingsMeStrip(key: const Key('settings-name'), name: _name ?? '', onTap: _editProfile, hint: 'Edit your profile'),
+                  ValueListenableBuilder<String?>(
+                    valueListenable: MyProfilePhoto.url,
+                    builder: (_, photo, __) => SettingsMeStrip(
+                      key: const Key('settings-name'),
+                      name: _name ?? '',
+                      onTap: _editProfile,
+                      hint: 'Edit your profile',
+                      avatarUrl: me?.avatarUrl ?? photo,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   SettingsCard(title: 'Account', tone: DesiTone.rani, children: [
                     SettingsRow(icon: Icons.mail_rounded, tone: DesiTone.rani, label: 'Email', sub: (email ?? '').isEmpty ? 'Not added' : email!, last: true),
                     SettingsNote(lead: HelpStrings.changeEmailNote, email: HelpStrings.supportEmail, onTap: () => context.push('/support')),
                     SettingsRow(icon: Icons.chat_rounded, tone: DesiTone.rani, label: 'WhatsApp', sub: (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!, last: true),
                     SettingsNote(lead: HelpStrings.changeWhatsappNote, email: HelpStrings.supportEmail, onTap: () => context.push('/support')),
-                    if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Social media verification', onTap: () => context.push('/inf/channels')),
-                    if (host) SettingsRow(icon: Icons.verified_user_rounded, tone: DesiTone.lav, label: 'My verifications', onTap: () => context.push('/inf/verifications')), // [HF-CREATOR-BADGES-1]
-                    // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
-                    if (host) SettingsRow(icon: Icons.event_rounded, tone: DesiTone.tea, label: 'Availability calendar', onTap: () => context.go('/inf/availability')),
-                    if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: slug == null, onTap: () => context.go('/inf/bookings')),
+                    // [HF-ME-SETTINGS-MOVE] Social media verification, My verifications, Availability calendar, Calls booked with me
+                    // and the Call queue moved to the Me page ("Influencer tools").
                     // [HF-SHARE-APP-1] the influencer's public page: share it or copy the link
                     if (host && slug != null) ...[
                       SettingsRow(icon: Icons.share_rounded, tone: DesiTone.rani, label: 'Share my page', sub: influencerPageUrl(slug, tracked: false), onTap: () => unawaited(ShareSheet.influencer(slug, me?.name ?? slug, own: true))),
                       SettingsRow(icon: Icons.copy_rounded, tone: DesiTone.rani, label: 'Copy my page link', last: true, onTap: () => unawaited(copyMyPageLink(context, slug))),
                     ],
                   ]),
-                  // [HF-CALL-MODES-E2] Influencer only, and only while the queue flag is on: who waits, and Pause / Resume.
-                  if (host && CallFlags.queue && SettingsBridge.real) ...[
-                    const SizedBox(height: 12),
-                    SettingsCard(title: 'Call queue', tone: DesiTone.gold, children: const [HostQueueSettingsRows()]),
-                  ],
                   const SizedBox(height: 12),
                   // [HF-BLOCK-PROFILE-1] who you blocked, with Unblock
                   SettingsCard(title: 'Safety', tone: DesiTone.rani, children: [

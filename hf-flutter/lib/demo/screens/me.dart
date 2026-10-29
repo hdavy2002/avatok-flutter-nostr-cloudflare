@@ -11,6 +11,7 @@ import '../../data/demo_mode.dart';
 import '../../data/models/wallet.dart';
 import '../../data/repos/merch_repo.dart'; // [HF-HELP-MERCH-1]
 import '../../data/services.dart';
+import '../../data/telemetry.dart'; // [HF-ME-SETTINGS-MOVE]
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -18,6 +19,7 @@ import '../booking_kit.dart';
 import '../list_kit.dart';
 import '../settings_kit.dart';
 import '../desi.dart';
+import '../queue_kit.dart'; // [HF-ME-SETTINGS-MOVE] HostQueueSettingsRows
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'call_real.dart';
 import 'merch_me.dart'; // [HF-MERCH-APP-1]
@@ -107,16 +109,12 @@ class _Dashboard extends StatelessWidget {
       (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
       (Icons.north_east_rounded, 'Withdraw', '', '/payout'), // [HF-WIRE-13] open to fans too
       (Icons.event_rounded, 'My bookings', live ? '' : '${demo.bookings.length}', '/bookings'),
-      // [HF-BOOK-APPROVE-5] Influencer-only shortcuts into her side ("tab:" = context.go, her bar has its own shell).
-      if (isInfluencer) (Icons.edit_calendar_rounded, 'Availability calendar', '', 'tab:/inf/availability'),
-      if (isInfluencer) (Icons.event_note_rounded, 'Calls booked with me', '', 'tab:/inf/bookings'),
       (Icons.favorite_rounded, 'Favourites', live ? '' : '${demo.favs.length}', 'tab:/favourites'),
       (Icons.settings_rounded, 'Settings', '', '/settings'),
       (Icons.help_rounded, 'Help', '', '/help'),
     ];
     final first = name.split(' ').first;
     final mine = items.where((it) => const {'/calls', '/wallet', '/payout', '/bookings', 'tab:/favourites'}.contains(it.$4)).toList();
-    final inf = items.where((it) => it.$4.startsWith('tab:/inf/')).toList();
     final acct = items.where((it) => const {'/settings', '/help'}.contains(it.$4)).toList();
     const tones = [DesiTone.rani, DesiTone.gold, DesiTone.tea, DesiTone.lav, DesiTone.rani];
     void open(String to) => to.startsWith('tab:') ? context.go(to.substring(4)) : context.push(to);
@@ -158,13 +156,28 @@ class _Dashboard extends StatelessWidget {
                   onTap: () => (isInfluencer && !IntroOnbEntry.pending) ? context.go('/inf/home') : context.push('/influencer/join')),
             ]),
           ],
+          // [HF-ME-SETTINGS-MOVE] Influencer tools: moved here from Settings (same host-only condition).
+          if (isInfluencer) ...[
+            const SizedBox(height: 16),
+            _MenuGroup(title: 'Influencer tools', tone: DesiTone.lav, corner: DesiCorner.yellow, children: [
+              _MenuRow(icon: Icons.smart_display_rounded, label: 'Social media verification', meta: '', tone: DesiTone.lav, onTap: () => _tool(context, 'social_verification', () => context.push('/inf/channels'))),
+              _MenuRow(icon: Icons.verified_user_rounded, label: 'My verifications', meta: '', tone: DesiTone.lav, onTap: () => _tool(context, 'my_verifications', () => context.push('/inf/verifications'))), // [HF-CREATOR-BADGES-1]
+              // [HF-BOOK-APPROVE-5] her calendar and bookings live in her own shell, so go (not push).
+              _MenuRow(icon: Icons.edit_calendar_rounded, label: 'Availability calendar', meta: '', tone: DesiTone.tea, onTap: () => _tool(context, 'availability_calendar', () => context.go('/inf/availability'))),
+              _MenuRow(icon: Icons.event_note_rounded, label: 'Calls booked with me', meta: '', tone: DesiTone.gold, onTap: () => _tool(context, 'calls_booked_with_me', () => context.go('/inf/bookings'))),
+            ]),
+            // [HF-CALL-MODES-E2] only while the queue flag is on: who waits, and Pause / Resume.
+            if (live && CallFlags.queue && SettingsBridge.real) ...[
+              const SizedBox(height: 12),
+              SettingsCard(title: 'Call queue', tone: DesiTone.gold, children: const [HostQueueSettingsRows()]),
+            ],
+          ],
           const SizedBox(height: 16),
           _MenuGroup(title: 'Mera space', tone: DesiTone.white, corner: DesiCorner.marigold, children: [
             for (var i = 0; i < mine.length; i++) _MenuRow(icon: mine[i].$1, label: mine[i].$2, meta: mine[i].$3, tone: tones[i % tones.length], onTap: () => open(mine[i].$4)),
           ]),
           const SizedBox(height: 12),
           _MenuGroup(title: 'Influencer', tone: DesiTone.lav, corner: DesiCorner.yellow, children: [
-            for (final it in inf) _MenuRow(icon: it.$1, label: it.$2, meta: it.$3, tone: DesiTone.lav, onTap: () => open(it.$4)),
             _MenuRow(
               icon: Icons.star_rounded,
               label: isInfluencer ? 'Influencer dashboard' : 'Join as an influencer',
@@ -172,15 +185,6 @@ class _Dashboard extends StatelessWidget {
               tone: DesiTone.rani,
               onTap: () => (isInfluencer && !IntroOnbEntry.pending) ? context.go('/inf/home') : context.push('/influencer/join'),
             ),
-            // [HF-APP-ME-VERIF-1] owner: My verifications also in the Me tab's Influencer list
-            if (isInfluencer)
-              _MenuRow(
-                icon: Icons.verified_user_rounded,
-                label: 'My verifications',
-                meta: '',
-                tone: DesiTone.lav,
-                onTap: () => unawaited(context.push('/inf/verifications')),
-              ),
             // [HF-CALL-SAFETY-APP] Safety (strikes) and Call rules; only while call recording is on.
             if (live && isInfluencer && CallFlags.callRecording) const _SafetyRows(),
           ]),
@@ -196,6 +200,12 @@ class _Dashboard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [HF-ME-SETTINGS-MOVE] One tap on an Influencer tools row: telemetry first, then go.
+void _tool(BuildContext context, String item, VoidCallback go) {
+  Telemetry.event('hf_me_tools_open', {'item': item});
+  go();
 }
 
 /// [HF-CALL-SAFETY-APP] The "Safety" row (amber "N of 3 strikes" chip, or "No strikes") and the "Call rules" row of the Influencer card
