@@ -3,7 +3,7 @@
 // Writes that must be all-or-nothing go through DB_META.batch (one D1 transaction).
 import type { Env } from "../types";
 import {
-  addEvent, allocateTicketNumber, ackMessage, isBusinessTime, defaultPriority, firstResponseDue, getTicket, isMoneyCategory, loadSettings, makePreview,
+  addEvent, allocateTicketNumber, ackMessage, isBusinessTime, defaultPriority, isPriority, firstResponseDue, getTicket, isMoneyCategory, loadSettings, makePreview,
   MAX_MESSAGE_ATTACHMENT_BYTES, MAX_TEXT_CHARS, reindexTicket, setTicketStatus, ticketCode, clip, type SupportSettings, type TicketRow,
   IDENTICAL_WINDOW_MS, sha256Hex, normaliseForHash, DAY_MS, MAX_TICKETS_PER_DAY,
 } from "./support_core";
@@ -94,8 +94,11 @@ export interface CreateTicketArgs {
 export async function createTicket(env: Env, a: CreateTicketArgs): Promise<{ number: number; messageId: string; afterHours: boolean }> {
   const settings = a.settings ?? await loadSettings(env);
   const number = a.number ?? await allocateTicketNumber(env);
-  const priority = a.priority ?? defaultPriority(a.category);
   const status = a.status ?? "new";
+  // desk automation rules: category -> assignee / priority (not for spam; an explicit priority from the caller wins)
+  const rule = status === "spam" ? undefined : settings.automations.find((r) => r.category === a.category);
+  const priority = a.priority ?? (rule?.priority && isPriority(rule.priority) ? rule.priority : defaultPriority(a.category));
+  const assignee = rule?.assigneeUid ?? null;
   const due = status === "spam" ? null : firstResponseDue(priority, a.now, settings.hours, settings.holidays);
   const subject = clip(a.subject.replace(/\s+/g, " ").trim() || "(no subject)", 200);
   const msg = messageStatements(env, number, { ...a.message, authorType: "customer", authorUid: a.uid, now: a.now });
@@ -106,6 +109,7 @@ export async function createTicket(env: Env, a: CreateTicketArgs): Promise<{ num
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10,?11,?12,?13,?14,?9,?9)`,
     ).bind(number, a.uid, a.contactId, subject, a.category, priority, status, a.channel, a.now, due, a.linkedFrom ?? null,
       isMoneyCategory(a.category) ? 1 : 0, status === "spam" ? 0 : 1, a.meta === undefined ? null : JSON.stringify(a.meta).slice(0, 2000)),
+    ...(assignee ? [env.DB_META.prepare("UPDATE support_tickets SET assignee_uid=?2 WHERE number=?1").bind(number, assignee)] : []),
     ...msg.statements,
   ];
   const afterHours = !isBusinessTime(a.now, settings.hours, settings.holidays);

@@ -11,12 +11,11 @@ import { CORS, json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
-import { emailFor } from "../lib/identity";
-import { nameFor } from "../lib/identity";
+import { emailFor, nameFor } from "../lib/identity";
 import {
   addEvent, canCustomerReopen, checkAttachment, isCategory, getTicket, loadSettings, MAX_ATTACHMENT_BYTES, MAX_CUSTOMER_MESSAGE_CHARS, MAX_SUBJECT_CHARS,
   parseTicketNumber, resolveStaff, safeFileName, setTicketStatus, statusLabel, statusOnCustomerMessage, upsertContact, ticketCode, clip, HOUR_MS,
-  attachmentKey, fileExtension, MAX_AUTOREPLIES_PER_HOUR, sanitizeHtml, type TicketRow, type StaffCtx,
+  attachmentKey, MAX_AUTOREPLIES_PER_HOUR, sanitizeHtml, type TicketRow, type StaffCtx,
 } from "../lib/support_core";
 import { addMessage, checkAttachmentIds, createTicket, findIdenticalRecent, recentTicketCount, textHash } from "../lib/support_ops";
 import { recipientEmailFor, sendAck } from "../lib/support_mail";
@@ -36,7 +35,13 @@ export function customerStatus(status: string): "open" | "waiting" | "solved" | 
 }
 
 const OPEN_STATUSES = ["new", "open", "waiting", "on_hold"];
-const SELF = "You";
+/** The name stored on the customer's own messages: their display name, else "Customer" (never "You"; the client says "You" itself). */
+async function selfName(env: Env, uid: string): Promise<string> {
+  const n = await nameFor(env, uid).catch(() => null);
+  if (n && n.trim()) return n.trim().slice(0, 80);
+  const c = await env.DB_META.prepare("SELECT name FROM support_contacts WHERE uid=?1").bind(uid).first<{ name: string | null }>().catch(() => null);
+  return c?.name?.trim() || "Customer";
+}
 
 function ticketDto(t: TicketRow) {
   return {
@@ -128,7 +133,7 @@ async function createOwnTicket(req: Request, env: Env, uid: string): Promise<Res
   const channel = b.meta && typeof (b.meta as Record<string, unknown>).platform === "string" && (b.meta as Record<string, string>).platform === "web" ? "web" : "app";
   const made = await createTicket(env, {
     uid, contactId, subject, category: b.category, channel, now, settings, writeAck: true, meta: cleanMeta(b.meta),
-    message: { authorName: SELF, text: message, hash, attachmentIds: att.ids, uploaderUid: uid },
+    message: { authorName: await selfName(env, uid), text: message, hash, attachmentIds: att.ids, uploaderUid: uid },
   });
   const t = (await getTicket(env, made.number)) as TicketRow;
   // acknowledgement email (bulk lane, <= 3 per address per hour) + admin WhatsApp alert; both are id-only queue jobs
@@ -168,7 +173,7 @@ async function getOwnTicket(env: Env, uid: string, numberRaw: string): Promise<R
     out.push({
       id: m.id,
       author: m.author_type === "staff" ? "support" : m.author_type === "system" ? "system" : "customer",
-      authorName: m.author_type === "staff" ? `${BRAND.name} support` : m.author_type === "system" ? BRAND.name : SELF,
+      authorName: m.author_type === "staff" ? `${BRAND.name} support` : m.author_type === "system" ? BRAND.name : (m.author_name ?? "Customer"),
       text: m.text,
       ...(html ? { html } : {}),
       createdAt: m.created_at,
@@ -209,13 +214,13 @@ async function replyOwn(req: Request, env: Env, uid: string, numberRaw: string):
     const settings = await loadSettings(env);
     const made = await createTicket(env, {
       uid, contactId, subject: t.subject, category: t.category, channel: t.channel === "web" ? "web" : "app", now, settings, writeAck: true, linkedFrom: t.number,
-      message: { authorName: SELF, text: message, hash, attachmentIds: att.ids, uploaderUid: uid },
+      message: { authorName: await selfName(env, uid), text: message, hash, attachmentIds: att.ids, uploaderUid: uid },
     });
     const nt = (await getTicket(env, made.number)) as TicketRow;
     await alertAdmin(env, "new", { number: nt.number, subject: nt.subject, category: nt.category, priority: nt.priority }, String(nt.number), now).catch(() => "failed");
     return json({ ok: true, newTicket: ticketDto(nt) }, 200, NO_STORE);
   }
-  const id = await addMessage(env, t.number, { authorType: "customer", authorUid: uid, authorName: SELF, text: message, hash, now, attachmentIds: att.ids, uploaderUid: uid });
+  const id = await addMessage(env, t.number, { authorType: "customer", authorUid: uid, authorName: await selfName(env, uid), text: message, hash, now, attachmentIds: att.ids, uploaderUid: uid });
   if (t.status !== act.status) await setTicketStatus(env, t, act.status, "customer", now);
   if (act.reopened) await addEvent(env, t.number, "customer", "reopened", { by: "customer_reply" }, now);
   await alertAdmin(env, "reply", { number: t.number, subject: t.subject, category: t.category, priority: t.priority }, id, now).catch(() => "failed");
@@ -249,14 +254,15 @@ async function reopenOwn(env: Env, uid: string, numberRaw: string): Promise<Resp
 // ---------------------------------------------------------------------------------------------------------------------
 /** Header file names cannot carry non-ASCII (upload-filename-header-encoding): decode the %-escapes, then keep it printable. */
 export function uploadFileName(req: Request): string {
-  const raw = req.headers.get("x-file-name") ?? "file";
+  // Cross-origin uploads may not be able to set x-file-name: ?name= is accepted too.
+  const raw = req.headers.get("x-file-name") ?? new URL(req.url).searchParams.get("name") ?? "file";
   let s = raw;
   try { s = decodeURIComponent(raw); } catch { /* keep raw */ }
   return safeFileName(s);
 }
 
 async function uploadAttachment(req: Request, env: Env, uid: string): Promise<Response> {
-  const purpose = (new URL(req.url).searchParams.get("purpose") ?? req.headers.get("x-purpose") ?? "ticket").toLowerCase();
+  const purpose = (new URL(req.url).searchParams.get("purpose") ?? "ticket").toLowerCase();
   if (purpose !== "ticket" && purpose !== "signature") return err(400, "invalid_purpose");
   let staff: StaffCtx | null = null;
   if (purpose === "signature") {
@@ -275,12 +281,13 @@ async function uploadAttachment(req: Request, env: Env, uid: string): Promise<Re
   const id = crypto.randomUUID();
   const now = Date.now();
   if (purpose === "signature") {
-    if (!contentType.startsWith("image/")) return err(400, "blocked_type");
-    const key = `support-signature/${id}.${fileExtension(name) || "png"}`;
+    const sigExt = ({ "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/gif": "gif", "image/webp": "webp" } as Record<string, string>)[contentType];
+    if (!sigExt) return err(400, "blocked_type");
+    const key = `support-signature/${id}.${sigExt}`;
     await env.BLOBS.put(key, bytes, { httpMetadata: { contentType } });
     await env.DB_META.prepare("INSERT INTO support_attachments (id,r2_key,name,size,content_type,ticket_number,message_id,uid,purpose,created_at) VALUES (?1,?2,?3,?4,?5,NULL,NULL,?6,'signature',?7)")
       .bind(id, key, name, bytes.length, contentType, uid, now).run();
-    return json({ ok: true, id, name, size: bytes.length, url: `${BRAND.mediaOrigin}/${key}` }, 201, NO_STORE);
+    return json({ ok: true, id, name, size: bytes.length, url: `${BRAND.apiOrigin}/api/hf/support/public/signature/${id}.${sigExt}` }, 201, NO_STORE);
   }
   const key = attachmentKey("pending", id, name);
   await env.BACKUP_R2.put(key, bytes, { httpMetadata: { contentType }, customMetadata: { name: name.slice(0, 200) } });
@@ -319,11 +326,22 @@ async function downloadAttachment(env: Env, uid: string, id: string): Promise<Re
 // ---------------------------------------------------------------------------------------------------------------------
 // dispatcher
 // ---------------------------------------------------------------------------------------------------------------------
+const SIG_FILE = /^[0-9a-f-]{36}\.(png|jpe?g|gif|webp)$/i;
+async function publicSignatureImage(env: Env, file: string): Promise<Response> {
+  if (!SIG_FILE.test(file)) return new Response("Not found", { status: 404 });
+  const obj = await env.BLOBS.get(`support-signature/${file}`);
+  if (!obj) return new Response("Not found", { status: 404 });
+  const type = /\.png$/i.test(file) ? "image/png" : /\.gif$/i.test(file) ? "image/gif" : /\.webp$/i.test(file) ? "image/webp" : "image/jpeg";
+  return new Response(obj.body, { status: 200, headers: { "content-type": type, "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "cross-origin-resource-policy": "cross-origin" } });
+}
+
 export async function hfSupportRoute(req: Request, env: Env, p: string): Promise<Response | null> {
   if (!p.startsWith("/api/hf/support/")) return null;
   const rest = p.slice("/api/hf/support/".length).replace(/\/+$/, "");
   const parts = rest.split("/");
   const m = req.method;
+  // Signature logos must load in a mail client without a sign-in: public, images from the signature folder only.
+  if (m === "GET" && parts.length === 3 && parts[0] === "public" && parts[1] === "signature") return await publicSignatureImage(env, parts[2]);
   const route = parts[0] === "tickets"
     ? (parts.length === 1 ? (m === "GET" ? "list" : m === "POST" ? "create" : "")
       : parts.length === 2 ? (m === "GET" ? "get" : "")

@@ -16,9 +16,10 @@ import { safeQueueSend } from "../lib/queue_guard";
 import { postStaffReply } from "../lib/support_reply";
 import { ticketSubject, signatureFor, wrapReplyHtml, recipientEmailFor } from "../lib/support_mail";
 import { mergeTickets, splitTicket, addMessage, checkAttachmentIds } from "../lib/support_ops";
+import { htmlToPlainText } from "../lib/support_mime";
 import {
   addEvent, canWrite, CATEGORIES, clip, DAY_MS, firstResponseDue, getTicket, isCategory, isDeskAdmin, isMoneyCategory, isPriority, isStatus, loadSettings,
-  maskWhatsApp, parseTicketNumber, reindexTicket, resolveStaff, sanitizeHtml, setSetting, setTicketStatus, slaState, supportFrom, textToHtml, ticketCode,
+  maskWhatsApp, parseTicketNumber, reindexTicket, resolveStaff, sanitizeHtml, setSetting, getSetting, setTicketStatus, slaState, supportFrom, textToHtml, ticketCode,
   type Priority, type StaffCtx, type Status, type TicketRow,
 } from "../lib/support_core";
 import { customerStatus } from "./hf_support";
@@ -29,6 +30,34 @@ const ok = (body: Record<string, unknown> = {}, status = 200) => json({ ok: true
 const PAGE = 50;
 const VIEWER_TTL_MS = 30_000;
 const n = (v: unknown): number => Number(v ?? 0) || 0;
+
+/** "email" -> "Email" (the desk shows "via Email" and filters with the same words). */
+const channelLabel = (c: string): string => (c ? c.charAt(0).toUpperCase() + c.slice(1) : "Email");
+const STAFF_STATUS_LABEL: Record<string, string> = { new: "New", open: "Open", waiting: "Waiting on customer", on_hold: "On hold", solved: "Solved", closed: "Closed", spam: "Spam", trash: "Trash" };
+
+/** One readable line per event for the ticket history. */
+function eventText(type: string, data: Record<string, unknown> | null, actor: string, names: Map<string, string | null>): string {
+  const who = actor === "system" ? "System" : actor === "customer" ? "Customer" : (names.get(actor) ?? "Staff");
+  const lab = (v: unknown) => STAFF_STATUS_LABEL[String(v)] ?? String(v ?? "");
+  switch (type) {
+    case "created": return `Ticket opened${data?.channel ? ` via ${channelLabel(String(data.channel))}` : ""}`;
+    case "status": return `${who} changed the status to ${lab(data?.to)}`;
+    case "priority": return `${who} set the priority to ${String(data?.to ?? "")}`;
+    case "category": return `${who} set the category to ${String(data?.to ?? "")}`;
+    case "assign": return data?.to ? `${who} assigned the ticket to ${names.get(String(data.to)) ?? "a teammate"}` : `${who} unassigned the ticket`;
+    case "reply": return `${who} replied`;
+    case "note": return `${who} added an internal note`;
+    case "merge": return `${who} merged another ticket into this one`;
+    case "merged_into": return `${who} merged this ticket into another`;
+    case "split": return `${who} split a message into a new ticket`;
+    case "snooze": return data?.until ? "Snoozed" : "Snooze cleared";
+    case "unsnoozed": return "Snooze ended";
+    case "reminder": return "Reminder sent to the customer";
+    case "reopened": return "Customer reopened the ticket";
+    case "nudge": return "Customer notified on WhatsApp";
+    default: return type.replace(/_/g, " ");
+  }
+}
 
 async function bodyOf(req: Request): Promise<Record<string, unknown> | null> {
   try { const v = await req.json(); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null; } catch { return null; }
@@ -89,7 +118,7 @@ async function listTickets(env: Env, staff: StaffCtx, url: URL): Promise<Respons
   const binds: unknown[] = [...f.binds];
   const category = sp.get("category"); if (category) { if (!isCategory(category)) return err(400, "invalid_category"); where.push("t.category=?"); binds.push(category); }
   const priority = sp.get("priority"); if (priority) { if (!isPriority(priority)) return err(400, "invalid_priority"); where.push("t.priority=?"); binds.push(priority); }
-  const channel = sp.get("channel"); if (channel) { if (!["email", "app", "web"].includes(channel)) return err(400, "invalid_channel"); where.push("t.channel=?"); binds.push(channel); }
+  const channelQ = sp.get("channel")?.toLowerCase(); if (channelQ) { if (!["email", "app", "web"].includes(channelQ)) return err(400, "invalid_channel"); where.push("t.channel=?"); binds.push(channelQ); }
   const assignee = sp.get("assignee"); if (assignee) { if (assignee === "none") where.push("t.assignee_uid IS NULL"); else { where.push("t.assignee_uid=?"); binds.push(assignee); } }
 
   const q = (sp.get("q") ?? "").trim().slice(0, 100);
@@ -142,12 +171,13 @@ async function listTickets(env: Env, staff: StaffCtx, url: URL): Promise<Respons
     tickets: page.map((r) => ({
       number: ticketCode(r.number), code: ticketCode(r.number), seq: r.number,
       customer: { name: r.reg_name ?? r.display_name ?? r.contact_name ?? r.contact_email ?? "Unknown", email: r.contact_email, role: !r.uid ? "unverified" : hosts.has(r.uid) ? "influencer" : "fan", uid: r.uid ?? undefined },
-      subject: r.subject, preview: r.preview, category: r.category, priority: r.priority, status: r.status, channel: r.channel,
+      subject: r.subject, preview: r.preview, category: r.category, priority: r.priority, status: r.status, channel: channelLabel(r.channel),
       assignee: r.assignee_uid ? { uid: r.assignee_uid, name: staffNames.get(r.assignee_uid) ?? null } : null,
       sla: { dueAt: r.first_response_due_at, state: slaState(r.first_response_due_at, r.first_responded_at, r.created_at, now) },
       createdAt: r.created_at, updatedAt: r.updated_at, unread: r.unread_staff === 1, snoozeUntil: r.snooze_until,
     })),
     nextCursor: more ? String(cursor + PAGE) : null,
+    me: { uid: staff.uid, name: staff.name ?? staff.email ?? "Me", role: staff.role },
   });
 }
 
@@ -171,7 +201,7 @@ export async function customerPanel(env: Env, t: TicketRow, now = Date.now()): P
     recentMoney: [] as unknown[], otherTickets: [] as unknown[] };
   base.otherTickets = (await safe(async () => ((await env.DB_META.prepare(
     "SELECT number,subject,status,category,updated_at FROM support_tickets WHERE (contact_id=?1 OR (?2 IS NOT NULL AND uid=?2)) AND number<>?3 AND merged_into IS NULL ORDER BY updated_at DESC LIMIT 10",
-  ).bind(t.contact_id, uid, t.number).all<{ number: number; subject: string; status: string; category: string; updated_at: number }>()).results ?? []).map((o) => ({ number: ticketCode(o.number), seq: o.number, code: ticketCode(o.number), subject: o.subject, status: o.status, category: o.category, updatedAt: o.updated_at })))) ?? [];
+  ).bind(t.contact_id, uid, t.number).all<{ number: number; subject: string; status: string; category: string; updated_at: number }>()).results ?? []).map((o) => ({ number: ticketCode(o.number), seq: o.number, code: ticketCode(o.number), subject: o.subject, status: o.status, statusLabel: STAFF_STATUS_LABEL[o.status] ?? o.status, category: o.category, updatedAt: o.updated_at })))) ?? [];
   if (!uid) return base;
 
   const [user, reg, host, cv, wa, email] = await Promise.all([
@@ -202,8 +232,8 @@ export async function customerPanel(env: Env, t: TicketRow, now = Date.now()): P
   const topups = (await safe(async () => (await env.DB_META.prepare("SELECT amount_rupees,status,COALESCE(paid_at,created_at) AS at FROM hf_topups WHERE uid=?1 ORDER BY created_at DESC LIMIT 5").bind(uid).all<{ amount_rupees: number; status: string; at: number }>()).results ?? [])) ?? [];
   const payouts = (await safe(async () => (await env.DB_META.prepare("SELECT amount_rupees,status,created_at AS at FROM hf_payout_requests WHERE host_uid=?1 ORDER BY created_at DESC LIMIT 5").bind(uid).all<{ amount_rupees: number; status: string; at: number }>()).results ?? [])) ?? [];
   base.recentMoney = [
-    ...topups.map((r) => ({ kind: "topup", rupees: n(r.amount_rupees), status: r.status, at: n(r.at) })),
-    ...payouts.map((r) => ({ kind: "withdrawal", rupees: n(r.amount_rupees), status: r.status, at: n(r.at) })),
+    ...topups.map((r) => ({ kind: "topup", label: `Top-up (${r.status})`, rupees: n(r.amount_rupees), amountRupees: n(r.amount_rupees), status: r.status, at: n(r.at) })),
+    ...payouts.map((r) => ({ kind: "withdrawal", label: `Withdrawal (${r.status})`, rupees: n(r.amount_rupees), amountRupees: -n(r.amount_rupees), status: r.status, at: n(r.at) })),
   ].sort((a, b) => b.at - a.at).slice(0, 8);
   return base;
 }
@@ -219,38 +249,55 @@ async function getTicketDetail(env: Env, staff: StaffCtx, numberRaw: string): Pr
   ).bind(t.number).all<AdminMsg>()).results ?? [];
   const atts = (await env.DB_META.prepare("SELECT id,message_id,name,size,content_type FROM support_attachments WHERE ticket_number=?1").bind(t.number).all<{ id: string; message_id: string | null; name: string; size: number; content_type: string }>()).results ?? [];
   const events = (await env.DB_META.prepare("SELECT id,actor,type,data_json,created_at FROM support_events WHERE ticket_number=?1 ORDER BY created_at DESC, id DESC LIMIT 200").bind(t.number).all<{ id: number; actor: string; type: string; data_json: string | null; created_at: number }>()).results ?? [];
+  const contactEmail = (await safe(() => env.DB_META.prepare("SELECT email FROM support_contacts WHERE id=?1").bind(t.contact_id).first<{ email: string | null }>()))?.email ?? (await safe(() => recipientEmailFor(env, t)));
+  // delivery state of each staff reply (the email outbox row is keyed support-reply:<message id>)
+  const delivery = new Map<string, string>();
+  const staffIds = msgs.filter((m) => m.author_type === "staff").map((m) => m.id);
+  if (staffIds.length) {
+    const marks = staffIds.map((_, i) => `?${i + 1}`).join(",");
+    const rows = (await safe(async () => (await env.DB_META.prepare(`SELECT outbox_key,delivery_status FROM email_outbox WHERE outbox_key IN (${marks})`).bind(...staffIds.map((id) => `support-reply:${id}`)).all<{ outbox_key: string; delivery_status: string | null }>()).results ?? [])) ?? [];
+    for (const r of rows) {
+      const st = r.delivery_status ?? "queued";
+      delivery.set(r.outbox_key.slice("support-reply:".length), st === "provider_accepted" ? "sent" : st === "pending" || st === "sending" ? "queued" : st);
+    }
+  }
   const messages = [];
   for (const m of msgs) {
     let html: string | undefined;
     if (m.html_r2_key) { const o = await env.BACKUP_R2.get(m.html_r2_key).catch(() => null); if (o) html = sanitizeHtml(await o.text()); }
+    const kind = m.author_type === "note" ? "note" : m.author_type === "staff" ? "support" : m.author_type === "system" ? "system" : "customer";
     messages.push({
-      id: m.id, type: m.author_type, authorName: m.author_name, authorUid: m.author_uid, text: m.text, ...(html ? { html } : {}), createdAt: m.created_at,
+      id: m.id, kind, type: m.author_type, authorName: m.author_name, authorUid: m.author_uid, ...(kind === "customer" && contactEmail ? { authorEmail: contactEmail } : {}),
+      text: m.text, ...(html ? { html } : {}), createdAt: m.created_at, ...(kind === "support" ? { delivery: delivery.get(m.id) ?? null } : {}),
       attachments: atts.filter((a) => a.message_id === m.id).map((a) => ({ id: a.id, name: a.name, size: a.size, contentType: a.content_type })),
     });
   }
   const now = Date.now();
   if (canWrite(staff) && t.unread_staff) await env.DB_META.prepare("UPDATE support_tickets SET unread_staff=0 WHERE number=?1").bind(t.number).run().catch(() => undefined);
-  const viewers = await currentViewers(env, t.number, staff.uid, now);
   const names = await staffNameMap(env);
+  const viewers = await currentViewers(env, t.number, staff.uid, now);
   return ok({
     ticket: {
       number: ticketCode(t.number), code: ticketCode(t.number), seq: t.number, subject: t.subject, category: t.category, priority: t.priority, status: t.status, customerStatus: customerStatus(t.status),
-      channel: t.channel, assignee: t.assignee_uid ? { uid: t.assignee_uid, name: names.get(t.assignee_uid) ?? null } : null,
+      channel: channelLabel(t.channel), assignee: t.assignee_uid ? { uid: t.assignee_uid, name: names.get(t.assignee_uid) ?? null } : null,
       createdAt: t.created_at, updatedAt: t.updated_at, solvedAt: t.solved_at, closedAt: t.closed_at, snoozeUntil: t.snooze_until, mergedInto: t.merged_into, linkedFrom: t.linked_from,
       money: t.money === 1, sla: { dueAt: t.first_response_due_at, state: slaState(t.first_response_due_at, t.first_responded_at, t.created_at, now), respondedAt: t.first_responded_at },
       meta: (() => { try { return t.meta_json ? JSON.parse(t.meta_json) : null; } catch { return null; } })(),
     },
     messages,
-    events: events.reverse().map((e) => ({ id: e.id, actor: e.actor, type: e.type, data: (() => { try { return e.data_json ? JSON.parse(e.data_json) : null; } catch { return null; } })(), createdAt: e.created_at })),
+    events: events.reverse().map((e) => {
+      const data = (() => { try { return e.data_json ? JSON.parse(e.data_json) as Record<string, unknown> : null; } catch { return null; } })();
+      return { id: e.id, actor: e.actor, type: e.type, text: eventText(e.type, data, e.actor, names), data, createdAt: e.created_at };
+    }),
     customer: await customerPanel(env, t, now),
     viewers,
     you: { uid: staff.uid, role: staff.role },
   });
 }
 
-async function currentViewers(env: Env, number: number, selfUid: string, now: number): Promise<Array<{ uid: string; name: string | null; seenAt: number }>> {
-  const rows = (await safe(async () => (await env.DB_META.prepare("SELECT uid,name,seen_at FROM support_viewers WHERE ticket_number=?1 AND seen_at>?2 AND uid<>?3").bind(number, now - VIEWER_TTL_MS, selfUid).all<{ uid: string; name: string | null; seen_at: number }>()).results ?? [])) ?? [];
-  return rows.map((r) => ({ uid: r.uid, name: r.name, seenAt: r.seen_at }));
+async function currentViewers(env: Env, number: number, selfUid: string, now: number): Promise<Array<{ uid: string; name: string | null; seenAt: number; me: boolean }>> {
+  const rows = (await safe(async () => (await env.DB_META.prepare("SELECT uid,name,seen_at FROM support_viewers WHERE ticket_number=?1 AND seen_at>?2").bind(number, now - VIEWER_TTL_MS).all<{ uid: string; name: string | null; seen_at: number }>()).results ?? [])) ?? [];
+  return rows.map((r) => ({ uid: r.uid, name: r.name, seenAt: r.seen_at, me: r.uid === selfUid }));
 }
 
 async function heartbeat(env: Env, staff: StaffCtx, numberRaw: string): Promise<Response> {
@@ -375,6 +422,20 @@ async function spamTicket(req: Request, env: Env, staff: StaffCtx, numberRaw: st
 }
 
 async function blockSender(req: Request, env: Env, staff: StaffCtx): Promise<Response> {
+  if (req.method === "GET") {
+    const rows = (await env.DB_META.prepare("SELECT kind,value,reason,created_by,created_at FROM support_blocklist ORDER BY created_at DESC LIMIT 500").all<{ kind: string; value: string; reason: string | null; created_by: string | null; created_at: number }>()).results ?? [];
+    const names = await staffNameMap(env);
+    return ok({ items: rows.map((r) => ({ [r.kind === "domain" ? "domain" : "email"]: r.value, at: r.created_at, by: r.created_by ? (names.get(r.created_by) ?? null) : null, reason: r.reason })) });
+  }
+  if (req.method === "DELETE") {
+    const sp = new URL(req.url).searchParams;
+    const q = (await (async () => (sp.get("email") || sp.get("domain") ? null : await bodyOf(req)))());
+    const email = (sp.get("email") ?? (typeof q?.email === "string" ? q.email : "")).trim().toLowerCase();
+    const domain = (sp.get("domain") ?? (typeof q?.domain === "string" ? q.domain : "")).trim().toLowerCase().replace(/^@/, "");
+    if (!email && !domain) return err(400, "invalid_target");
+    await env.DB_META.prepare("DELETE FROM support_blocklist WHERE kind=?1 AND value=?2").bind(email ? "email" : "domain", email || domain).run();
+    return ok();
+  }
   const b = await bodyOf(req);
   if (!b) return err(400, "bad_json");
   const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
@@ -442,13 +503,13 @@ async function bulk(req: Request, env: Env, staff: StaffCtx): Promise<Response> 
 // canned replies
 // ---------------------------------------------------------------------------------------------------------------------
 interface CannedRow { id: string; title: string; shortcut: string | null; category: string | null; body_html: string; updated_at: number }
-const cannedDto = (r: CannedRow) => ({ id: r.id, title: r.title, shortcut: r.shortcut, category: r.category, bodyHtml: r.body_html, updatedAt: r.updated_at });
+const cannedDto = (r: CannedRow) => ({ id: r.id, title: r.title, shortcut: r.shortcut, category: r.category, body: htmlToPlainText(r.body_html), bodyHtml: r.body_html, updatedAt: r.updated_at });
 
 async function cannedRoute(req: Request, env: Env, staff: StaffCtx, id: string | null): Promise<Response> {
   const m = req.method;
   if (m === "GET") {
     const rows = (await env.DB_META.prepare("SELECT id,title,shortcut,category,body_html,updated_at FROM support_canned ORDER BY title LIMIT 300").all<CannedRow>()).results ?? [];
-    return ok({ canned: rows.map(cannedDto) });
+    return ok({ items: rows.map(cannedDto), canned: rows.map(cannedDto) });
   }
   if (!canWrite(staff)) return err(403, "read_only");
   if (m === "DELETE") {
@@ -459,7 +520,9 @@ async function cannedRoute(req: Request, env: Env, staff: StaffCtx, id: string |
   const b = await bodyOf(req);
   if (!b) return err(400, "bad_json");
   const title = typeof b.title === "string" ? b.title.trim() : "";
-  const html = [b.bodyHtml, b.body_html, b.html, b.body].find((x) => typeof x === "string") as string | undefined;
+  // The desk sends plain text in `body` (placeholders like {customer_name} kept); HTML in bodyHtml / html.
+  const htmlIn = [b.bodyHtml, b.body_html, b.html].find((x) => typeof x === "string") as string | undefined;
+  const html = htmlIn ?? (typeof b.body === "string" ? textToHtml(b.body) : undefined);
   if (m === "POST") {
     if (!title || title.length > 120 || !html?.trim()) return err(400, "invalid_canned");
     const newId = crypto.randomUUID(); const now = Date.now();
@@ -488,11 +551,12 @@ async function signatureRoute(req: Request, env: Env, staff: StaffCtx, test: boo
     if (!canWrite(staff)) return err(403, "read_only");
     const to = staff.email ?? (await safe(() => primaryVerifiedEmailFor(env, staff.uid))) ?? (await safe(() => emailFor(env, staff.uid)));
     if (!to) return err(400, "no_email_on_account");
-    const sig = await signatureFor(env, staff.uid);
+    const given = await bodyOf(req);
+    const sig = typeof given?.html === "string" && given.html.trim() ? sanitizeHtml(given.html) : await signatureFor(env, staff.uid);
     const fake = { number: 0, subject: "Signature test" };
     const r = await enqueueEmail(env, {
       to, subject: `${ticketSubject(0, fake.subject).replace("[HF-0]", "[TEST]")}`, kind: "support_test", from: supportFrom(),
-      html: wrapReplyHtml("<p>This is how a reply from you will look. Your signature is below.</p>", sanitizeHtml(sig), 0),
+      html: wrapReplyHtml("<p>This is how a reply from you will look. Your signature is below.</p>", sig, 0),
       outboxKey: `support-sigtest:${staff.uid}:${Date.now()}`,
     }, { lane: "bulk" });
     return ok({ to, delivery: { status: r.status, queued: r.queued, durable: r.durable } });
@@ -524,7 +588,15 @@ async function settingsRoute(req: Request, env: Env, staff: StaffCtx): Promise<R
   const read = async () => {
     const s = await loadSettings(env);
     const qs = await safe(() => env.DB_META.prepare("SELECT value FROM queue_settings WHERE name='whatsapp_min_interval_ms'").first<{ value: number }>());
-    return { alert_whatsapp: s.alertWhatsapp, business_hours: s.hours, holidays: s.holidays, whatsapp_min_interval_ms: qs ? n(qs.value) : 1000 };
+    // business_hours carries both spellings: the desk reads from/to, the worker uses start/end + utcOffsetMin
+    const h = s.hours;
+    return {
+      alert_whatsapp: s.alertWhatsapp ?? "",
+      business_hours: { days: h.days, from: h.start, to: h.end, tz: h.tz ?? "Asia/Kolkata", start: h.start, end: h.end, utcOffsetMin: h.utcOffsetMin },
+      holidays: s.holidayLabels,
+      automations: s.automations,
+      whatsapp_min_interval_ms: qs ? n(qs.value) : 1000,
+    };
   };
   if (req.method === "GET") return ok({ settings: await read() });
   if (req.method !== "PUT") return err(405, "method_not_allowed");
@@ -532,23 +604,56 @@ async function settingsRoute(req: Request, env: Env, staff: StaffCtx): Promise<R
   const b = await bodyOf(req);
   if (!b) return err(400, "bad_json");
   const src = (b.settings && typeof b.settings === "object" ? b.settings : b) as Record<string, unknown>;
+  // alert number: "" switches alerts off
   if (src.alert_whatsapp !== undefined) {
-    if (typeof src.alert_whatsapp !== "string" || !/^\+\d{8,15}$/.test(src.alert_whatsapp.trim())) return err(400, "invalid_alert_whatsapp");
+    if (typeof src.alert_whatsapp !== "string" || (src.alert_whatsapp.trim() !== "" && !/^\+\d{8,15}$/.test(src.alert_whatsapp.trim()))) return err(400, "invalid_alert_whatsapp");
   }
+  let hoursToStore: Record<string, unknown> | null = null;
   if (src.business_hours !== undefined) {
     const h = src.business_hours as Record<string, unknown>;
+    const start = (h?.start ?? h?.from) as unknown;
+    const end = (h?.end ?? h?.to) as unknown;
+    const tz = typeof h?.tz === "string" ? h.tz.slice(0, 40) : "Asia/Kolkata";
+    const offset = Number.isInteger(h?.utcOffsetMin) ? (h.utcOffsetMin as number) : tz === "Asia/Kolkata" ? 330 : NaN;
     const okDays = Array.isArray(h?.days) && h.days.every((d) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6);
     const hm = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (!h || !okDays || typeof h.start !== "string" || typeof h.end !== "string" || !hm.test(h.start) || !hm.test(h.end) || h.start >= h.end || !Number.isInteger(h.utcOffsetMin)) return err(400, "invalid_business_hours");
+    if (!h || !okDays || typeof start !== "string" || typeof end !== "string" || !hm.test(start) || !hm.test(end) || start >= end || !Number.isInteger(offset)) return err(400, "invalid_business_hours");
+    hoursToStore = { tz, utcOffsetMin: offset, days: h.days, start, end };
   }
-  if (src.holidays !== undefined && !(Array.isArray(src.holidays) && src.holidays.length <= 200 && src.holidays.every((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)))) return err(400, "invalid_holidays");
+  let holidaysToStore: Array<{ date: string; label: string }> | null = null;
+  if (src.holidays !== undefined) {
+    if (!(Array.isArray(src.holidays) && src.holidays.length <= 200)) return err(400, "invalid_holidays");
+    holidaysToStore = [];
+    for (const x of src.holidays as unknown[]) {
+      const date = typeof x === "string" ? x : (x as { date?: unknown })?.date;
+      const label = typeof x === "string" ? "" : (x as { label?: unknown })?.label;
+      if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return err(400, "invalid_holidays");
+      holidaysToStore.push({ date, label: typeof label === "string" ? label.slice(0, 60) : "" });
+    }
+  }
+  let rulesToStore: Array<{ id: string; category: string; assigneeUid: string | null; priority: string | null }> | null = null;
+  if (src.automations !== undefined) {
+    if (!(Array.isArray(src.automations) && src.automations.length <= 20)) return err(400, "invalid_automations");
+    rulesToStore = [];
+    const seen = new Set<string>();
+    for (const r of src.automations as unknown[]) {
+      const o = (r ?? {}) as Record<string, unknown>;
+      if (!isCategory(o.category) || seen.has(o.category)) return err(400, "invalid_automations");
+      if (o.priority !== null && o.priority !== undefined && o.priority !== "" && !isPriority(o.priority)) return err(400, "invalid_automations");
+      let assignee: string | null = null;
+      if (typeof o.assigneeUid === "string" && o.assigneeUid) {
+        if (!(await resolveAssignee(env, o.assigneeUid))) return err(400, "invalid_assignee");
+        assignee = o.assigneeUid;
+      }
+      seen.add(o.category);
+      rulesToStore.push({ id: typeof o.id === "string" && o.id ? o.id.slice(0, 40) : o.category, category: o.category, assigneeUid: assignee, priority: typeof o.priority === "string" && o.priority ? o.priority : null });
+    }
+  }
   if (src.whatsapp_min_interval_ms !== undefined && !(Number.isInteger(src.whatsapp_min_interval_ms) && (src.whatsapp_min_interval_ms as number) >= 250 && (src.whatsapp_min_interval_ms as number) <= 60_000)) return err(400, "invalid_interval");
   if (src.alert_whatsapp !== undefined) await setSetting(env, "alert_whatsapp", (src.alert_whatsapp as string).trim());
-  if (src.business_hours !== undefined) {
-    const h = src.business_hours as { days: number[]; start: string; end: string; utcOffsetMin: number; tz?: string };
-    await setSetting(env, "business_hours", JSON.stringify({ tz: typeof h.tz === "string" ? h.tz.slice(0, 40) : "Asia/Kolkata", utcOffsetMin: h.utcOffsetMin, days: h.days, start: h.start, end: h.end }));
-  }
-  if (src.holidays !== undefined) await setSetting(env, "holidays", JSON.stringify(src.holidays));
+  if (hoursToStore) await setSetting(env, "business_hours", JSON.stringify(hoursToStore));
+  if (holidaysToStore) await setSetting(env, "holidays", JSON.stringify(holidaysToStore));
+  if (rulesToStore) await setSetting(env, "automations", JSON.stringify(rulesToStore));
   if (src.whatsapp_min_interval_ms !== undefined) {
     await env.DB_META.prepare("INSERT INTO queue_settings (name,value,updated_at) VALUES ('whatsapp_min_interval_ms',?1,?2) ON CONFLICT(name) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").bind(src.whatsapp_min_interval_ms, Date.now()).run();
   }
@@ -558,7 +663,8 @@ async function settingsRoute(req: Request, env: Env, staff: StaffCtx): Promise<R
 async function staffRoute(req: Request, env: Env, staff: StaffCtx, tail: string | null): Promise<Response> {
   if (req.method === "GET") {
     const rows = (await env.DB_META.prepare("SELECT email,uid,name,role,created_at FROM support_staff ORDER BY created_at, email").all<{ email: string; uid: string | null; name: string | null; role: string; created_at: number }>()).results ?? [];
-    return ok({ staff: rows.map((r) => ({ email: r.email, uid: r.uid, name: r.name, role: r.role, createdAt: r.created_at, active: !!r.uid })) });
+    const list = rows.map((r) => ({ id: r.email, email: r.email, uid: r.uid, name: r.name, role: r.role, createdAt: r.created_at, active: !!r.uid }));
+    return ok({ items: list, staff: list });
   }
   if (!isDeskAdmin(staff)) return err(403, "admin_only");
   if (req.method === "POST") {
@@ -614,7 +720,9 @@ async function queuesRoute(env: Env): Promise<Response> {
     const failed = await q(`SELECT COUNT(*) AS f FROM support_inbound WHERE status='failed' AND COALESCE(processed_at,created_at)>?1`, now - DAY_MS);
     return { queue: "support-inbound", kind: "inbound", waiting: n(waiting.w), donePerMin: Math.round((n(done.d) / 5) * 10) / 10, failed24h: n(failed.f), oldestAt: waiting.oldest ?? null, oldestAgeSec: waiting.oldest ? Math.round((now - n(waiting.oldest)) / 1000) : 0 };
   };
-  const queues = await Promise.all([email("priority"), email("bulk"), wa("priority"), wa("normal"), inbound()]);
+  const raw = await Promise.all([inbound(), email("priority"), email("bulk"), wa("priority"), wa("normal")]);
+  // the desk reads name / perMin / oldestSec (and shows its own description per name); the longer names stay for other readers
+  const queues = raw.map((x) => ({ ...x, name: x.queue, perMin: x.donePerMin, oldestSec: x.waiting > 0 ? x.oldestAgeSec : null, paused: false }));
   const sup = await q(`SELECT COUNT(*) AS c FROM email_suppressions`);
   // Cloudflare's own queue metrics need an account API token that is not bound to this worker: reported as unavailable, not guessed.
   return ok({ queues, suppressions: n(sup.c), cloudflare: null, asOf: now });
@@ -638,7 +746,11 @@ async function failedRoute(env: Env): Promise<Response> {
   ).bind(since).all<{ id: string; env_from: string | null; status: string; reason: string | null; attempts: number; at: number }>()).results ?? [])) ?? [];
   for (const r of ins) items.push({ id: `in:${r.id}`, kind: "inbound", status: r.status, to: r.env_from, subject: null, error: r.reason, attempts: n(r.attempts), at: r.at });
   items.sort((a, b) => b.at - a.at);
-  return ok({ failed: items.slice(0, 200) });
+  const top = items.slice(0, 200);
+  return ok({
+    failed: top,
+    items: top.map((i) => ({ id: i.id, queue: i.kind === "email" ? "email" : i.kind === "whatsapp" ? "whatsapp" : "support-inbound", what: i.subject ?? (i.to ? `To ${i.to}` : i.kind), reason: i.error ?? i.status, at: i.at, kind: i.kind, status: i.status, to: i.to, attempts: i.attempts })),
+  });
 }
 
 async function failedAction(env: Env, id: string, action: "retry" | "discard", staff: StaffCtx): Promise<Response> {
@@ -687,7 +799,8 @@ async function failedAction(env: Env, id: string, action: "retry" | "discard", s
 async function suppressionsRoute(req: Request, env: Env, staff: StaffCtx): Promise<Response> {
   if (req.method === "GET") {
     const rows = (await env.DB_META.prepare("SELECT email,reason,source,detail,created_at FROM email_suppressions ORDER BY created_at DESC LIMIT 200").all<{ email: string; reason: string; source: string; detail: string | null; created_at: number }>()).results ?? [];
-    return ok({ suppressions: rows.map((r) => ({ email: r.email, reason: r.reason, source: r.source, detail: r.detail, createdAt: r.created_at })) });
+    const list = rows.map((r) => ({ email: r.email, reason: r.reason, source: r.source, detail: r.detail, createdAt: r.created_at, at: r.created_at }));
+    return ok({ items: list, suppressions: list });
   }
   if (!isDeskAdmin(staff)) return err(403, "admin_only");
   let email = new URL(req.url).searchParams.get("email") ?? "";
@@ -720,10 +833,16 @@ async function reportsRoute(env: Env, url: URL): Promise<Response> {
   for (const r of rows) { const d = dayOf(r.created_at); (byDay[d] ??= { created: 0, solved: 0 }).created++; }
   for (const r of (await env.DB_META.prepare("SELECT solved_at FROM support_tickets WHERE solved_at>?1 LIMIT 20000").bind(from).all<{ solved_at: number }>()).results ?? []) { const d = dayOf(r.solved_at); (byDay[d] ??= { created: 0, solved: 0 }).solved++; }
   const breached = rows.filter((r) => r.first_response_due_at && ((r.first_responded_at ?? now) > r.first_response_due_at)).length;
+  const withDue = rows.filter((r) => r.first_response_due_at);
+  const openNow = rows.filter((r) => ["new", "open", "waiting", "on_hold"].includes(r.status)).length;
+  const dayList = Object.entries(byDay).sort(([a], [b]) => (a < b ? -1 : 1)).map(([day, v]) => ({ day, ...v }));
+  const catMap = tally((r) => r.category);
   return ok({
+    totals: { created: rows.length, solved: solvedInRange, open: openNow, firstReplyMinutes: median === null ? null : Math.round(median / 60_000), slaMetPct: withDue.length ? Math.round(((withDue.length - breached) / withDue.length) * 100) : null },
+    perDay: dayList,
     range, from, to: now, created: rows.length, solved: solvedInRange, openNow: rows.filter((r) => ["new", "open", "waiting", "on_hold"].includes(r.status)).length,
     firstResponseMedianMin: median === null ? null : Math.round(median / 60_000), firstResponseAvgMin: avg === null ? null : Math.round(avg / 60_000),
-    slaBreached: breached, byCategory: tally((r) => r.category), byPriority: tally((r) => r.priority), byChannel: tally((r) => r.channel), byStatus: tally((r) => r.status),
+    slaBreached: breached, byCategory: Object.entries(catMap).map(([category, count]) => ({ category, count })), byCategoryMap: catMap, byPriority: tally((r) => r.priority), byChannel: tally((r) => r.channel), byStatus: tally((r) => r.status),
     byAgent: tally((r) => r.assignee_uid ?? "unassigned"),
     byDay: Object.entries(byDay).sort(([a], [b]) => (a < b ? -1 : 1)).map(([day, v]) => ({ day, ...v })),
     categories: CATEGORIES,
@@ -733,7 +852,7 @@ async function reportsRoute(env: Env, url: URL): Promise<Response> {
 // ---------------------------------------------------------------------------------------------------------------------
 // dispatcher
 // ---------------------------------------------------------------------------------------------------------------------
-const WRITE_ROUTES = new Set(["reply", "note", "patch", "merge", "split", "spam", "block", "bulk", "viewing"]);
+const WRITE_ROUTES = new Set(["reply", "note", "patch", "merge", "split", "spam", "bulk", "viewing"]);
 
 export async function hfSupportAdminRoute(req: Request, env: Env, p: string): Promise<Response | null> {
   const prefix = "/api/admin/hf/support/";
@@ -749,7 +868,7 @@ export async function hfSupportAdminRoute(req: Request, env: Env, p: string): Pr
     if (parts.length === 1 && m === "GET") route = "list";
     else if (parts.length === 2) { a1 = parts[1]; route = m === "GET" ? "get" : m === "PATCH" ? "patch" : ""; }
     else if (parts.length === 3 && m === "POST" && ["reply", "note", "merge", "split", "spam", "viewing"].includes(parts[2])) { a1 = parts[1]; route = parts[2]; }
-  } else if (head === "block" && parts.length === 1 && m === "POST") route = "block";
+  } else if (head === "block" && parts.length === 1 && ["GET", "POST", "DELETE"].includes(m)) route = "block";
   else if (head === "bulk" && parts.length === 1 && m === "POST") route = "bulk";
   else if (head === "canned" && parts.length <= 2 && ["GET", "POST", "PUT", "DELETE"].includes(m)) { a1 = parts[1] ?? null; route = "canned"; }
   else if (head === "signature" && parts.length === 1 && (m === "GET" || m === "PUT")) route = "signature";
@@ -757,9 +876,12 @@ export async function hfSupportAdminRoute(req: Request, env: Env, p: string): Pr
   else if (head === "settings" && parts.length === 1 && (m === "GET" || m === "PUT")) route = "settings";
   else if (head === "staff" && parts.length <= 2 && ["GET", "POST", "DELETE"].includes(m)) { a1 = parts[1] ?? null; route = "staff"; }
   else if (head === "queues" && parts.length === 1 && m === "GET") route = "queues";
-  else if (head === "failed" && parts.length === 1 && m === "GET") route = "failed";
-  else if (head === "failed" && parts.length === 3 && m === "POST" && (parts[2] === "retry" || parts[2] === "discard")) { a1 = decodeURIComponent(parts[1]); a2 = parts[2]; route = "failed_action"; }
-  else if (head === "suppressions" && parts.length === 1 && (m === "GET" || m === "DELETE")) route = "suppressions";
+  // the desk calls queues/failed and queues/suppressions; the shorter paths stay as aliases
+  else if ((head === "failed" || (head === "queues" && parts[1] === "failed")) && parts.length === (head === "queues" ? 2 : 1) && m === "GET") route = "failed";
+  else if ((head === "failed" || (head === "queues" && parts[1] === "failed")) && parts.length === (head === "queues" ? 4 : 3) && m === "POST" && (parts[parts.length - 1] === "retry" || parts[parts.length - 1] === "discard")) {
+    a1 = decodeURIComponent(parts[head === "queues" ? 2 : 1]); a2 = parts[parts.length - 1]; route = "failed_action";
+  }
+  else if ((head === "suppressions" && parts.length === 1) || (head === "queues" && parts[1] === "suppressions" && parts.length === 2)) { if (m === "GET" || m === "DELETE") route = "suppressions"; }
   else if (head === "reports" && parts.length === 1 && m === "GET") route = "reports";
   if (!route) return null;
 
@@ -769,7 +891,7 @@ export async function hfSupportAdminRoute(req: Request, env: Env, p: string): Pr
     const staff = await resolveStaff(env, u.uid);
     if (!staff) return err(403, "forbidden");
     // viewer = read only: every mutating route is refused before it runs (signature GET, canned GET, staff GET etc. are reads)
-    const mutating = WRITE_ROUTES.has(route) || (route === "canned" && m !== "GET") || (route === "signature" && m !== "GET") || route === "signature_test"
+    const mutating = WRITE_ROUTES.has(route) || (route === "block" && m !== "GET") || (route === "canned" && m !== "GET") || (route === "signature" && m !== "GET") || route === "signature_test"
       || (route === "settings" && m !== "GET") || (route === "staff" && m !== "GET") || route === "failed_action" || (route === "suppressions" && m !== "GET");
     if (mutating && staff.role === "viewer") return err(403, "read_only");
     switch (route) {

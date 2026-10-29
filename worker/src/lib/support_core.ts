@@ -186,7 +186,9 @@ export function stripQuotedReply(text: string): string {
 export interface BusinessHours { utcOffsetMin: number; days: number[]; start: string; end: string; tz?: string }
 export const DEFAULT_HOURS: BusinessHours = { tz: "Asia/Kolkata", utcOffsetMin: 330, days: [1, 2, 3, 4, 5, 6], start: "10:00", end: "19:00" };
 
-export interface SupportSettings { alertWhatsapp: string | null; hours: BusinessHours; holidays: string[] }
+/** Desk automation: a new ticket in `category` goes to `assigneeUid` and/or gets `priority`. */
+export interface AutomationRule { id: string; category: string; assigneeUid: string | null; priority: string | null }
+export interface SupportSettings { alertWhatsapp: string | null; hours: BusinessHours; holidays: string[]; holidayLabels: Array<{ date: string; label: string }>; automations: AutomationRule[] }
 
 const parseJson = <T,>(s: string | null | undefined, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
 
@@ -207,10 +209,23 @@ export async function loadSettings(env: Env): Promise<SupportSettings> {
   try { rows = (await env.DB_META.prepare("SELECT key,value FROM support_settings").all<{ key: string; value: string }>()).results ?? []; } catch { /* defaults */ }
   const m = new Map(rows.map((r) => [r.key, r.value]));
   const hours = { ...DEFAULT_HOURS, ...parseJson<Partial<BusinessHours>>(m.get("business_hours"), {}) };
+  // holidays are stored as "YYYY-MM-DD" strings or { date, label } objects
+  const rawHolidays = parseJson<unknown[]>(m.get("holidays"), []);
+  const holidayLabels = (Array.isArray(rawHolidays) ? rawHolidays : [])
+    .map((x) => (typeof x === "string" ? { date: x, label: "" } : { date: String((x as { date?: unknown })?.date ?? ""), label: String((x as { label?: unknown })?.label ?? "") }))
+    .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+  const rawRules = parseJson<unknown[]>(m.get("automations"), []);
+  const automations = (Array.isArray(rawRules) ? rawRules : []).flatMap((r): AutomationRule[] => {
+    const o = (r ?? {}) as Record<string, unknown>;
+    if (typeof o.category !== "string") return [];
+    return [{ id: String(o.id ?? o.category), category: o.category, assigneeUid: typeof o.assigneeUid === "string" && o.assigneeUid ? o.assigneeUid : null, priority: typeof o.priority === "string" && o.priority ? o.priority : null }];
+  });
   return {
     alertWhatsapp: m.get("alert_whatsapp") || null,
     hours,
-    holidays: parseJson<string[]>(m.get("holidays"), []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)),
+    holidays: holidayLabels.map((h) => h.date),
+    holidayLabels,
+    automations,
   };
 }
 

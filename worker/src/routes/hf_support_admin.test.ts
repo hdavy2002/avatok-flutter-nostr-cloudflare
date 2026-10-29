@@ -222,3 +222,180 @@ describe("desk config", () => {
     }
   });
 });
+
+// ---- what the support desk (web) and the app actually call ----
+describe("desk client contract", () => {
+  const raw = async (t: TestEnv, uid: string, method: string, path: string, body: Uint8Array | string, headers: Record<string, string> = {}) => {
+    const res = await hfSupportRoute(new Request("https://api.test" + path, { method, body, headers: { "x-test-uid": uid, ...headers } }), t.env, path.split("?")[0]);
+    return { status: res!.status, json: (await res!.clone().json().catch(() => null)) as any, res: res! };
+  };
+
+  it("list carries counts, nextCursor and me; channel filter is case-insensitive; rows say Email/App", async () => {
+    const t = setup();
+    await mkTicket(t);
+    const r = await call(t, "agent1", "GET", `${A}/tickets?folder=unassigned&channel=App`);
+    expect(r.json.me).toEqual({ uid: "agent1", name: "Asha", role: "agent" });
+    expect(r.json).toHaveProperty("nextCursor", null);
+    expect(r.json.counts.unassigned).toBe(1);
+    expect(r.json.tickets).toHaveLength(1);
+    expect(r.json.tickets[0].channel).toBe("App");
+    expect((await call(t, "agent1", "GET", `${A}/tickets?folder=unassigned&channel=Email`)).json.tickets).toHaveLength(0);
+  });
+
+  it("detail marks internal notes as kind=note, support replies as kind=support with delivery, and gives readable events and viewer me flags", async () => {
+    const t = setup();
+    const n = (await mkTicket(t)).replace("HF-", "");
+    await call(t, "agent1", "POST", `${A}/tickets/${n}/note`, { text: "internal only" });
+    await call(t, "agent1", "POST", `${A}/tickets/${n}/reply`, { html: "<p>Hello</p>", text: "Hello" });
+    await call(t, "agent1", "PATCH", `${A}/tickets/${n}`, { priority: "urgent" });
+    await call(t, "agent1", "POST", `${A}/tickets/${n}/viewing`, {});
+    await call(t, "admin1", "POST", `${A}/tickets/${n}/viewing`, {});
+    const d = await call(t, "agent1", "GET", `${A}/tickets/${n}`);
+    const kinds = d.json.messages.map((m: any) => m.kind);
+    expect(kinds).toEqual(["customer", "system", "note", "support"]);
+    expect(d.json.messages[0].authorEmail).toBe("u1@example.com");
+    expect(d.json.messages[3].delivery).toMatch(/queued|sent/);
+    expect(d.json.ticket.channel).toBe("App");
+    expect(d.json.events.every((e: any) => typeof e.text === "string" && e.text.length > 0)).toBe(true);
+    expect(d.json.events.map((e: any) => e.text).join(" | ")).toContain("set the priority to urgent");
+    expect(d.json.viewers.map((v: any) => [v.uid, v.me]).sort()).toEqual([["admin1", false], ["agent1", true]]);
+    // customer panel names the desk reads
+    expect(d.json.customer).toMatchObject({ uid: "u1", email: "u1@example.com" });
+    expect(Array.isArray(d.json.customer.recentMoney)).toBe(true);
+  });
+
+  it("customer messages store the person's name, never 'You'", async () => {
+    const t = setup();
+    const n = (await mkTicket(t)).replace("HF-", "");
+    const row: any = t.db.prepare("SELECT author_name FROM support_messages WHERE ticket_number=? AND author_type='customer'").get(Number(n));
+    expect(row.author_name).not.toBe("You");
+    expect(row.author_name.length).toBeGreaterThan(0);
+  });
+
+  it("block list, unblock by query (email and domain)", async () => {
+    const t = setup();
+    await call(t, "agent1", "POST", `${A}/block`, { email: "bad@example.com" });
+    await call(t, "agent1", "POST", `${A}/block`, { domain: "spamco.biz" });
+    const list = await call(t, "viewer1", "GET", `${A}/block`);
+    expect(list.status).toBe(200);
+    expect(list.json.items.map((i: any) => i.email ?? i.domain).sort()).toEqual(["bad@example.com", "spamco.biz"]);
+    expect((await call(t, "viewer1", "DELETE", `${A}/block?email=bad@example.com`)).status).toBe(403);
+    expect((await call(t, "agent1", "DELETE", `${A}/block?email=bad@example.com`)).json.ok).toBe(true);
+    expect((await call(t, "agent1", "DELETE", `${A}/block?domain=spamco.biz`)).json.ok).toBe(true);
+    expect((await call(t, "agent1", "GET", `${A}/block`)).json.items).toEqual([]);
+  });
+
+  it("queues/failed and queues/suppressions aliases, with the keys the desk reads", async () => {
+    const t = setup();
+    t.db.prepare("INSERT INTO email_suppressions (email,reason,source,created_at) VALUES ('gone@example.com','bounce','test',?)").run(Date.now());
+    const q = await call(t, "agent1", "GET", `${A}/queues`);
+    expect(q.json.queues.map((x: any) => x.name)).toEqual(["support-inbound", "email-priority", "email-bulk", "whatsapp-priority", "whatsapp-normal"]);
+    expect(q.json.queues[0]).toHaveProperty("perMin");
+    expect(q.json.queues[0]).toHaveProperty("oldestSec");
+    expect((await call(t, "agent1", "GET", `${A}/queues/failed`)).json).toHaveProperty("items");
+    const sup = await call(t, "agent1", "GET", `${A}/queues/suppressions`);
+    expect(sup.json.items[0].email).toBe("gone@example.com");
+    expect((await call(t, "agent1", "DELETE", `${A}/queues/suppressions?email=gone@example.com`)).status).toBe(403); // admin only
+    expect((await call(t, "admin1", "DELETE", `${A}/queues/suppressions?email=gone@example.com`)).json.ok).toBe(true);
+    expect((await call(t, "admin1", "POST", `${A}/queues/failed/email%3Anope/retry`, {})).status).toBe(404);
+  });
+
+  it("signature upload works cross-origin (?purpose=signature&name=) and returns a public url that loads without a sign-in", async () => {
+    const t = setup();
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9, 9]);
+    const up = await raw(t, "agent1", "POST", "/api/hf/support/attachments?purpose=signature&name=logo.png", png, { "content-type": "image/png" });
+    expect(up.status).toBe(201);
+    expect(up.json.url).toMatch(/^https:\/\/api\.hellofraands\.com\/api\/hf\/support\/public\/signature\/[0-9a-f-]{36}\.png$/);
+    // public: no x-test-uid header at all
+    const path = new URL(up.json.url).pathname;
+    const img = await hfSupportRoute(new Request("https://api.test" + path), t.env, path);
+    expect(img!.status).toBe(200);
+    expect(img!.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await img!.arrayBuffer())).toEqual(png);
+    // customers cannot upload signature logos, and svg / other types are refused
+    expect((await raw(t, "u1", "POST", "/api/hf/support/attachments?purpose=signature&name=l.png", png, { "content-type": "image/png" })).status).toBe(403);
+    expect((await raw(t, "agent1", "POST", "/api/hf/support/attachments?purpose=signature&name=l.svg", "<svg/>", { "content-type": "image/svg+xml" })).status).toBe(400);
+    // only signature images are public
+    const other = await hfSupportRoute(new Request("https://api.test/api/hf/support/public/signature/..%2Fsecret.png"), t.env, "/api/hf/support/public/signature/..%2Fsecret.png");
+    expect(other!.status).toBe(404);
+  });
+
+  it("signature test uses the posted html", async () => {
+    const t = setup();
+    const r = await call(t, "agent1", "POST", `${A}/signature/test`, { html: "<p>Draft sig XYZ</p>", useFor: "team" });
+    expect(r.json.ok).toBe(true);
+    const row: any = t.db.prepare("SELECT body_r2_key FROM email_outbox WHERE outbox_key LIKE 'support-sigtest:%'").get();
+    expect(await (await t.r2.get(row.body_r2_key))!.text()).toContain("Draft sig XYZ");
+  });
+
+  it("settings take the desk's shapes (from/to, holiday objects, automations, empty alert number) and partial keys", async () => {
+    const t = setup();
+    const put = await call(t, "admin1", "PUT", `${A}/settings`, {
+      business_hours: { days: [1, 2, 3], from: "09:00", to: "17:30", tz: "Asia/Kolkata" },
+      holidays: [{ date: "2026-11-08", label: "Diwali" }],
+    });
+    expect(put.json.settings.business_hours).toMatchObject({ days: [1, 2, 3], from: "09:00", to: "17:30", tz: "Asia/Kolkata" });
+    expect(put.json.settings.holidays).toEqual([{ date: "2026-11-08", label: "Diwali" }]);
+    expect(put.json.settings.alert_whatsapp).toBe("+917817058560"); // untouched by a partial PUT
+    expect((await call(t, "admin1", "PUT", `${A}/settings`, { alert_whatsapp: "" })).json.settings.alert_whatsapp).toBe("");
+    expect((await call(t, "admin1", "GET", `${A}/settings`)).json.settings.automations).toEqual([]);
+    expect((await call(t, "admin1", "PUT", `${A}/settings`, { automations: [{ id: "a", category: "nope", assigneeUid: null, priority: null }] })).status).toBe(400);
+    expect((await call(t, "admin1", "PUT", `${A}/settings`, { automations: [{ id: "a", category: "wallet", assigneeUid: "ghost", priority: null }] })).status).toBe(400);
+  });
+
+  it("automations assign and prioritise new tickets by category", async () => {
+    const t = setup();
+    const put = await call(t, "admin1", "PUT", `${A}/settings`, { automations: [
+      { id: "r1", category: "wallet", assigneeUid: "agent1", priority: "urgent" },
+      { id: "r2", category: "app", assigneeUid: null, priority: "low" },
+    ] });
+    expect(put.json.ok).toBe(true);
+    const w = (await mkTicket(t)).replace("HF-", ""); // wallet
+    expect(t.db.prepare("SELECT assignee_uid,priority FROM support_tickets WHERE number=?").get(Number(w))).toEqual({ assignee_uid: "agent1", priority: "urgent" });
+    const a = (await customer(t, "u1", "POST", "/api/hf/support/tickets", { category: "app", subject: "App is slow", message: "it hangs on the home screen" })).json.ticket.number.replace("HF-", "");
+    expect(t.db.prepare("SELECT assignee_uid,priority FROM support_tickets WHERE number=?").get(Number(a))).toEqual({ assignee_uid: null, priority: "low" });
+    // an assigned ticket leaves Unassigned and shows under My tickets
+    expect((await call(t, "agent1", "GET", `${A}/tickets?folder=mine`)).json.tickets.map((x: any) => x.number)).toContain("HF-" + w);
+  });
+
+  it("bulk: assign (uid, and empty to unassign), solve, close, priority, category, spam", async () => {
+    const t = setup();
+    const a = (await mkTicket(t, "u1", "one")), b = (await mkTicket(t, "u2", "two"));
+    const nums = [a, b];
+    const st = (n: string) => t.db.prepare("SELECT status,assignee_uid,priority,category FROM support_tickets WHERE number=?").get(Number(n.replace("HF-", ""))) as any;
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: nums, action: "assign", value: "agent1" });
+    expect(st(a).assignee_uid).toBe("agent1");
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: nums, action: "assign", value: "" });
+    expect(st(a).assignee_uid).toBeNull();
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: nums, action: "priority", value: "low" });
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: nums, action: "category", value: "bookings" });
+    expect(st(b)).toMatchObject({ priority: "low", category: "bookings" });
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: [a], action: "solve" });
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: [a], action: "close" });
+    await call(t, "agent1", "POST", `${A}/bulk`, { numbers: [b], action: "spam" });
+    expect([st(a).status, st(b).status]).toEqual(["closed", "spam"]);
+  });
+
+  it("canned replies: the desk sends plain text in body and reads items[].body back", async () => {
+    const t = setup();
+    const c = await call(t, "agent1", "POST", `${A}/canned`, { title: "Refund", body: "Hi {customer_name},\n\nRefunds take 5 days." });
+    expect(c.status).toBe(201);
+    const list = await call(t, "agent1", "GET", `${A}/canned`);
+    expect(list.json.items[0].body).toContain("Hi {customer_name},");
+    expect(list.json.items[0].body).toContain("Refunds take 5 days.");
+    await call(t, "agent1", "PUT", `${A}/canned/${c.json.id}`, { title: "Refund v2", body: "Updated text" });
+    expect((await call(t, "agent1", "GET", `${A}/canned`)).json.items[0]).toMatchObject({ title: "Refund v2", body: "Updated text" });
+  });
+
+  it("staff list has items with id, reports have totals/perDay/byCategory[]", async () => {
+    const t = setup();
+    await mkTicket(t);
+    const s = await call(t, "agent1", "GET", `${A}/staff`);
+    expect(s.json.items.find((x: any) => x.email === "agent@example.com")).toMatchObject({ id: "agent@example.com", uid: "agent1", role: "agent" });
+    expect((await call(t, "admin1", "DELETE", `${A}/staff/${encodeURIComponent("viewer@example.com")}`)).json.ok).toBe(true);
+    const r = await call(t, "agent1", "GET", `${A}/reports?range=7d`);
+    expect(r.json.totals).toMatchObject({ created: 1, solved: 0, open: 1 });
+    expect(Array.isArray(r.json.perDay)).toBe(true);
+    expect(r.json.byCategory).toEqual([{ category: "wallet", count: 1 }]);
+  });
+});
