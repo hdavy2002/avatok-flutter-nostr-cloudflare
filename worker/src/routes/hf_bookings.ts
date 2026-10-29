@@ -10,6 +10,7 @@ import { readConfig } from "./config";
 import { rateLimit } from "../money";
 import { isClosing } from "../lib/hf_exit";
 import { modBlock, hfModStatus } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
+import { photosRequiredBlock } from "../lib/hf_user_photos"; // [HF-PHOTO-GATE-API]
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { womenAadhaarOnlyOn, womenLaneRequiredExtra } from "../lib/hf_lanes"; // [HF-INTRO-W2]
 import { hasLaneAccess, isBlockedEitherWay, releaseHost, claimHost, callsConfigured } from "../lib/hf_calls_store";
@@ -311,6 +312,7 @@ async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow,
   if (host.status !== "live" || host.uid === uid) return err(409, "host_unavailable");
   if (await isClosing(env, uid) || await isClosing(env, host.uid)) return err(409, "account_closing");
   { const blocked = await modBlock(env, uid, "booking"); if (blocked) return blocked; if ((await hfModStatus(env, host.uid)).status !== "active") return err(409, "host_unavailable"); } // [HF-CALL-SAFETY-BE]
+  { const pg = await photosRequiredBlock(env, uid, "booking"); if (pg) return pg; } // [HF-PHOTO-GATE-API]
   if (!(await verifiedWhatsAppNumber(env, uid)) || !(await verifiedWhatsAppNumber(env, host.uid))) return err(403, "not_verified");
   if (await isBlockedEitherWay(env, uid, host.uid)) return err(409, "host_unavailable");
   if (host.women_lane === 1 && !(await hasLaneAccess(env, uid, "women"))) return err(403, "lane_required", await womenLaneRequiredExtra(env, uid));

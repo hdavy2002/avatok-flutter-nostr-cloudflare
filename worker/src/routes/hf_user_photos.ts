@@ -14,7 +14,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
-import { validateUserPhoto, storeCheckedPhoto, myPhotos, USER_PHOTO_MAX_BYTES, type UserPhotoKind } from "../lib/hf_user_photos";
+import { validateUserPhoto, storeCheckedPhoto, myPhotos, missingPhotosFor, USER_PHOTO_MAX_BYTES, type UserPhotoKind } from "../lib/hf_user_photos";
 import { askClef, decidePhoto, moderationQueueStats } from "../lib/hf_moderation";
 
 const APP = BRAND.slug;
@@ -73,7 +73,7 @@ export async function hfUserPhotosRoute(req: Request, env: Env, p: string, ctx?:
       if (!chk.ok) return err(chk.status, chk.error, { message: chk.message });
       try {
         const r = await askClef(env, "profile_photo", bytes!, chk.mime);
-        return json({ ok: true, probs: r.probs, decision: decidePhoto(r.probs), model: r.model, inTokens: r.inTokens, ms: r.ms }, 200, NO_STORE);
+        return json({ ok: true, probs: r.probs, decision: decidePhoto(r.probs, "profile_photo"), model: r.model, inTokens: r.inTokens, ms: r.ms }, 200, NO_STORE);
       } catch (e) {
         return err(502, "clef_failed", { message: String(e).slice(0, 200) });
       }
@@ -81,7 +81,10 @@ export async function hfUserPhotosRoute(req: Request, env: Env, p: string, ctx?:
     return err(405, "method_not_allowed");
   }
   if (!(await photoModerationOn(env))) return err(404, "not_enabled");
-  if (p === "/api/hf/me/photos" && m === "GET") return json({ ok: true, photos: await myPhotos(env, u.uid) }, 200, NO_STORE);
+  if (p === "/api/hf/me/photos" && m === "GET") {
+    const missing = await missingPhotosFor(env, u.uid).catch(() => [] as ("profile" | "cover")[]);
+    return json({ ok: true, photos: await myPhotos(env, u.uid), photos_complete: missing.length === 0, photos_missing: missing }, 200, NO_STORE);
+  }
   if ((p === "/api/hf/me/photo" || p === "/api/hf/me/cover") && m === "PUT") return acceptCheckedPhoto(req, env, ctx, u.uid, p.endsWith("/cover") ? "cover" : "profile");
   return err(405, "method_not_allowed");
 }

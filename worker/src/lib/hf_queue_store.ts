@@ -234,7 +234,9 @@ export async function hostQueueView(env: Env, hostUid: string): Promise<HostQueu
   let i = 0;
   for (const r of rows) {
     const u = await env.DB_META.prepare("SELECT display_name FROM users WHERE uid=?1").bind(r.fan_uid).first<{ display_name: string | null }>().catch(() => null);
-    entries.push({ position: ++i, firstName: queueFirstName(u?.display_name, "A fan"), joinedAt: Number(r.joined_at) });
+    const pub = await env.DB_META.prepare("SELECT handle, avatar_url FROM users WHERE uid=?1").bind(r.fan_uid).first<{ handle: string | null; avatar_url: string | null }>().catch(() => null);
+    const name = u?.display_name?.trim() || null; // [HF-PHOTO-GATE-API] name / handle / avatar for the influencer's queue list; never a phone number
+    entries.push({ position: ++i, firstName: queueFirstName(u?.display_name, "A fan"), joinedAt: Number(r.joined_at), name: name ?? queueFirstName(u?.display_name, "A fan"), handle: pub?.handle ?? null, avatar_url: pub?.avatar_url ?? null });
   }
   return { ok: true, waiting: entries.length, paused: Number(host?.queue_paused ?? 0) === 1, entries };
 }

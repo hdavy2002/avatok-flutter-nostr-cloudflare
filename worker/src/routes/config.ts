@@ -2230,6 +2230,7 @@ export interface PlatformConfig {
   hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 50 (HF-WIRE-14), max 200
   hfIntroOnboardingEnabled: boolean; // [HF-INTRO-W1] HF-INTRO-VIDEO-1: new influencer onboarding (recorded intro video, categories, call option) + human approval + admin review + WhatsApp on every decision. Public. Default false. Boolean -> NOT in numericKeys.
   hfIntroReelsEnabled: boolean; // [HF-INTRO-W1] HF-INTRO-VIDEO-1: Reels play ONLY approved intro videos (option A always, option B only while Online); the old YouTube/Instagram embed feed is off. Public. Default false. Boolean -> NOT in numericKeys.
+  hfPhotosRequiredEnabled: boolean; // [HF-PHOTO-GATE-API] when on, no call / booking / queue join without an approved profile photo AND cover photo (403 photos_required). Default false. Boolean -> NOT in numericKeys.
   hfPhotoModerationEnabled: boolean; // [HF-MOD-2] HF-MOD-4: every profile / cover / influencer photo is checked by Clef-flash through the hf-mod-photo queue before it is shown; fans get PUT /api/hf/me/photo|cover. Default false.
   hfIntroModerationEnabled: boolean; // [HF-MOD-2] HF-MOD-5: intro videos are checked by Clef-omni (hf-mod-video queue) and the admin sees the verdict. Default false.
   hfReelEngageEnabled: boolean; // [HF-REEL-ENGAGE-API-1] HF-REEL-53: likes + comments on every reel (routes /api/hf/reels/:id/like|comments, feed likeCounts/commentCounts/likedByMe). Default false.
@@ -3048,6 +3049,7 @@ const DEFAULTS: PlatformConfig = {
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
   hfIntroOnboardingEnabled: false, // [HF-INTRO-W1] dark until the owner reads the summary and migrations 2026-10-28-hf-intro-video-*.sql are applied
   hfIntroReelsEnabled: false, // [HF-INTRO-W1] dark; turn on only after the first intro videos are approved
+  hfPhotosRequiredEnabled: false, // [HF-PHOTO-GATE-API] dark until the app + site show the add-photos prompt
   hfPhotoModerationEnabled: false, // [HF-MOD-2] off until migration 2026-10-29-hf-moderation.sql is applied and the hf-mod-* queues exist
   hfIntroModerationEnabled: false, // [HF-MOD-2] Phase 3 (intro video check) not wired yet
   hfReelEngageEnabled: false, // [HF-REEL-ENGAGE-API-1] stays off until migration 2026-10-24-hf-reel-engage.sql is applied

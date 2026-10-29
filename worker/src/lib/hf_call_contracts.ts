@@ -69,7 +69,8 @@ export interface HostQueueView {
   ok: true;
   waiting: number;
   paused: boolean;
-  entries: Array<{ position: number; firstName: string; joinedAt: number }>;
+  entries: Array<{ position: number; firstName: string; joinedAt: number; name: string; handle: string | null; avatar_url: string | null }>; // name/handle/avatar_url added [HF-PHOTO-GATE-API] (additive)
+  not_live?: boolean; // [HF-PHOTO-GATE-API] GET for a host whose profile is not live yet: an empty queue, not an error
 }
 
 /** GET /api/hf/queue/me */

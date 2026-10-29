@@ -44,14 +44,20 @@ export interface VideoDecision { status: "passed" | "flagged" | "needs_look"; re
 
 const p = (probs: Probs, k: string) => (typeof probs[k] === "number" && Number.isFinite(probs[k]) ? Math.min(1, Math.max(0, probs[k])) : 0);
 
-/** Pure. A photo is refused on nudity / sexual / a minor in a sexual way / gore. No face never refuses (fans may use any picture). */
-export function decidePhoto(probs: Probs): PhotoDecision {
+/** Kinds whose picture must show a real face (owner rule 2026-10-29): the profile photo and the influencer photo. Cover / poster may be anything. */
+export const FACE_REQUIRED_KINDS: readonly ModKind[] = ["profile_photo", "host_photo"];
+
+/** Pure. A photo is refused on nudity / sexual / a minor in a sexual way / gore, and (profile + host photos only) when no face is clearly visible.
+ *  `kind` omitted = no face rule (cover-style). */
+export function decidePhoto(probs: Probs, kind?: ModKind): PhotoDecision {
   const reasons: string[] = [];
   if (p(probs, "minor_sexual") >= T.minor_sexual) reasons.push("minor_sexual");
   if (p(probs, "nudity") >= T.nudity) reasons.push("nudity");
   if (p(probs, "sexual") >= T.sexual) reasons.push("sexual");
   if (p(probs, "gore") >= T.gore) reasons.push("gore");
-  return { status: reasons.length ? "refused" : "passed", reasons, noFace: p(probs, "face") < T.face };
+  const noFace = p(probs, "face") < T.face;
+  if (noFace && kind && FACE_REQUIRED_KINDS.includes(kind)) reasons.push("no_face");
+  return { status: reasons.length ? "refused" : "passed", reasons, noFace };
 }
 
 /** Pure. A video is never refused here: the admin decides. Flagged > needs a look > passed. */
@@ -70,8 +76,12 @@ export function decideVideo(probs: Probs): VideoDecision {
 
 /** The sentence the person sees when a photo is refused. Plain, never accusing a minor. */
 export function refusalMessage(reasons: string[]): string {
-  if (reasons.includes("minor_sexual") || reasons.includes("nudity") || reasons.includes("sexual")) return "This photo can't be used because it shows nudity or sexual content. Please choose another photo.";
+  // Most serious first. minor_sexual stays generic: it never names or accuses anyone.
+  if (reasons.includes("minor_sexual")) return "This photo can't be used because it breaks our safety rules. Please choose another photo.";
+  if (reasons.includes("nudity")) return "This photo can't be used because it shows nudity. Please choose another photo.";
+  if (reasons.includes("sexual")) return "This photo can't be used because it shows sexual content. Please choose another photo.";
   if (reasons.includes("gore")) return "This photo can't be used because it shows violence or injury. Please choose another photo.";
+  if (reasons.includes("no_face")) return "We couldn't see a clear face in this photo. Your profile photo must show your face — please choose a clear photo of your face.";
   return "This photo can't be used. Please choose another photo.";
 }
 
@@ -194,7 +204,7 @@ export async function runModerationJob(env: Env, jobId: string, attempt: number)
     if (d.status === "flagged") where = await askWhere(env, bytes, job.mime, d.reasons).catch(() => ({ where: null, whereConfidence: null }));
     return finish(env, job, d.status, d.reasons, { probs: r.probs, model: r.model, inTokens: r.inTokens, ms: r.ms, childSafety: d.childSafety, ...where });
   }
-  const d = decidePhoto(r.probs);
+  const d = decidePhoto(r.probs, job.kind);
   return finish(env, job, d.status, d.reasons, { probs: r.probs, model: r.model, inTokens: r.inTokens, ms: r.ms, noFace: d.noFace });
 }
 

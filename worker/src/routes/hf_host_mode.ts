@@ -172,6 +172,9 @@ async function queueRoute(req: Request, env: Env, _p: string): Promise<Response>
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
   const host = await env.DB_META.prepare("SELECT uid, status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<HostRow>();
+  // [HF-PHOTO-GATE-API] GET for a host who is not live yet (pending check / no row) is an empty queue, not an error: the app's Settings row said
+  // "We could not load your queue" for an influencer still waiting for approval. PUT (pause) still needs a live profile.
+  if (req.method === "GET" && (!host || host.status !== "live")) return json({ ok: true, waiting: 0, paused: false, entries: [], not_live: true }, 200, NO_STORE);
   if (!host || host.status !== "live") return err(409, "not_live", "Your profile isn't live yet.");
   if (req.method === "GET") return json(await hostQueueView(env, u.uid), 200, NO_STORE);
   const b = await readJson(req);

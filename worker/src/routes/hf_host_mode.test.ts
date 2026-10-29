@@ -273,10 +273,19 @@ describe("queue pause endpoints", () => {
     try { raw().prepare("INSERT INTO users(uid,display_name,created_at,updated_at) VALUES('f1','Ravi Kumar',1,1)").run(); } catch { /* shape differs */ }
     raw().prepare("INSERT INTO hf_call_queue(id,host_uid,fan_uid,seq,status,joined_at,updated_at) VALUES('q1',?1,'f1',1,'waiting',5,5)").run(H);
     const g = await (await q("GET")).json();
-    expect(g).toEqual({ ok: true, waiting: 1, paused: false, entries: [{ position: 1, firstName: "Ravi", joinedAt: 5 }] });
+    expect(g).toEqual({ ok: true, waiting: 1, paused: false, entries: [{ position: 1, firstName: "Ravi", joinedAt: 5, name: "Ravi Kumar", handle: null, avatar_url: null }] });
     const p = await (await q("PUT", { paused: true })).json();
     expect(p.paused).toBe(true);
     expect(row().queue_paused).toBe(1);
     expect((await q("PUT", { paused: "x" })).status).toBe(400);
+  });
+  it("[HF-PHOTO-GATE-API] GET for an influencer who is not live yet is an empty queue, not an error; PUT still needs a live profile", async () => {
+    st.cfg = { ...ON, hfCallQueueEnabled: true };
+    raw().prepare("UPDATE hf_hosts SET status='pending_check' WHERE uid=?1").run(H);
+    const q = (m, b) => hfHostModeRoute(req(m, "/api/hosts/me/queue", b), env, "/api/hosts/me/queue");
+    const r = await q("GET");
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, waiting: 0, paused: false, entries: [], not_live: true });
+    expect((await q("PUT", { paused: true })).status).toBe(409);
   });
 });

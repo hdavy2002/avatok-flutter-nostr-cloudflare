@@ -261,15 +261,21 @@ async function blockFromProfile(req: Request, env: Env, uid: string): Promise<Re
   return json({ ok: true, key: await blockKey(uid, other) }, 200, NO_STORE);
 }
 const blockKey = async (blocker: string, blocked: string) => (await sha256Hex(`hfblk:${blocker}:${blocked}`)).toLowerCase().slice(0, 20);
+/** handle + checked profile photo of a blocked person. Its own query so a users table without these columns never breaks the list. */
+async function blockedPublic(env: Env, uid: string): Promise<{ handle: string | null; avatar_url: string | null }> {
+  const r = await env.DB_META.prepare("SELECT handle, avatar_url FROM users WHERE uid=?1").bind(uid).first<{ handle: string | null; avatar_url: string | null }>().catch(() => null);
+  return { handle: r?.handle ?? null, avatar_url: r?.avatar_url ?? null };
+}
 async function listBlocks(env: Env, uid: string) {
   const rows = (await env.DB_META.prepare(
     `SELECT b.blocked_uid AS blocked, b.created_at AS at, h.slug AS slug, h.display_name AS host_name, u.display_name AS user_name
        FROM hf_blocks b LEFT JOIN hf_hosts h ON h.uid=b.blocked_uid LEFT JOIN users u ON u.uid=b.blocked_uid
       WHERE b.blocker_uid=?1 ORDER BY b.created_at DESC LIMIT 200`,
-  ).bind(uid).all<{ blocked: string; at: number; slug: string | null; host_name: string | null; user_name: string | null }>()).results ?? [];
+  ).bind(uid).all<{ blocked: string; at: number; slug: string | null; host_name: string | null; user_name: string | null}>()).results ?? [];
   return Promise.all(rows.map(async (r) => ({
     key: await blockKey(uid, r.blocked), blocked: r.blocked,
     name: r.host_name?.trim() || callerHandle(r.user_name), slug: r.slug ?? null, at: Number(r.at),
+    ...(await blockedPublic(env, r.blocked)), // [HF-PHOTO-GATE-API] additive: handle + avatar_url
   })));
 }
 

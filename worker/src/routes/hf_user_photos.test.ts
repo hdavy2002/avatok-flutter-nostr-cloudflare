@@ -67,6 +67,22 @@ describe("policy v1 (pure)", () => {
     expect(decidePhoto({ ...CLEAN, gore: 0.85 })).toMatchObject({ status: "refused", reasons: ["gore"] });
     expect(decidePhoto({ ...CLEAN, face: 0.1 })).toMatchObject({ status: "passed", noFace: true });
   });
+  it("profile + host photos need a face; cover and poster may be anything", () => {
+    const noFace = { ...CLEAN, face: 0.1 };
+    expect(decidePhoto(noFace, "profile_photo")).toMatchObject({ status: "refused", reasons: ["no_face"], noFace: true });
+    expect(decidePhoto(noFace, "host_photo")).toMatchObject({ status: "refused", reasons: ["no_face"] });
+    expect(decidePhoto(noFace, "cover_photo")).toMatchObject({ status: "passed" });
+    expect(decidePhoto(noFace, "intro_poster")).toMatchObject({ status: "passed" });
+    expect(decidePhoto({ ...noFace, gore: 0.9 }, "cover_photo")).toMatchObject({ status: "refused", reasons: ["gore"] });
+    expect(decidePhoto(CLEAN, "profile_photo")).toMatchObject({ status: "passed" });
+  });
+  it("refusal sentences are specific, most serious first, and never accuse a minor", () => {
+    expect(refusalMessage(["no_face"])).toBe("We couldn't see a clear face in this photo. Your profile photo must show your face — please choose a clear photo of your face.");
+    expect(refusalMessage(["sexual"])).toMatch(/shows sexual content/);
+    expect(refusalMessage(["gore"])).toMatch(/violence or injury/);
+    expect(refusalMessage(["no_face", "nudity"])).toMatch(/shows nudity/);
+    expect(refusalMessage(["nudity", "minor_sexual"])).not.toMatch(/minor|child|under|nudity|sexual/i);
+  });
   it("video: flagged beats needs-a-look; child safety is marked", () => {
     const ok = { face: 0.9, nudity: 0.0, sexual: 0.0, minor: 0.05, quality: 0.1 };
     expect(decideVideo(ok)).toMatchObject({ status: "passed" });
@@ -79,7 +95,7 @@ describe("policy v1 (pure)", () => {
     expect(readNoulAnswers({ nudity: { noul: 0.1 } }, ["nudity", "sexual"])).toBeNull();
     expect(readNoulAnswers(null, ["nudity"])).toBeNull();
     expect([1, 2, 3, 4, 5, 6].map(retryDelaySeconds)).toEqual([30, 60, 120, 240, 480, 480]);
-    expect(refusalMessage(["nudity"])).toMatch(/nudity or sexual content/);
+    expect(refusalMessage(["nudity"])).toMatch(/shows nudity/);
   });
   it("validates photos: 4 MB cap (Clef limit), bytes sniffed, minimum sizes per kind", () => {
     expect(validateUserPhoto("profile", "image/jpeg", jpeg(400, 400))).toMatchObject({ ok: true });
@@ -187,5 +203,15 @@ describe("influencer photo with the switch on", () => {
     expect(media[0]).toMatchObject({ id: "old", status: "superseded" });
     expect(media[1].status).toBe("active");
     expect(media[1].r2_key).toMatch(/^hf\/hosts\/inf1\/profile-\d+\.jpg$/);
+  });
+});
+
+describe("[HF-PHOTO-GATE-API] required-photos rule (pure)", () => {
+  it("needs a profile (or influencer) photo AND a cover", async () => {
+    const { missingPhotos } = await import("../lib/hf_user_photos");
+    expect(missingPhotos(new Set())).toEqual(["profile", "cover"]);
+    expect(missingPhotos(new Set(["profile"]))).toEqual(["cover"]);
+    expect(missingPhotos(new Set(["host", "cover"]))).toEqual([]);
+    expect(missingPhotos(new Set(["profile", "cover"]))).toEqual([]);
   });
 });

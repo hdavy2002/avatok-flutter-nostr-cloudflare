@@ -5,6 +5,10 @@
 import type { Env } from "../types";
 import { parseImageInfo, IMAGE_EXT, type ImageMime } from "./studio_logic";
 import { mediaUrl } from "./hf_host_store";
+import { json } from "../util";
+import { track } from "../hooks";
+import { BRAND } from "./brand";
+import { readConfig } from "../routes/config";
 import { enqueueModeration, onModerationResult, refusalMessage, handleModerationQueue, type ModJobRow, type ModKind } from "./hf_moderation";
 
 export type UserPhotoKind = "profile" | "cover" | "host";
@@ -115,3 +119,35 @@ export async function myPhotos(env: Env, uid: string): Promise<Record<"profile" 
 }
 
 export const userPhotoKindOf = (k: ModKind) => KIND_OF[k] ?? null;
+
+// ── [HF-PHOTO-GATE-API] no call, booking or queue join without an approved profile photo AND cover photo ─────────────────────────────────────
+export type MissingPhoto = "profile" | "cover";
+export const PHOTOS_REQUIRED_MESSAGE = "Please add your profile photo and cover photo before you call or book.";
+
+/** Pure. An active profile photo (or an active influencer photo, which counts as the profile) plus an active cover. */
+export function missingPhotos(active: ReadonlySet<string>): MissingPhoto[] {
+  const out: MissingPhoto[] = [];
+  if (!active.has("profile") && !active.has("host")) out.push("profile");
+  if (!active.has("cover")) out.push("cover");
+  return out;
+}
+
+export async function missingPhotosFor(env: Env, uid: string): Promise<MissingPhoto[]> {
+  const rows = (await env.DB_META.prepare("SELECT DISTINCT kind FROM hf_user_photos WHERE uid=?1 AND status='active'").bind(uid).all<{ kind: string }>()).results ?? [];
+  return missingPhotos(new Set(rows.map((r) => r.kind)));
+}
+
+export async function hasRequiredPhotos(env: Env, uid: string): Promise<boolean> {
+  return (await missingPhotosFor(env, uid)).length === 0;
+}
+
+/** null = allowed. With hfPhotosRequiredEnabled on and a photo missing: 403 photos_required. Fails open on a read error (never locks everyone out). */
+export async function photosRequiredBlock(env: Env, uid: string, action: "call" | "booking" | "queue"): Promise<Response | null> {
+  try {
+    if ((await readConfig(env)).hfPhotosRequiredEnabled !== true) return null;
+    const missing = await missingPhotosFor(env, uid);
+    if (!missing.length) return null;
+    void track(env, uid, "hf_photo_gate_block", BRAND.slug, { area: "hf_photo_gate", action, missing: missing.join(",") }).catch(() => undefined);
+    return json({ ok: false, error: "photos_required", message: PHOTOS_REQUIRED_MESSAGE, missing }, 403, { "cache-control": "no-store" });
+  } catch { return null; }
+}

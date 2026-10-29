@@ -27,6 +27,7 @@ import { personName } from "../lib/admin2_people_data";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { modBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
+import { photosRequiredBlock } from "../lib/hf_user_photos"; // [HF-PHOTO-GATE-API]
 import { hfSafetyRecordingWebhook } from "./hf_safety";
 import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
@@ -142,6 +143,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   // [HF-WALLET-EXIT-1] A user closing their account starts no new calls.
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
   { const blocked = await modBlock(env, uid, "call"); if (blocked) return blocked; } // [HF-CALL-SAFETY-BE]
+  { const pg = await photosRequiredBlock(env, uid, "call"); if (pg) return pg; } // [HF-PHOTO-GATE-API]
   const body = await readJson(req);
   const slug = String(body.hostSlug ?? "").trim().toLowerCase();
   const laneIn = body.lane == null || body.lane === "" ? null : String(body.lane);

@@ -18,6 +18,7 @@ import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo";
 import { HF_CALL_APP, hasLaneAccess } from "../lib/hf_calls_store";
 import { BOOKINGS_ONLY_MESSAGE, BOOKINGS_ONLY_REASON, liveBlockedByOption } from "../lib/hf_call_option"; // [HF-INTRO-W2]
 import { womenLaneRequiredExtra } from "../lib/hf_lanes"; // [HF-INTRO-W2]
+import { photosRequiredBlock } from "../lib/hf_user_photos"; // [HF-PHOTO-GATE-API]
 import { loadHostBySlug, myQueueEntry, pokeLine, readQueueCfg } from "../lib/hf_queue_store";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -65,6 +66,7 @@ export async function hfQueueRoute(req: Request, env: Env, _ctx?: ExecutionConte
   if (ageGate) return ageGate;
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
   { const blocked = await modBlock(env, uid, "queue"); if (blocked) return blocked; } // [HF-CALL-SAFETY-BE]
+  { const pg = await photosRequiredBlock(env, uid, "queue"); if (pg) return pg; } // [HF-PHOTO-GATE-API]
   if (host.uid === uid) return err(409, "queue_closed", JOIN_MESSAGE.queue_closed, { reason: "unavailable" });
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" });
   if (await liveBlockedByOption(env, host.uid)) return err(409, "queue_closed", BOOKINGS_ONLY_MESSAGE, { reason: BOOKINGS_ONLY_REASON, canQueue: false, canBook: cfg.bookingsOn }); // [HF-INTRO-W2] option A takes bookings only
