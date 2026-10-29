@@ -42,6 +42,7 @@ interface OutboxRow {
   message_version: string | null;
   body_r2_key: string | null;
   attachments_json: string | null;
+  headers_json?: string | null;
 }
 
 async function failPermanently(env: Env, key: string, why: string): Promise<void> {
@@ -60,11 +61,15 @@ export async function handleEmailQueueMessage(body: unknown, env: Env, opts?: { 
     return;
   }
   const key = body.key;
-  const row = await env.DB_META.prepare(
-    `SELECT state,delivery_status,outbox_id,to_email,subject,from_addr,reply_to_json,kind,order_id,recipient_id,
-            message_version,body_r2_key,attachments_json
-       FROM email_outbox WHERE outbox_key=?1 LIMIT 1`,
-  ).bind(key).first<OutboxRow>();
+  const baseCols = `state,delivery_status,outbox_id,to_email,subject,from_addr,reply_to_json,kind,order_id,recipient_id,
+            message_version,body_r2_key,attachments_json`;
+  // [HF-SUPPORT-1] headers_json is new; if the column is not migrated yet, fall back to the original query (no custom headers).
+  let row: OutboxRow | null;
+  try {
+    row = await env.DB_META.prepare(`SELECT ${baseCols},headers_json FROM email_outbox WHERE outbox_key=?1 LIMIT 1`).bind(key).first<OutboxRow>();
+  } catch {
+    row = await env.DB_META.prepare(`SELECT ${baseCols} FROM email_outbox WHERE outbox_key=?1 LIMIT 1`).bind(key).first<OutboxRow>();
+  }
   // No row: throw so the queue retries (then the DLQ) rather than silently dropping mail.
   if (!row) throw new Error(`email outbox row missing for ${key}`);
   if (row.outbox_id && row.outbox_id !== body.outboxId) {
@@ -102,7 +107,11 @@ export async function handleEmailQueueMessage(body: unknown, env: Env, opts?: { 
   let replyTo: EmailMsg["replyTo"];
   try { replyTo = row.reply_to_json ? JSON.parse(row.reply_to_json) : undefined; } catch { replyTo = undefined; }
 
+  let headers: EmailMsg["headers"];
+  try { headers = row.headers_json ? JSON.parse(row.headers_json) : undefined; } catch { headers = undefined; }
+
   await sendEmailDurably({
+    headers,
     to: row.to_email,
     subject: row.subject,
     html,

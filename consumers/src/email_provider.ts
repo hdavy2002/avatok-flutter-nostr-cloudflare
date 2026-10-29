@@ -173,6 +173,7 @@ export async function sendViaBrevo(msg: OutboundEmail, env: Env): Promise<SendOu
         ...(msg.replyTo?.email ? { replyTo: { email: msg.replyTo.email, ...(msg.replyTo.name ? { name: msg.replyTo.name } : {}) } } : {}),
         subject: msg.subject,
         htmlContent: msg.html,
+        ...(msg.headers && Object.keys(msg.headers).length ? { headers: msg.headers } : {}), // [HF-SUPPORT-1] Brevo accepts custom headers (threading)
         ...(msg.attachments?.length ? { attachment: msg.attachments.map((item) => ({ name: item.name, content: item.content })) } : {}),
       }),
     });

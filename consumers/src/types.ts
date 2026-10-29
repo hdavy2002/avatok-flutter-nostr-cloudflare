@@ -381,6 +381,8 @@ export interface EmailMsg {
   from?: string;
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string }[];
+  /** [HF-SUPPORT-1] extra RFC 5322 headers (Message-ID / In-Reply-To / References / Auto-Submitted) for support threading. */
+  headers?: Record<string, string>;
 }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 

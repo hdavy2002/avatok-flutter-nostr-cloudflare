@@ -25,6 +25,12 @@ export interface DurableEmailMessage {
   from?: string;
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string }[];
+  /**
+   * [HF-SUPPORT-1] Extra RFC 5322 headers (Message-ID, In-Reply-To, References, Auto-Submitted) so support mail threads.
+   * Stored on the outbox row (headers_json, migration 2026-10-29-hf-support-email-outbox-headers.sql) and sent by the consumer.
+   * Absent for every other producer; nothing changes for them.
+   */
+  headers?: Record<string, string>;
 }
 
 export interface EmailQueueResult {
@@ -178,6 +184,12 @@ export async function enqueueEmail(env: Env, input: DurableEmailMessage, opts: E
         const winner = await env.DB_META.prepare("SELECT outbox_id FROM email_outbox WHERE outbox_key=?1 LIMIT 1")
           .bind(key).first<{ outbox_id: string | null }>();
         outboxId = winner?.outbox_id ?? outboxId;
+      } else if (input.headers && Object.keys(input.headers).length) {
+        // [HF-SUPPORT-1] Separate statement, only for messages that carry headers: if the column is not migrated yet the
+        // mail still goes out (without the threading headers; the [HF-N] subject tag and Reply-To still thread it).
+        try {
+          await env.DB_META.prepare("UPDATE email_outbox SET headers_json=?2 WHERE outbox_key=?1").bind(key, JSON.stringify(input.headers)).run();
+        } catch { /* headers_json column missing: send without custom headers */ }
       }
     } else if (!existing.body_r2_key) {
       // Legacy row (inline payload_json, pre-migration): upgrade it to R2-backed storage in place.
