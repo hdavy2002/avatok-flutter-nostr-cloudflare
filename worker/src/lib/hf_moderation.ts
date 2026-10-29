@@ -21,7 +21,7 @@ export const PHOTO_KINDS: readonly PhotoKind[] = ["profile_photo", "cover_photo"
 export const isPhotoKind = (k: string): k is PhotoKind => (PHOTO_KINDS as readonly string[]).includes(k);
 
 // ── policy v1 (thresholds live here and only here) ───────────────────────────────────────────────────────────────
-const CONTEXT = "This is a picture uploaded to Hello Fraands, an Indian app where fans talk to creators. Judge only what is visible.";
+const CONTEXT = "This is a picture uploaded to an Indian app where fans talk to creators. Judge only what is visible.";
 export const PHOTO_QUESTIONS: Record<string, string> = {
   nudity: "Is there nudity: an exposed female breast or nipple, exposed genitals or exposed buttocks? Swimwear, gym wear, sarees and normal clothing are NOT nudity.",
   sexual: "Does the picture show a sexual act, a sexual pose or sexually explicit content?",
