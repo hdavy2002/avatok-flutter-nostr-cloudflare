@@ -10,8 +10,14 @@ class PolicyItem {
   /// `terms | privacy | disclaimer | community | engagement`
   final String policy;
 
-  /// The website page, e.g. `/terms` (open it with `Brand.url(path)`).
+  /// The website page, e.g. `/terms`. [HF-SUPPORT-APP] The app shows it itself (see [slug]); it never opens a browser for it.
   final String path;
+
+  /// The stored page this policy is, e.g. `community-guidelines` (the path without its slash): the app reads it at `/api/hf/pages/<slug>`.
+  String get slug {
+    final p = path.split('?').first.split('#').first;
+    return p.replaceAll('/', '').isEmpty ? policy : p.replaceAll('/', '');
+  }
 
   /// The version pin the server wants echoed back on accept.
   final String version;

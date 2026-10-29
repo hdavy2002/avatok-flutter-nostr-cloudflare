@@ -29,6 +29,8 @@ import 'repos/reels_repo.dart';
 import 'repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
 import 'repos/search_repo.dart';
 import 'repos/spaces_repo.dart'; // [HF-CREATOR-SPACES-1]
+import 'repos/pages_repo.dart'; // [HF-PAGES-1]
+import 'repos/support_repo.dart'; // [HF-SUPPORT-APP]
 import 'repos/wallet_repo.dart';
 import 'push.dart'; // [HF-BOOK-APPROVE-PUSH]
 import 'response_cache.dart'; // [HF-APP-CACHE-1]
@@ -73,6 +75,8 @@ class Services {
   late final SafetyRepo safetyRepo = SafetyRepo(api); // [HF-APP-PARITY-SAFETY]
   late final SpacesRepo spacesRepo = SpacesRepo(api); // [HF-CREATOR-SPACES-1]
   late final CallSafetyRepo callSafetyRepo = CallSafetyRepo(api); // [HF-CALL-SAFETY-APP]
+  late final PagesRepo pagesRepo = PagesRepo(api); // [HF-PAGES-1]
+  late final SupportRepo supportRepo = SupportRepo(api); // [HF-SUPPORT-APP]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   /// Session changes can precede /me, including an offline or slow restore.

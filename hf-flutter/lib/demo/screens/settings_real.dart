@@ -141,13 +141,6 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     go.go('/reels');
   }
 
-  Future<void> _openLink(Uri uri) async {
-    final ok = await ExternalLinks.open(uri);
-    if (!ok && mounted) {
-      toast(context, uri.scheme == 'mailto' ? 'Write to ${HelpStrings.supportEmail}.' : 'We could not open the page. Please try again.');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final me = _me;
@@ -170,9 +163,9 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                   const SizedBox(height: 12),
                   SettingsCard(title: 'Account', tone: DesiTone.rani, children: [
                     SettingsRow(icon: Icons.mail_rounded, tone: DesiTone.rani, label: 'Email', sub: (email ?? '').isEmpty ? 'Not added' : email!, last: true),
-                    SettingsNote(lead: HelpStrings.changeEmailNote, email: HelpStrings.supportEmail, onTap: () => _openLink(ExternalLinks.supportMail)),
+                    SettingsNote(lead: HelpStrings.changeEmailNote, email: HelpStrings.supportEmail, onTap: () => context.push('/support')),
                     SettingsRow(icon: Icons.chat_rounded, tone: DesiTone.rani, label: 'WhatsApp', sub: (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!, last: true),
-                    SettingsNote(lead: HelpStrings.changeWhatsappNote, email: HelpStrings.supportEmail, onTap: () => _openLink(ExternalLinks.supportMail)),
+                    SettingsNote(lead: HelpStrings.changeWhatsappNote, email: HelpStrings.supportEmail, onTap: () => context.push('/support')),
                     if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Social media verification', onTap: () => context.push('/inf/channels')),
                     if (host) SettingsRow(icon: Icons.verified_user_rounded, tone: DesiTone.lav, label: 'My verifications', onTap: () => context.push('/inf/verifications')), // [HF-CREATOR-BADGES-1]
                     // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
@@ -213,10 +206,10 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                   const SizedBox(height: 12),
                   SettingsCard(title: 'About', tone: DesiTone.lav, children: [
                     SettingsRow(icon: Icons.help_rounded, tone: DesiTone.lav, label: 'Help and FAQ', onTap: () => context.push('/help')),
-                    SettingsRow(icon: Icons.description_rounded, tone: DesiTone.lav, label: 'Terms of use', onTap: () => _openLink(ExternalLinks.terms)),
-                    SettingsRow(icon: Icons.lock_rounded, tone: DesiTone.lav, label: 'Privacy policy', onTap: () => _openLink(ExternalLinks.privacy)),
-                    SettingsRow(icon: Icons.undo_rounded, tone: DesiTone.lav, label: 'Refunds and cancellations', onTap: () => _openLink(ExternalLinks.refunds)),
-                    SettingsRow(icon: Icons.call_rounded, tone: DesiTone.lav, label: 'Contact us', onTap: () => _openLink(ExternalLinks.contact)),
+                    SettingsRow(icon: Icons.description_rounded, tone: DesiTone.lav, label: 'Terms of use', onTap: () => context.push('/page/terms')), // [HF-SUPPORT-APP] read inside the app
+                    SettingsRow(icon: Icons.lock_rounded, tone: DesiTone.lav, label: 'Privacy policy', onTap: () => context.push('/page/privacy')),
+                    SettingsRow(icon: Icons.undo_rounded, tone: DesiTone.lav, label: 'Refunds and cancellations', onTap: () => context.push('/page/refunds')),
+                    SettingsRow(icon: Icons.support_agent_rounded, tone: DesiTone.lav, label: 'Contact Support', onTap: () => context.push('/support')),
                     SettingsRow(icon: Icons.info_rounded, tone: DesiTone.lav, label: 'App version', value: _version.version.isEmpty ? '' : _version.label, last: true),
                   ]),
                   const SizedBox(height: 16),

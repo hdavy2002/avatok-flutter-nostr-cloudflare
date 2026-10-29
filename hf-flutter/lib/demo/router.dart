@@ -35,6 +35,9 @@ import 'screens/merch_wizard.dart';
 import 'screens/money.dart';
 import 'screens/creator_page.dart'; // [HF-REELS-FAV-1]
 import 'screens/page_moved.dart';
+import 'screens/policy_page.dart'; // [HF-PAGES-1]
+import 'screens/support_real.dart'; // [HF-SUPPORT-APP]
+import 'screens/support_ticket.dart'; // [HF-SUPPORT-APP]
 import 'screens/profile.dart';
 import 'screens/queue_real.dart'; // [HF-CALL-MODES-E2]
 import 'screens/search.dart';
@@ -243,6 +246,23 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/help',
       builder: (_, __) => const HelpScreen(),
+    ),
+    // [HF-PAGES-1] Terms, Privacy, Refunds and the other policy pages, read inside the app (`/page/<slug>`, text from `/api/hf/pages/<slug>`).
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/page/:slug',
+      builder: (_, s) => PolicyPageScreen(slug: s.pathParameters['slug'] ?? ''),
+    ),
+    // [HF-SUPPORT-APP] Contact Support (`?topic=report` preselects a topic) and one ticket (`/support/HF-10234`, also the deep link target).
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/support',
+      builder: (_, s) => SupportScreen(initialTopic: s.uri.queryParameters['topic']),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/support/:number',
+      builder: (_, s) => SupportTicketScreen(number: s.pathParameters['number'] ?? ''),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,

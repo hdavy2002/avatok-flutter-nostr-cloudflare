@@ -8,6 +8,7 @@ import 'package:hf_app/data/models/me.dart';
 import 'package:hf_app/data/repos/settings_repo.dart';
 import 'package:hf_app/demo/screens/me.dart';
 import 'package:hf_app/demo/screens/settings_real.dart';
+import 'package:hf_app/demo/settings_kit.dart' show SettingsNote;
 import 'package:hf_app/ui/strings/help_strings.dart';
 
 typedef Handler = Object? Function(String method, String path, Object? body);
@@ -72,6 +73,8 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
       GoRoute(path: '/start', builder: (_, __) => home),
       GoRoute(path: '/reels', builder: (_, __) => const Scaffold(body: Text('REELS PAGE'))),
       GoRoute(path: '/help', builder: (_, __) => const Scaffold(body: Text('HELP PAGE'))),
+      GoRoute(path: '/page/:slug', builder: (_, s) => Scaffold(body: Text('POLICY ${s.pathParameters['slug']}'))), // [HF-SUPPORT-APP]
+      GoRoute(path: '/support', builder: (_, __) => const Scaffold(body: Text('SUPPORT PAGE'))), // [HF-SUPPORT-APP]
       GoRoute(path: '/settings/profile', builder: (_, __) => const Scaffold(body: Text('EDIT PROFILE PAGE'))),
     ],
   );
@@ -155,22 +158,40 @@ void main() {
       expect(api.calls, isNot(contains('PATCH /api/hf/me')));
     });
 
-    testWidgets('Terms and Privacy open the website pages of the brand domain', (tester) async {
-      final opened = <Uri>[];
-      ExternalLinks.launcher = (u) async {
-        opened.add(u);
-        return true;
-      };
+    // [HF-SUPPORT-APP] Every About row stays inside the app: policy pages at /page/<slug>, Contact Support at /support. Nothing is
+    // handed to ExternalLinks.launcher (the browser).
+    for (final row in <(String, String)>[
+      ('Help and FAQ', 'HELP PAGE'),
+      ('Terms of use', 'POLICY terms'),
+      ('Privacy policy', 'POLICY privacy'),
+      ('Refunds and cancellations', 'POLICY refunds'),
+      ('Contact Support', 'SUPPORT PAGE'),
+    ]) {
+      testWidgets('About: "${row.$1}" opens ${row.$2} in the app and never the browser', (tester) async {
+        final opened = <Uri>[];
+        ExternalLinks.launcher = (u) async {
+          opened.add(u);
+          return true;
+        };
+        final api = FakeApiClient((m, p, b) => _prefs());
+        await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
+        await tester.scrollUntilVisible(find.text(row.$1), 200, scrollable: find.byType(Scrollable).first);
+        await tester.tap(find.text(row.$1));
+        await tester.pumpAndSettle();
+        expect(find.text(row.$2), findsOneWidget);
+        expect(opened, isEmpty);
+      });
+    }
+
+    testWidgets('"Contact us" is now "Contact Support"', (tester) async {
       final api = FakeApiClient((m, p, b) => _prefs());
       await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
-      await tester.scrollUntilVisible(find.text('Terms of use'), 200, scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.text('Terms of use'));
-      await tester.tap(find.text('Privacy policy'));
-      await tester.pump();
-      expect(opened.map((u) => u.toString()), [Brand.url('/terms'), Brand.url('/privacy')]);
+      await tester.scrollUntilVisible(find.text('Contact Support'), 200, scrollable: find.byType(Scrollable).first);
+      expect(find.text('Contact Support'), findsOneWidget);
+      expect(find.text('Contact us'), findsNothing);
     });
 
-    testWidgets('Refunds and Contact us open the website pages (payment provider app review)', (tester) async {
+    testWidgets('the change-email and change-WhatsApp notes open Contact Support, not the mail app', (tester) async {
       final opened = <Uri>[];
       ExternalLinks.launcher = (u) async {
         opened.add(u);
@@ -178,11 +199,11 @@ void main() {
       };
       final api = FakeApiClient((m, p, b) => _prefs());
       await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
-      await tester.scrollUntilVisible(find.text('Contact us'), 200, scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.text('Refunds and cancellations'));
-      await tester.tap(find.text('Contact us'));
-      await tester.pump();
-      expect(opened.map((u) => u.toString()), [Brand.url('/refunds'), Brand.url('/contact')]);
+      expect(find.byType(SettingsNote), findsNWidgets(2));
+      await tester.tap(find.byType(SettingsNote).first);
+      await tester.pumpAndSettle();
+      expect(find.text('SUPPORT PAGE'), findsOneWidget);
+      expect(opened, isEmpty);
     });
 
     testWidgets('SIGN OUT runs the sign-out and goes to the reels', (tester) async {

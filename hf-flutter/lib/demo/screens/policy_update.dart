@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/brand.dart';
 import '../../data/demo_mode.dart';
+import '../../data/repos/pages_repo.dart'; // [HF-SUPPORT-APP]
 import '../../data/repos/policy_repo.dart';
-import '../../data/repos/settings_repo.dart' show ExternalLinks;
 import '../../data/services.dart';
 import '../desi.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'policy_page.dart'; // [HF-SUPPORT-APP]
 
 /// [HF-APP-PARITY-PROFILE] Wraps the whole app (see main.dart). While a signed-in person has a pending policy update, a full-screen
 /// prompt sits on top of everything until she taps "I agree". Signed-out people and demo mode are never blocked, and a failed check
@@ -77,22 +77,48 @@ class _PolicyGateState extends State<PolicyGate> {
 }
 
 /// The prompt itself: what changed, links to read the pages, one big "I agree".
-class PolicyUpdateScreen extends StatelessWidget {
-  const PolicyUpdateScreen({super.key, required this.update, required this.onAgree, this.accepting = false, this.error});
+///
+/// [HF-SUPPORT-APP] The pages open inside the prompt (this screen sits above the whole app, so a pushed page would be hidden behind it):
+/// a tap shows the page in place with its own back button. Nothing opens a browser.
+class PolicyUpdateScreen extends StatefulWidget {
+  const PolicyUpdateScreen({super.key, required this.update, required this.onAgree, this.accepting = false, this.error, this.pagesRepo});
 
   final PolicyUpdate update;
   final VoidCallback onAgree;
   final bool accepting;
   final String? error;
 
-  Future<void> _open(BuildContext context, PolicyItem p) async {
-    final path = p.path.startsWith('/') ? p.path : '/${p.path}';
-    final ok = await ExternalLinks.open(Uri.parse(Brand.url(path)));
-    if (!ok && context.mounted) toast(context, 'We could not open the page. Please try again.');
-  }
+  /// Tests pass their own; the app uses the live one.
+  final PagesRepo? pagesRepo;
+
+  @override
+  State<PolicyUpdateScreen> createState() => _PolicyUpdateScreenState();
+}
+
+class _PolicyUpdateScreenState extends State<PolicyUpdateScreen> {
+  String? _openSlug;
+
+  PolicyUpdate get update => widget.update;
+  bool get accepting => widget.accepting;
+  String? get error => widget.error;
 
   @override
   Widget build(BuildContext context) {
+    final open = _openSlug;
+    if (open != null) {
+      return Material(
+        color: C.page,
+        child: PolicyPageScreen(
+          key: ValueKey<String>('policy-page-$open'),
+          slug: open,
+          repo: widget.pagesRepo,
+          onBack: () => setState(() => _openSlug = null),
+          onNavigate: (route) {
+            if (route.startsWith('/page/')) setState(() => _openSlug = route.substring('/page/'.length));
+          },
+        ),
+      );
+    }
     final label = accepting ? 'Saving…' : (error != null ? 'Try again' : 'I agree');
     return Material(
       color: C.ivory,
@@ -129,7 +155,7 @@ class PolicyUpdateScreen extends StatelessWidget {
                         key: Key('policy-link-${update.pending[i].policy}'),
                         title: update.pending[i].title,
                         last: i == update.pending.length - 1,
-                        onTap: () => unawaited(_open(context, update.pending[i])),
+                        onTap: () => setState(() => _openSlug = update.pending[i].slug),
                       ),
                   ]),
                 ),
@@ -147,7 +173,7 @@ class PolicyUpdateScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(error!, key: const Key('policy-error'), textAlign: TextAlign.center, style: t(15, color: C.ruby, w: FontWeight.w700)),
                 ),
-              ChunkyButton(key: const Key('policy-agree'), label: label, height: 56, onTap: accepting ? null : onAgree),
+              ChunkyButton(key: const Key('policy-agree'), label: label, height: 56, onTap: accepting ? null : widget.onAgree),
             ]),
           ),
         ]),

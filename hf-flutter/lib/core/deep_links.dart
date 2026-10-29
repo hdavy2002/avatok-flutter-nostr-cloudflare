@@ -7,6 +7,7 @@ import '../data/models/booking.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
 import '../demo/screens/onboarding/intro_onb_kit.dart'; // [HF-INTRO-A1]
+import '../demo/screens/policy_page.dart' show kPolicySlugs; // [HF-PAGES-1]
 import 'brand.dart';
 
 /// A link the app understands, as the screen to open plus the anonymised path for telemetry.
@@ -33,6 +34,7 @@ class LinkTarget {
 /// - `/bookings/<id>` -> [HF-BOOK-APPROVE] one booking: the influencer's Bookings page on that card, a fan's My bookings
 /// - `/bookings`, `/inf/bookings`, `/inf/availability`, `/inf/home`, `/inf/status` -> [HF-BOOK-APPROVE-PUSH] those screens
 /// - `channels?ig=connected|error&reason=&result=` -> [HF-IG-LOGIN-1] custom scheme only: the influencer's Channels screen with the Instagram login result
+/// - `/support`, `/support/HF-<n>` -> [HF-SUPPORT-APP] Contact Support, one ticket; `/terms`, `/privacy`... -> [HF-PAGES-1] `/page/<slug>`
 /// - `/dashboard/appointments`, `/host`, `/hosts/dashboard` -> the same influencer screens, for older web-style push paths
 LinkTarget? linkTargetFor(Uri uri) {
   final scheme = uri.scheme.toLowerCase();
@@ -84,6 +86,13 @@ LinkTarget? linkTargetFor(Uri uri) {
     };
     return LinkTarget(Uri(path: '/inf/channels', queryParameters: params).toString(), '/channels');
   }
+  // [HF-SUPPORT-APP] The WhatsApp / email nudge "Hello Fraands support replied to HF-10234" opens that ticket; /support opens Contact Support.
+  if (segs.length == 1 && segs.first == 'support') return const LinkTarget('/support', '/support');
+  if (segs.length == 2 && segs.first == 'support' && RegExp(r'^HF-\d{4,9}$', caseSensitive: false).hasMatch(segs[1])) {
+    return LinkTarget('/support/${segs[1].toUpperCase()}', '/support/:id');
+  }
+  // [HF-PAGES-1] A tapped site link to a policy page (/terms, /privacy, /refunds...) is read inside the app.
+  if (segs.length == 1 && kPolicySlugs.contains(segs.first)) return LinkTarget('/page/${segs.first}', '/page/:id');
   // [HF-BOOK-APPROVE-PUSH] App-friendly push paths, plus the web-style paths older pushes carried.
   if (segs.length == 1 && segs.first == 'bookings') return const LinkTarget('/bookings', '/bookings');
   if (segs.length == 2 && segs.first == 'inf' && const {'bookings', 'availability', 'home', 'status'}.contains(segs[1])) {
