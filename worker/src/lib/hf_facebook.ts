@@ -17,7 +17,7 @@ export const FB_SCOPES = "public_profile,pages_show_list,pages_read_engagement";
 export const FB_GRAPH_VERSION = "v21.0";
 export const FB_STATE_TTL_S = 600;
 const GRAPH = `https://graph.facebook.com/${FB_GRAPH_VERSION}`;
-const PAGE_FIELDS = "id,name,link,username,followers_count,fan_count";
+const PAGE_FIELDS = "id,name,link,username,followers_count,fan_count,access_token";
 
 export const isFbOauth = (ch: { platform: string; provider_ref?: string | null }): boolean => ch.platform === "facebook" && ch.provider_ref === FB_PROVIDER_REF;
 export const fbRedirectUri = (): string => `${BRAND.apiOrigin}/api/hf/channels/facebook/callback`;
@@ -122,6 +122,7 @@ export async function fbFetchProfile(token: string, f: FetchLike = fetch): Promi
   if (!/^\d{3,30}$/.test(fbUserId)) throw new ProviderError("provider_unavailable");
   const acc = await fbCall(f, `${GRAPH}/me/accounts?${new URLSearchParams({ fields: PAGE_FIELDS, limit: "25", access_token: token })}`);
   let best: FbPage | null = null;
+  let bestToken = "";
   for (const p of Array.isArray(acc?.data) ? acc.data : []) {
     const id = String(p?.id ?? "");
     if (!/^\d{3,30}$/.test(id)) continue;
@@ -132,7 +133,16 @@ export async function fbFetchProfile(token: string, f: FetchLike = fetch): Promi
     const link = typeof p?.link === "string" && p.link.startsWith("https://") ? p.link : `https://www.facebook.com/${username ? encodeURIComponent(username) : id}`;
     const followers = num(p?.followers_count ?? p?.fan_count);
     const cand: FbPage = { id, name, handle: fbHandleOf(username, name), url: link, followers };
-    if (!best || cand.followers > best.followers) best = cand;
+    if (!best || cand.followers > best.followers) { best = cand; bestToken = typeof p?.access_token === "string" ? p.access_token : ""; }
+  }
+  // [HF-FB-PAGE-READ] Re-read the chosen Page's follower count with its own Page token (pages_read_engagement). /me/accounts can
+  // return a stale or missing count; this is the number we gate go-live on. Best effort: keep the /me/accounts figure on any error.
+  if (best && bestToken) {
+    try {
+      const pg = await fbCall(f, `${GRAPH}/${best.id}?${new URLSearchParams({ fields: "followers_count,fan_count", access_token: bestToken })}`);
+      const fresh = num(pg?.followers_count ?? pg?.fan_count);
+      if (pg && (pg.followers_count != null || pg.fan_count != null)) best = { ...best, followers: fresh };
+    } catch { /* keep /me/accounts count */ }
   }
   return { fbUserId, name: String(me?.name ?? "").slice(0, 80), page: best };
 }

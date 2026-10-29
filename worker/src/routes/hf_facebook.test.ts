@@ -346,3 +346,31 @@ describe("verifiedSocials", () => {
     expect(out).toEqual([{ platform: "facebook", handle: "pg", url: "https://www.facebook.com/pg", followers: 1 }]);
   });
 });
+
+describe("[HF-FB-PAGE-READ] follower count re-read with the Page token", () => {
+  const mk = (pageResp: any, status = 200) => {
+    const urls: string[] = [];
+    const f = async (url: string) => {
+      urls.push(url);
+      if (url.includes("/me/accounts")) return new Response(JSON.stringify({ data: [page({ followers_count: 5, fan_count: 5, access_token: "PAGETOKEN" })] }), { status: 200 });
+      if (url.includes("/me?")) return new Response(JSON.stringify({ id: "7000000000001", name: "Maya" }), { status: 200 });
+      if (url.includes("/1000000000001?")) return new Response(JSON.stringify(pageResp), { status });
+      return new Response("{}", { status: 404 });
+    };
+    return { f, urls };
+  };
+  it("uses the fresh count from GET /{page-id} with the Page token", async () => {
+    const { fbFetchProfile } = await import("../lib/hf_facebook");
+    const { f, urls } = mk({ id: "1000000000001", followers_count: 900 });
+    const p = await fbFetchProfile("USERTOKEN", f as any);
+    expect(p.page?.followers).toBe(900);
+    const pageCall = urls.find((u) => u.includes("/1000000000001?"))!;
+    expect(new URL(pageCall).searchParams.get("access_token")).toBe("PAGETOKEN");
+  });
+  it("keeps the /me/accounts count when the Page read fails", async () => {
+    const { fbFetchProfile } = await import("../lib/hf_facebook");
+    const { f } = mk({ error: { message: "x" } }, 400);
+    const p = await fbFetchProfile("USERTOKEN", f as any);
+    expect(p.page?.followers).toBe(5);
+  });
+});
