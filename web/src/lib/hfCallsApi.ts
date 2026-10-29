@@ -2,6 +2,7 @@
  * Contract: Specs/HF-CALLS-CONTRACT.md ("Web agent"). Money on this surface is whole rupees (test credits for now). */
 import { ApiError, request } from './apiClient';
 import { explicitAgeRecovery } from './hfAgeRecovery';
+import { redirectToPhotoOnboarding } from './hfPhotosApi'; // [HF-PHOTO-CROP-WEB]
 import { activeSessionSignedOut } from './clerk';
 
 export type HostPresence = 'online' | 'busy' | 'offline';
@@ -54,6 +55,8 @@ export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PAT
       const message = e.error === 'age_confirmation_required'
         ? await recoverAgeConfirmation()
         : typeof b.message === 'string' ? b.message : '';
+      // [HF-PHOTO-CROP-WEB] 403 photos_required from call / queue / booking: send the member to add their photos (never on the support desk).
+      if (e.status === 403 && e.error === 'photos_required') redirectToPhotoOnboarding('api_403', message || undefined);
       return { ok: false, status: e.status, code: e.error, message, body: b };
     }
     return { ok: false, status: 0, code: 'network', message: 'We could not reach the server. Check your internet and try again.', body: {} };

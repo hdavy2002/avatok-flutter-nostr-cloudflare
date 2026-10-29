@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { capture } from '../../../lib/analytics';
-import { LIMITS, getMyPhotos, putMyImage, shrinkImage, type MyPhotos, type PhotoKind } from '../../../lib/hfPhotosApi';
+import { LIMITS, cacheGateStatus, clearPhotoGateCache, getMyPhotos, putMyImage, safeNext, takeGateMessage, type MyPhotos, type PhotoKind } from '../../../lib/hfPhotosApi';
+import PhotoCropper from './PhotoCropper'; // [HF-PHOTO-CROP-WEB]
 import '../../../styles/hf-my-photo.css';
 import { Avatar, Ic, Marigold, PageHead, Skel, useToast } from './ui';
 import { useDash } from './data';
@@ -14,7 +15,7 @@ const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const POLL_MS = 2000, POLL_MAX_MS = 60_000;
 
 type Phase = 'sending' | 'checking' | 'passed' | 'refused' | 'slow';
-interface Job { kind: PhotoKind; phase: Phase; preview: string | null; message: string }
+interface Job { kind: PhotoKind; phase: Phase; preview: string | null; message: string; server?: boolean }
 
 const KIND_LABEL: Record<PhotoKind, string> = { profile: 'photo', cover: 'cover' };
 
@@ -28,6 +29,13 @@ function uploadMessage(error: string, fallback: string): string {
 
 export default function MyPhoto({ account }: { account: DashboardAccount }) {
   const toast = useToast();
+  // [HF-PHOTO-CROP-WEB] ?onboarding=1 = the mandatory first step; ?next= is where Continue goes (same-site paths only).
+  const [onboarding] = useState(() => { try { return new URLSearchParams(location.search).get('onboarding') === '1'; } catch { return false; } });
+  const [next] = useState(() => { try { return safeNext(new URLSearchParams(location.search).get('next')); } catch { return null; } });
+  const [gateMsg] = useState(() => (onboarding ? takeGateMessage() : null));
+  const [crop, setCrop] = useState<{ file: File; kind: PhotoKind } | null>(null);
+  const [continuing, setContinuing] = useState(false);
+  const shown = useRef(false);
   const { profile } = useDash();
   const [photos, setPhotos] = useState<MyPhotos | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -42,9 +50,9 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
   const refresh = useCallback(async () => {
     const p = await getMyPhotos();
     if (!alive.current) return null;
-    if (p) { setPhotos(p); setLoadFailed(false); } else setLoadFailed(true);
+    if (p) { setPhotos(p); setLoadFailed(false); if (p.complete !== null) cacheGateStatus(account.uid, { complete: p.complete, missing: p.missing }); } else setLoadFailed(true);
     return p;
-  }, []);
+  }, [account.uid]);
 
   /** Polls every 2 s for up to 60 s until the slot is no longer being checked. */
   const poll = useCallback(async (kind: PhotoKind, id: number, startedAt: number, prevUrl: string | null) => {
@@ -56,7 +64,7 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
       if (!p) continue;
       const s = p[kind];
       if (s.checking) continue;
-      if (s.refused) { setJob(j => (j && j.kind === kind ? { ...j, phase: 'refused', message: s.refused ?? '' } : j)); capture('hf_photo_result_web', { kind, result: 'refused' }); return; }
+      if (s.refused) { setJob(j => (j && j.kind === kind ? { ...j, phase: 'refused', server: true, message: s.refused ?? '' } : j)); capture('hf_photo_result_web', { kind, result: 'refused' }); return; }
       if (s.url && s.url !== prevUrl) { setJob(j => (j && j.kind === kind ? { ...j, phase: 'passed' } : j)); capture('hf_photo_result_web', { kind, result: 'passed' }); toast(`Your new ${KIND_LABEL[kind]} is live ✓`); return; }
     }
   }, [refresh, toast]);
@@ -73,19 +81,26 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
     return () => { alive.current = false; run.current++; if (objUrl.current) URL.revokeObjectURL(objUrl.current); };
   }, [refresh, poll]);
 
-  const pick = useCallback(async (file: File | null | undefined, kind: PhotoKind) => {
+  /** A file was chosen: check the type, then open the crop editor (nothing is uploaded until "Use this photo"). */
+  const pick = useCallback((file: File | null | undefined, kind: PhotoKind) => {
     if (!file) return;
+    if (!TYPES.includes(file.type)) {
+      setCrop(null); setJob({ kind, phase: 'refused', preview: null, message: 'That file type is not supported. Please use a JPEG, PNG or WebP picture.' });
+      capture('hf_photo_upload_web', { kind, bytes: 0, ms: 0, ok: false, error: 'bad_type' }); return;
+    }
+    run.current++; // stop polling an older upload
+    setJob(null); setCrop({ file, kind });
+  }, []);
+
+  /** The cropped JPEG is ready: upload it and poll the safety check. */
+  const upload = useCallback(async (kind: PhotoKind, out: { blob: Blob; width: number; height: number }) => {
+    setCrop(null);
     const id = ++run.current;
     const fail = (message: string, error: string, bytes = 0, ms = 0) => {
       setJob({ kind, phase: 'refused', preview: null, message });
       capture('hf_photo_upload_web', { kind, bytes, ms, ok: false, error });
     };
-    if (!TYPES.includes(file.type)) { fail('That file type is not supported. Please use a JPEG, PNG or WebP picture.', 'bad_type'); return; }
     const t0 = performance.now();
-    setJob({ kind, phase: 'sending', preview: null, message: '' });
-    const out = await shrinkImage(file, kind);
-    if (!alive.current || id !== run.current) return;
-    if (!out) { fail('We could not read that picture. Please try another one.', 'decode'); return; }
     const [minW, minH] = kind === 'profile' ? LIMITS.profileMin : LIMITS.coverMin;
     if (out.width < minW || out.height < minH) { fail(`That picture is too small. Please use one at least ${minW} × ${minH} pixels.`, 'too_small', out.blob.size); return; }
     if (out.blob.size > LIMITS.maxBytes) { fail('That picture is bigger than 4 MB. Please choose a smaller one.', 'too_big', out.blob.size); return; }
@@ -101,6 +116,7 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
       capture('hf_photo_upload_web', { kind, bytes: out.blob.size, ms, ok: false, error: r.error });
       return;
     }
+    clearPhotoGateCache();
     capture('hf_photo_upload_web', { kind, bytes: out.blob.size, ms, ok: true, error: '' });
     setJob({ kind, phase: 'checking', preview: objUrl.current, message: '' });
     void poll(kind, id, Date.now(), prevUrl);
@@ -114,10 +130,34 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
   const profileUrl = photos?.profile.url ?? null;
   const coverUrl = photos?.cover.url ?? null;
   const busy = job?.phase === 'sending' || job?.phase === 'checking';
+  // [HF-PHOTO-CROP-WEB] Why a photo was refused: the server's own sentence, for either slot, until a new one is chosen.
+  const refusals = (['profile', 'cover'] as PhotoKind[]).flatMap(kind => {
+    if (crop?.kind === kind) return [];
+    if (job?.kind === kind) return job.phase === 'refused' ? [{ kind, title: job.server ? 'Why your photo was not accepted' : 'We couldn’t use that picture', text: job.message }] : [];
+    const why = photos?.[kind].refused;
+    return why && !photos?.[kind].checking ? [{ kind, title: 'Why your photo was not accepted', text: why }] : [];
+  });
+  const ready = !!photos?.profile.url && !!photos?.cover.url && !busy && !crop;
+  const goOn = async () => {
+    setContinuing(true);
+    const p = await refresh();
+    if (!alive.current) return;
+    if (p && p.complete === false) { setContinuing(false); toast('One more check is still needed on your photos.'); return; }
+    clearPhotoGateCache(); capture('hf_photo_onboarding_done', { next: next ?? '/dashboard' });
+    location.assign(next ?? '/dashboard');
+  };
+  useEffect(() => { if (onboarding && !shown.current) { shown.current = true; capture('hf_photo_onboarding_shown', { has_message: !!gateMsg }); } }, [onboarding, gateMsg]);
   const jobLabel = job ? (job.kind === 'profile' ? 'photo' : 'cover') : 'photo';
 
   return <div className="mp">
-    <PageHead eyebrow="Dashboard · Profile" title="My photo & cover" sub="Your photo shows next to your comments and bookings. Every new photo is checked for safety in a few seconds before anyone sees it." />
+    {onboarding
+      ? <OnboardingHead photos={photos} job={job} message={gateMsg} ready={ready} busy={continuing} onChoose={k => (k === 'cover' ? coverIn : photoIn).current?.click()} onContinue={() => void goOn()} />
+      : <PageHead eyebrow="Dashboard · Profile" title="My photo & cover" sub="Your photo shows next to your comments and bookings. Every new photo is checked for safety in a few seconds before anyone sees it." />}
+
+    {crop && <PhotoCropper key={`${crop.kind}:${crop.file.name}:${crop.file.size}:${crop.file.lastModified}`} file={crop.file} kind={crop.kind}
+      onCancel={() => { const k = crop.kind; setCrop(null); (k === 'cover' ? coverIn : photoIn).current?.click(); }}
+      onDone={out => void upload(crop.kind, out)}
+      onFail={(message, error) => { const k = crop.kind; setCrop(null); setJob({ kind: k, phase: 'refused', preview: null, message }); capture('hf_photo_upload_web', { kind: k, bytes: 0, ms: 0, ok: false, error }); }} />}
 
     {!photos && !loadFailed ? <Skel h={340} /> : <section className="mp-hero" aria-label="Preview">
       <div className="mp-cover">
@@ -130,6 +170,12 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
       </div>
     </section>}
     {loadFailed && <div className="mp-alert" role="alert"><b>We could not load your photos.</b><p>Please check your internet. <button type="button" className="h3-link" onClick={() => void refresh()}>Try again</button></p></div>}
+
+    {refusals.map(r => <div key={r.kind} className="mp-alert" role="alert">
+      <span className="mp-x" aria-hidden="true"><Ic name="x" className="" size={18} /></span>
+      <div><b>{r.title}</b><p>{r.kind === 'cover' ? 'Cover: ' : 'Photo: '}{r.text}</p>
+        <button type="button" className="mp-btn" onClick={() => (r.kind === 'cover' ? coverIn : photoIn).current?.click()}>Choose another photo</button></div>
+    </div>)}
 
     <div className="mp-grid">
       <section className="mp-panel mp-lav" aria-label="New profile photo">
@@ -151,11 +197,6 @@ export default function MyPhoto({ account }: { account: DashboardAccount }) {
           </div>
         </div>}
 
-        {job?.phase === 'refused' && <div className="mp-alert" role="alert">
-          <span className="mp-x" aria-hidden="true"><Ic name="x" className="" size={18} /></span>
-          <div><b>We couldn’t use that {jobLabel}</b><p>{job.message}</p>
-            <button type="button" className="mp-btn" onClick={() => (job.kind === 'cover' ? coverIn : photoIn).current?.click()}>Choose another photo</button></div>
-        </div>}
       </section>
 
       <section className="mp-panel mp-gold" aria-label="Photo rules">
@@ -184,4 +225,25 @@ function CoverArt() {
     <g fill="#0E7C86"><circle cx="500" cy="140" r="22" /><circle cx="1070" cy="120" r="18" /></g>
     <g fill="#FFF1D6"><circle cx="90" cy="60" r="14" /><circle cx="340" cy="190" r="18" /><circle cx="930" cy="180" r="20" /></g>
   </svg>;
+}
+
+/** [HF-PHOTO-CROP-WEB] Step header shown when a signed-in member must add photos first. */
+function OnboardingHead({ photos, job, message, ready, busy, onChoose, onContinue }: { photos: MyPhotos | null; job: Job | null; message: string | null; ready: boolean; busy: boolean; onChoose: (k: PhotoKind) => void; onContinue: () => void }) {
+  const row = (kind: PhotoKind, label: string) => {
+    const s = photos?.[kind];
+    const checking = !!s?.checking || (job?.kind === kind && (job.phase === 'sending' || job.phase === 'checking'));
+    const done = !!s?.url && !checking;
+    return <li className={`mp-step${done ? ' done' : ''}`}>
+      <span className="mp-tick" aria-hidden="true">{done ? '✓' : kind === 'profile' ? '1' : '2'}</span>
+      <span className="mp-steptxt"><b>{label}</b><small>{done ? 'Added' : checking ? 'Checking it now…' : 'Needed'}</small></span>
+      {!done && !checking && <button type="button" className="mp-btn" onClick={() => onChoose(kind)}>{kind === 'profile' ? 'Add photo' : 'Add cover'}</button>}
+    </li>;
+  };
+  return <section className="mp-onb" aria-label="Add your photos">
+    <h1>Add your photos</h1>
+    <p>Every member needs a clear face photo and a cover photo before calling or booking.</p>
+    {message && <p className="mp-onb-msg" role="status">{message}</p>}
+    <ul className="mp-steps">{row('profile', 'Your face photo')}{row('cover', 'Your cover photo')}</ul>
+    <button type="button" className="mp-btn mp-continue" disabled={!ready || busy} onClick={onContinue}>{busy ? 'One moment…' : 'Continue'}</button>
+  </section>;
 }

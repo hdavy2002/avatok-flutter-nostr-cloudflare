@@ -1,6 +1,7 @@
 import { request, ApiError } from './apiClient';
 import { getActiveTokenWaited } from './clerk';
 import { capture } from './analytics';
+import { redirectToPhotoOnboarding } from './hfPhotosApi'; // [HF-PHOTO-CROP-WEB]
 
 export interface WindowRule { weekday: number; startMin: number; endMin: number }
 export interface DateException { date: string; startMin: number; endMin: number; status: 'available' | 'unavailable' }
@@ -188,6 +189,11 @@ export function bookingError(error: unknown): { status: number; code: string; me
       slot_unavailable: 'That time is no longer free. Please pick another.',
       account_paused: 'Your account is paused while a person checks it, so you can’t book right now.', // [HF-CALL-SAFETY-WEB]
     };
+    if (error.status === 403 && error.error === 'photos_required') { // [HF-PHOTO-CROP-WEB]
+      const m = typeof body.message === 'string' ? body.message : 'Please add your photo and cover before booking.';
+      redirectToPhotoOnboarding('api_403_booking', m);
+      return { status: error.status, code: error.error, message: m };
+    }
     const friendly = error.status === 401 || /session|unauth/i.test(error.error) ? 'Please sign in to book this time.' : KNOWN[error.error] ?? 'Something went wrong. Please try again.';
     if (error.error === 'lane_required') { // [HF-CREATOR-SPACES-1]
       const lane = body.lane === 'lgbtq' ? 'lgbtq' : 'women';

@@ -37,3 +37,43 @@
   .hf3 .mp-av{width:112px;height:112px}
   .hf3 .mp-panel{padding:20px}
 }
+
+/* [HF-PHOTO-CROP-WEB] Crop editor ("Adjust your photo"). Centred, full width on phones; solid plum buttons, no green. */
+.hf3 .pc{background:var(--lavtint);border-radius:28px;padding:26px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.hf3 .pc-title{font-family:var(--head);font-weight:900;font-size:clamp(24px,1.8vw,30px);margin:0;color:var(--plum)}
+.hf3 .pc-hint{margin:0;font-size:17px;line-height:1.5;color:var(--ink);max-width:36rem}
+.hf3 .pc-wrap{width:100%;display:flex;justify-content:center;min-height:120px}
+.hf3 .pc-loading{align-self:center;font-size:17px;color:var(--muted)}
+.hf3 .pc-stage{position:relative;overflow:hidden;background:#2b1530;border-radius:20px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;outline-offset:4px}
+.hf3 .pc-stage:active{cursor:grabbing}
+.hf3 .pc-stage:focus-visible{outline:3px solid var(--haldi)}
+.hf3 .pc-stage canvas{display:block;pointer-events:none}
+.hf3 .pc-frame{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 3px rgba(255,255,255,.9)}
+.hf3 .pc-stage.profile .pc-frame{border-radius:50%;box-shadow:0 0 0 999px rgba(43,21,48,.6),inset 0 0 0 3px rgba(255,255,255,.95)}
+.hf3 .pc-zoom{display:flex;align-items:center;gap:12px;width:100%;max-width:560px}
+.hf3 .pc-zoom input[type=range]{flex:1;min-width:0;height:56px;accent-color:var(--plum);cursor:pointer}
+.hf3 .pc-round{appearance:none;flex:none;width:56px;height:56px;border-radius:50%;border:0;background:#fff;color:var(--plum);font-family:var(--head);font-weight:900;font-size:30px;line-height:1;cursor:pointer;box-shadow:inset 0 0 0 3px var(--plum)}
+.hf3 .pc-round:disabled{opacity:.4;cursor:not-allowed}
+.hf3 .pc-ghost{appearance:none;cursor:pointer;min-height:56px;border-radius:999px;padding:0 24px;background:#fff;color:var(--plum);border:0;font-family:var(--head);font-weight:900;font-size:17px;box-shadow:inset 0 0 0 3px var(--plum)}
+.hf3 .pc-ghost:disabled{opacity:.5;cursor:not-allowed}
+.hf3 .pc-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;width:100%}
+
+/* Onboarding step header */
+.hf3 .mp-onb{background:var(--goldtint);border-radius:28px;padding:26px;display:flex;flex-direction:column;gap:12px}
+.hf3 .mp-onb h1{font-family:var(--head);font-weight:900;font-size:clamp(28px,2.4vw,40px);line-height:1.1;margin:0;color:var(--plum)}
+.hf3 .mp-onb p{margin:0;font-size:18px;line-height:1.5;color:var(--ink)}
+.hf3 .mp-onb-msg{background:#fff;border-radius:16px;padding:12px 16px}
+.hf3 .mp-steps{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.hf3 .mp-step{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;padding:12px 16px}
+.hf3 .mp-tick{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--lavtint);color:var(--plum);font-family:var(--head);font-weight:900;font-size:20px}
+.hf3 .mp-step.done .mp-tick{background:var(--plum);color:#fff}
+.hf3 .mp-steptxt{flex:1;min-width:0;display:flex;flex-direction:column}
+.hf3 .mp-steptxt b{font-family:var(--head);font-weight:900;font-size:19px}
+.hf3 .mp-steptxt small{font-size:16px;color:var(--muted)}
+.hf3 .mp-continue{align-self:flex-start;min-height:64px;min-width:200px}
+@media (max-width:640px){
+  .hf3 .pc{padding:18px 12px}
+  .hf3 .pc-actions .mp-btn,.hf3 .pc-actions .pc-ghost{flex:1 1 100%}
+  .hf3 .mp-step{flex-wrap:wrap}
+  .hf3 .mp-continue{align-self:stretch}
+}

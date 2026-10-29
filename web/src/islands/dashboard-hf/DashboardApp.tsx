@@ -11,7 +11,7 @@ import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import { favouritesEnabled } from '../../lib/hfFavouritesApi';
 import { merchEnabled } from '../../lib/merchApi'; // [HF-MERCH-FAN-WEB-1]
-import { photoModerationEnabled } from '../../lib/hfPhotosApi'; // [HF-MOD-WEB-PHOTOS]
+import { onSupportDesk, photoGateStatus, photoModerationEnabled, photosRequiredEnabled, redirectToPhotoOnboarding } from '../../lib/hfPhotosApi'; // [HF-MOD-WEB-PHOTOS] [HF-PHOTO-CROP-WEB]
 import { capture, captureException } from '../../lib/analytics';
 import { BRAND } from '../../lib/brand';
 import { DASH_ROUTES, dashRouteFor, type DashSection } from '../../lib/dashboardRoutes';
@@ -84,9 +84,19 @@ function Shell({ initial }: { initial: DashSection }) {
         const me = await hfCall<DashboardAccount>('GET', '/api/hf/me');
         if (!current()) return;
         if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-        const [enabled, favs, merch, photos] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled(), photoModerationEnabled()]);
+        const [enabled, favs, merch, photos, photosRequired] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled(), photoModerationEnabled(), photosRequiredEnabled()]);
         if (!current()) return;
-        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhotoOn(photos); setPhase('ready');
+        // [HF-PHOTO-CROP-WEB] Mandatory photos: a signed-in member without a clear face photo and a cover goes to the onboarding page first.
+        // Fails open (unknown status = let them in). Never runs on the support desk; my-photo, support and close stay reachable.
+        if (photosRequired && !me.data.closing && !onSupportDesk()) {
+          const here = dashRouteFor(location.pathname)?.section;
+          if (here !== 'my-photo' && here !== 'support' && here !== 'close') {
+            const st = await photoGateStatus(me.data.uid);
+            if (!current()) return;
+            if (st.complete === false && redirectToPhotoOnboarding('dashboard')) return;
+          }
+        }
+        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhotoOn(photos || photosRequired); setPhase('ready');
       } catch (e) {
         captureException(e, { area: 'hf_dashboard', step: 'identity' });
         if (current()) setPhase('error');
