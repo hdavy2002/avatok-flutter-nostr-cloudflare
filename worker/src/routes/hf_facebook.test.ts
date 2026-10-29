@@ -171,6 +171,32 @@ describe("callback", () => {
     const r = await callback(state);
     expect(r.headers.get("location")).toBe(`${BRAND.webOrigin}/dashboard/become?fb=connected&result=approved`);
   });
+  it("[HF-VERIFY-WEB-FLOW] return=verifications comes back to My verifications (connected and error), carried in the signed state", async () => {
+    const r1 = await call("/api/hf/channels/facebook/start?client=web&return=verifications");
+    const s1 = new URL((await r1.json()).url).searchParams.get("state");
+    expect(await verifyFbState(env, s1!)).toMatchObject({ uid: "u1", client: "web", ret: "verifications" });
+    expect((await callback(s1)).headers.get("location")).toBe(`${BRAND.webOrigin}/dashboard/verifications?fb=connected&result=approved`);
+    const r2 = await call("/api/hf/channels/facebook/start?client=web&return=verifications");
+    const s2 = new URL((await r2.json()).url).searchParams.get("state");
+    expect((await callback(s2, "error=access_denied&error_reason=user_denied")).headers.get("location")).toBe(`${BRAND.webOrigin}/dashboard/verifications?fb=error&reason=cancelled`);
+  });
+  it("[HF-VERIFY-WEB-FLOW] return is an allow-list: unknown or outside values fall back to become; an old state without ret is become", async () => {
+    for (const bad of ["https%3A%2F%2Fevil.example", "%2F%2Fevil.example", "admin", ""]) {
+      const r = await call(`/api/hf/channels/facebook/start?client=web&return=${bad}`);
+      const s = new URL((await r.json()).url).searchParams.get("state");
+      expect((await verifyFbState(env, s!))?.ret).toBe("become");
+      expect((await callback(s)).headers.get("location")).toMatch(new RegExp(`^${BRAND.webOrigin.replace(/[.]/g, "\\.")}/dashboard/become\\?`));
+      db.exec("DELETE FROM hf_channels"); db.exec("DELETE FROM hf_fb_logins");
+    }
+    expect((await verifyFbState(env, await signFbState(env, { uid: "u1", client: "web", nonce: "n", exp: Date.now() + 60000 })))?.ret).toBe("become");
+  });
+  it("[HF-VERIFY-WEB-FLOW] the return value cannot be changed after signing", async () => {
+    const s = await signFbState(env, { uid: "u1", client: "web", nonce: "n", exp: Date.now() + 60000, ret: "become" });
+    const [body, sig] = s.split(".");
+    const p = JSON.parse(Buffer.from(body, "base64url").toString());
+    const forged = Buffer.from(JSON.stringify({ ...p, ret: "verifications" })).toString("base64url") + "." + sig;
+    expect(await verifyFbState(env, forged)).toBeNull();
+  });
   it("picks the Page with the most followers", async () => {
     pages = [page({ id: "1000000000002", username: "small", link: "https://www.facebook.com/small", followers_count: 20 }), page()];
     const { ch } = await connect();

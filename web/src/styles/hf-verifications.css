@@ -44,4 +44,5 @@
 .hv-acct b{display:block;font-weight:900;color:var(--plum);overflow-wrap:anywhere}
 .hv-acct small{display:block;margin-top:2px;font-size:.9375rem;font-weight:700;color:var(--muted);line-height:1.45}
 .hv-acct a{color:inherit}
+.hv-acct a.hv-acct-link{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px} /* [HF-VERIFY-WEB-FLOW] the name reads as a link */
 .hv-acct .h3-btn{min-height:44px}

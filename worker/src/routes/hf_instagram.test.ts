@@ -127,7 +127,7 @@ describe("state", () => {
   it("signs, verifies, and rejects tampering, expiry and a different secret", async () => {
     const exp = Date.now() + 600_000;
     const s = await signState(env, { uid: "u1", client: "app", nonce: "n1", exp });
-    expect(await verifyState(env, s)).toEqual({ uid: "u1", client: "app", nonce: "n1", exp });
+    expect(await verifyState(env, s)).toEqual({ uid: "u1", client: "app", nonce: "n1", exp, ret: "become" }); // [HF-VERIFY-WEB-FLOW] default return
     const [b, sig] = s.split(".");
     const forged = Buffer.from(JSON.stringify({ t: "hfig", uid: "u2", client: "app", nonce: "n1", exp })).toString("base64url");
     expect(await verifyState(env, `${forged}.${sig}`)).toBeNull();
@@ -167,6 +167,22 @@ describe("GET /start", () => {
     expect(kv.get(`hfig:n:${st.nonce}`)).toBe("u1");
     await flush();
     expect(events.find((e) => e.event === "hf_channel_oauth_start")).toMatchObject({ uid: "u1", props: { platform: "instagram", client: "web", email: "maya@example.com" } });
+  });
+
+  it("[HF-VERIFY-WEB-FLOW] return=verifications is carried in the signed state and the web comes back to My verifications; anything else is become", async () => {
+    const r1 = await call("/api/hf/channels/instagram/start?client=web&return=verifications");
+    const s1 = new URL((await r1.json()).url).searchParams.get("state");
+    expect(await verifyState(env, s1!)).toMatchObject({ client: "web", ret: "verifications" });
+    expect((await callback(s1, "error=access_denied&error_reason=user_denied")).headers.get("location")).toBe(`${BRAND.webOrigin}/dashboard/verifications?ig=error&reason=cancelled`);
+    for (const bad of ["https%3A%2F%2Fevil.example", "%2F%2Fevil.example", "dashboard"]) {
+      const r = await call(`/api/hf/channels/instagram/start?client=web&return=${bad}`);
+      const s = new URL((await r.json()).url).searchParams.get("state");
+      expect((await verifyState(env, s!))?.ret).toBe("become");
+      expect((await callback(s, "error=access_denied")).headers.get("location")).toBe(`${BRAND.webOrigin}/dashboard/become?ig=error&reason=cancelled`);
+    }
+    const [b, sig] = (await signState(env, { uid: "u1", client: "web", nonce: "n9", exp: Date.now() + 60000 })).split(".");
+    const p = JSON.parse(Buffer.from(b, "base64url").toString());
+    expect(await verifyState(env, `${Buffer.from(JSON.stringify({ ...p, ret: "verifications" })).toString("base64url")}.${sig}`)).toBeNull();
   });
 });
 

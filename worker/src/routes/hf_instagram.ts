@@ -1,11 +1,12 @@
 // [HF-IG-LOGIN-1] "Log in with Instagram" for influencer channels (HF-REEL-58). Spec: Specs/HF-CHANNEL-LOGIN-1.md Phase 2. Flags hfChannelsEnabled + hfInstagramLoginEnabled.
-//   GET  /api/hf/channels/instagram/start?client=app|web   signed in -> { ok, url }  the Instagram authorize URL (state = HMAC-signed { uid, client, nonce, exp 10 min } + one-time nonce in KV)
+//   GET  /api/hf/channels/instagram/start?client=app|web[&return=verifications|become]   [HF-VERIFY-WEB-FLOW] return: allow-list, default become, carried in the signed state
+//                                                          signed in -> { ok, url }  the Instagram authorize URL (state = HMAC-signed { uid, client, nonce, exp 10 min } + one-time nonce in KV)
 //   GET  /api/hf/channels/instagram/callback?code&state    NO sign-in header (a browser redirect from Instagram). Verifies the state, exchanges the code (short -> long-lived token),
 //                                                          reads /me, saves the channel (provider_ref 'instagram-oauth', the same approval rule as every other channel) and the
 //                                                          AES-GCM encrypted token, imports her reels, then 302s to:
 //                                                            app: <scheme>://channels?ig=connected&result=<approved|needs_followers>      (scheme = first label of the brand domain: hellofraands)
 //                                                                 <scheme>://channels?ig=error&reason=<reason>
-//                                                            web: <web origin>/dashboard/become?ig=...   (same query)
+//                                                            web: <web origin>/dashboard/become?ig=...   (same query; /dashboard/verifications when return=verifications)
 //                                                          reason = cancelled | not_professional | claimed | limit_reached | bad_state | not_enabled | not_configured | provider_error
 //   POST /api/hf/channels/instagram/deauthorize            Meta callback (signed_request, form encoded): deletes the token + imported data of that Instagram account's channels
 //   POST /api/hf/channels/instagram/data-deletion          Meta callback (signed_request): same, answers { url, confirmation_code } per Meta's spec
@@ -23,7 +24,7 @@ import { ProviderError } from "../lib/hf_channel_providers";
 import { importChannelReels, importCountOf } from "../lib/hf_reels_import";
 import {
   IG_PROVIDER_REF, IG_SCOPES, IG_STATE_TTL_S, appScheme, channelsForIgUser, exchangeCode, fetchProfile, igAppIdOf, igRedirectUri, isProfessional,
-  parseSignedRequest, saveToken, signState, verifyState, wipeInstagramChannel, type IgProfile,
+  parseSignedRequest, saveToken, signState, verifyState, webReturnOf, webReturnPath, wipeInstagramChannel, type IgProfile, type WebReturn,
 } from "../lib/hf_instagram";
 import { COLS, MAX_CHANNELS, ensureHostRow, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
 
@@ -35,9 +36,10 @@ const randHex = (bytes: number): string => [...crypto.getRandomValues(new Uint8A
 
 export type IgFailReason = "cancelled" | "not_professional" | "claimed" | "limit_reached" | "bad_state" | "not_enabled" | "not_configured" | "provider_error";
 
-function backTo(client: "app" | "web", params: Record<string, string>): Response {
+/** [HF-VERIFY-WEB-FLOW] ret (from the signed state) picks the web page: /dashboard/verifications or /dashboard/become (default). */
+function backTo(client: "app" | "web", params: Record<string, string>, ret?: WebReturn): Response {
   const qs = new URLSearchParams(params).toString();
-  const loc = client === "web" ? `${BRAND.webOrigin}/dashboard/become?${qs}` : `${appScheme()}://channels?${qs}`;
+  const loc = client === "web" ? `${BRAND.webOrigin}${webReturnPath(ret)}?${qs}` : `${appScheme()}://channels?${qs}`;
   return new Response(null, { status: 302, headers: { location: loc, "cache-control": "no-store" } });
 }
 
@@ -132,7 +134,8 @@ export async function hfInstagramRoute(req: Request, env: Env, p: string, ctx?: 
       const nonce = randHex(16);
       const exp = Date.now() + IG_STATE_TTL_S * 1000;
       await env.TOKENS.put(nonceKey(nonce), uid, { expirationTtl: IG_STATE_TTL_S });
-      const state = await signState(env, { uid, client, nonce, exp });
+      const ret = webReturnOf(url.searchParams.get("return")); // [HF-VERIFY-WEB-FLOW] allow-list; default "become"
+      const state = await signState(env, { uid, client, nonce, exp, ret });
       const q = new URLSearchParams({ client_id: igAppIdOf(cfg as unknown as Record<string, unknown>), redirect_uri: igRedirectUri(), response_type: "code", scope: IG_SCOPES, state });
       emit("hf_channel_oauth_start", { client });
       return json({ ok: true, url: `https://www.instagram.com/oauth/authorize?${q}` }, 200, NO_STORE);
@@ -143,10 +146,11 @@ export async function hfInstagramRoute(req: Request, env: Env, p: string, ctx?: 
     if (!state) return backTo("web", { ig: "error", reason: "bad_state" });
     uid = state.uid;
     const client = state.client;
+    const ret = state.ret;
     const emit = emitFor(env, ctx, uid);
     const fail = (reason: IgFailReason, extra: Record<string, unknown> = {}): Response => {
       emit("hf_channel_oauth_fail", { reason, client, ...extra });
-      return backTo(client, { ig: "error", reason });
+      return backTo(client, { ig: "error", reason }, ret);
     };
     const owner = await env.TOKENS.get(nonceKey(state.nonce)); // one use only
     if (owner !== uid) return fail("bad_state");
@@ -216,7 +220,7 @@ export async function hfInstagramRoute(req: Request, env: Env, p: string, ctx?: 
     emit("hf_channel_threshold", { result: th.result, followers: row.followers, views: 0 });
     emit("hf_channel_oauth_done", { client, account_type: prof.accountType.toLowerCase(), result: th.result, followers: row.followers, qualified: st.qualified });
     if (th.result === "approved" && mine?.status !== "approved") emit("hf_verify_badge_added", { badge: "channel" });
-    return backTo(client, { ig: "connected", result: th.result });
+    return backTo(client, { ig: "connected", result: th.result }, ret);
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_channels", uid_set: !!uid } });
     if (which === "callback") return backTo("web", { ig: "error", reason: "provider_error" });

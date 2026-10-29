@@ -15,10 +15,7 @@ export function introAppOnlyEnabled(): Promise<boolean> {
   return flag;
 }
 
-/** Old step flow stays reachable for existing influencers' maintenance links (?step= payout/phone/channel/aadhaar, ?add=, DigiLocker return, ?mock=1). */
-export function isMaintenanceLink(search: string): boolean {
-  try { const q = new URLSearchParams(search); return q.has('step') || q.has('add') || q.has('dl') || q.get('mock') === '1'; } catch { return false; }
-}
+// [HF-VERIFY-WEB-FLOW] isMaintenanceLink was removed: ?step= / ?add= links no longer reopen the old wizard while this flag is on (see OnboardingGate).
 
 export function isAndroidPhone(ua: string): boolean {
   return /Android/i.test(ua) && /Mobile/i.test(ua);

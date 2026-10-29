@@ -56,10 +56,17 @@ const appSecret = (env: Env): string => {
 };
 const hmacKey = (secret: string, usage: ("sign" | "verify")[]) => crypto.subtle.importKey("raw", te.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, usage);
 
-export interface IgState { uid: string; client: "app" | "web"; nonce: string; exp: number }
+// [HF-VERIFY-WEB-FLOW] Where a WEB login (Instagram / Facebook) comes back to. Allow-list only: the start route reads ?return=, anything
+// else (or nothing) is "become" so old links keep landing on /dashboard/become. The value rides INSIDE the signed state, so it cannot be changed.
+export type WebReturn = "verifications" | "become";
+const WEB_RETURN_PATHS: Record<WebReturn, string> = { verifications: "/dashboard/verifications", become: "/dashboard/become" };
+export const webReturnOf = (v: unknown): WebReturn => (v === "verifications" ? "verifications" : "become");
+export const webReturnPath = (r: unknown): string => WEB_RETURN_PATHS[webReturnOf(r)];
+
+export interface IgState { uid: string; client: "app" | "web"; nonce: string; exp: number; ret?: WebReturn }
 
 export async function signState(env: Env, s: IgState): Promise<string> {
-  const body = b64uEncode(te.encode(JSON.stringify({ t: "hfig", uid: s.uid, client: s.client, nonce: s.nonce, exp: s.exp })));
+  const body = b64uEncode(te.encode(JSON.stringify({ t: "hfig", uid: s.uid, client: s.client, nonce: s.nonce, exp: s.exp, ret: webReturnOf(s.ret) })));
   const sig = await crypto.subtle.sign("HMAC", await hmacKey(appSecret(env), ["sign"]), te.encode(body));
   return `${body}.${b64uEncode(sig)}`;
 }
@@ -74,7 +81,7 @@ export async function verifyState(env: Env, state: string, now = Date.now()): Pr
     const p = JSON.parse(new TextDecoder().decode(b64uDecode(body)));
     if (p?.t !== "hfig" || typeof p.uid !== "string" || !p.uid || typeof p.nonce !== "string" || !p.nonce || (p.client !== "app" && p.client !== "web")) return null;
     if (!Number.isFinite(p.exp) || p.exp <= now) return null;
-    return { uid: p.uid, client: p.client, nonce: p.nonce, exp: p.exp };
+    return { uid: p.uid, client: p.client, nonce: p.nonce, exp: p.exp, ret: webReturnOf(p.ret) };
   } catch { return null; }
 }
 

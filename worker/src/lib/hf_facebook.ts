@@ -8,7 +8,7 @@
 import type { Env } from "../types";
 import { BRAND } from "./brand";
 import { ProviderError, PROVIDER_TIMEOUT_MS } from "./hf_channel_providers";
-import { b64uEncode, b64uDecode } from "./hf_instagram";
+import { b64uEncode, b64uDecode, webReturnOf, type WebReturn } from "./hf_instagram";
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -40,10 +40,11 @@ const appSecret = (env: Env): string => {
 };
 const hmacKey = (secret: string, usage: ("sign" | "verify")[]) => crypto.subtle.importKey("raw", te.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, usage);
 
-export interface FbState { uid: string; client: "app" | "web"; nonce: string; exp: number }
+// [HF-VERIFY-WEB-FLOW] ret = which dashboard page a web login returns to (allow-list in lib/hf_instagram.ts webReturnOf; default "become").
+export interface FbState { uid: string; client: "app" | "web"; nonce: string; exp: number; ret?: WebReturn }
 
 export async function signFbState(env: Env, s: FbState): Promise<string> {
-  const body = b64uEncode(te.encode(JSON.stringify({ t: "hffb", uid: s.uid, client: s.client, nonce: s.nonce, exp: s.exp })));
+  const body = b64uEncode(te.encode(JSON.stringify({ t: "hffb", uid: s.uid, client: s.client, nonce: s.nonce, exp: s.exp, ret: webReturnOf(s.ret) })));
   const sig = await crypto.subtle.sign("HMAC", await hmacKey(appSecret(env), ["sign"]), te.encode(body));
   return `${body}.${b64uEncode(sig)}`;
 }
@@ -58,7 +59,7 @@ export async function verifyFbState(env: Env, state: string, now = Date.now()): 
     const p = JSON.parse(new TextDecoder().decode(b64uDecode(body)));
     if (p?.t !== "hffb" || typeof p.uid !== "string" || !p.uid || typeof p.nonce !== "string" || !p.nonce || (p.client !== "app" && p.client !== "web")) return null;
     if (!Number.isFinite(p.exp) || p.exp <= now) return null;
-    return { uid: p.uid, client: p.client, nonce: p.nonce, exp: p.exp };
+    return { uid: p.uid, client: p.client, nonce: p.nonce, exp: p.exp, ret: webReturnOf(p.ret) };
   } catch { return null; }
 }
 

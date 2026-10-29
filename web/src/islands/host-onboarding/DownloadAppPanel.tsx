@@ -40,3 +40,29 @@ export default function DownloadAppPanel() {
     </main>
   );
 }
+
+/** [HF-VERIFY-WEB-FLOW] /hosts/onboarding for someone who is ALREADY an influencer (HF-INTRO-22: the site never runs the old step wizard).
+ * Social accounts are managed on My verifications; everything else (profile, phone, video KYC) lives in the app. */
+export function AlreadyHostPanel() {
+  useEffect(() => {
+    try { const f = document.getElementById('hia-footer'); if (f) f.hidden = false; } catch { /* ignore */ }
+    trackDownloadApp('host_panel_view');
+  }, []);
+  return (
+    <main className="hia" id="main-content">
+      <div className="hia-wrap">
+        <section className="hia-copy" aria-labelledby="hia-h">
+          <p className="hia-eyebrow">YOU ARE ALREADY AN INFLUENCER</p>
+          <h1 id="hia-h">Manage your account</h1>
+          <p className="hia-lead">Connect or remove your YouTube, Instagram and Facebook on My verifications. Your profile, intro video and video KYC are done in the app.</p>
+          <p className="hia-open"><a className="hia-open-btn" href="/dashboard/verifications" data-hia="verifications">Go to My verifications</a></p>
+          <div className="hia-stores">
+            <a className="hia-play" href={HF_PLAY_URL} rel="noopener" data-hia="play" onClick={() => trackDownloadApp('play')}>
+              <img src="/assets/hf-desi/btn-google-play.webp" alt="Get it on Google Play" width="420" height="125" />
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}

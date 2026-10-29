@@ -5,13 +5,19 @@ import { request } from './apiClient';
 import { hfCall, type HfResult } from './hfCallsApi';
 
 export type CallOption = 'A' | 'B';
-export interface IntroFlags { callOption: boolean; intro: boolean; facebook: boolean }
-export const NO_INTRO_FLAGS: IntroFlags = { callOption: false, intro: false, facebook: false };
+// [HF-VERIFY-WEB-FLOW] channels (hfChannelsEnabled, YouTube with Google) and instagram (hfInstagramLoginEnabled) join the list for the My verifications buttons.
+export interface IntroFlags { callOption: boolean; intro: boolean; facebook: boolean; instagram: boolean; channels: boolean }
+export const NO_INTRO_FLAGS: IntroFlags = { callOption: false, intro: false, facebook: false, instagram: false, channels: false };
 let flagsP: Promise<IntroFlags> | null = null;
 export function introFlags(): Promise<IntroFlags> {
   if (!flagsP) {
-    flagsP = request<{ hfCallOptionEnabled?: boolean; hfIntroOnboardingEnabled?: boolean; hfFacebookLoginEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
-      .then(c => ({ callOption: c?.hfCallOptionEnabled === true, intro: c?.hfIntroOnboardingEnabled === true, facebook: c?.hfFacebookLoginEnabled === true }))
+    flagsP = request<{ hfCallOptionEnabled?: boolean; hfIntroOnboardingEnabled?: boolean; hfFacebookLoginEnabled?: boolean; hfInstagramLoginEnabled?: boolean; hfChannelsEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
+      .then(c => ({
+        callOption: c?.hfCallOptionEnabled === true, intro: c?.hfIntroOnboardingEnabled === true,
+        channels: c?.hfChannelsEnabled === true,
+        facebook: c?.hfChannelsEnabled === true && c?.hfFacebookLoginEnabled === true,
+        instagram: c?.hfChannelsEnabled === true && c?.hfInstagramLoginEnabled === true,
+      }))
       .catch(() => NO_INTRO_FLAGS);
   }
   return flagsP;
@@ -29,8 +35,28 @@ export const getIntroMe = (): Promise<HfResult<IntroMe>> => hfCall<IntroMe>('GET
 
 export const reasonText = (r: { code?: string; text?: string } | string): string => (typeof r === 'string' ? r : r.text || r.code || '');
 
-/** GET /api/hf/channels/facebook/start?client=web -> { url }. */
-export const facebookStart = (): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', '/api/hf/channels/facebook/start?client=web');
+/** [HF-VERIFY-WEB-FLOW] Which dashboard page a web login comes back to. The worker allow-lists the same two values (default become). */
+export type WebReturn = 'verifications' | 'become';
+/** GET /api/hf/channels/facebook/start?client=web&return=... -> { url }. */
+export const facebookStart = (ret: WebReturn = 'become'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/facebook/start?client=web&return=${ret}`);
+/** GET /api/hf/channels/instagram/start?client=web&return=... -> { url } (HF-IG-LOGIN-1). */
+export const instagramStart = (ret: WebReturn = 'become'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/instagram/start?client=web&return=${ret}`);
+
+/** Facebook adds "#_=_" to the address after its login. Remove it so the bar stays clean (and a later share/copy has no junk). */
+export function stripFacebookHash(): void {
+  try { if (window.location.hash === '#_=_') window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* ignore */ }
+}
+
+export const IG_ERROR_TEXT: Record<string, string> = {
+  cancelled: 'You cancelled the Instagram login. You can try again any time.',
+  not_professional: 'That Instagram account is personal. Switch it to a Creator or Business account in Instagram settings, then try again.',
+  claimed: 'That Instagram account is already linked to another account.',
+  limit_reached: 'You have reached the most social accounts you can connect. Remove one first.',
+  bad_state: 'That login link expired. Please try again.',
+  not_enabled: 'Instagram login is not open yet.',
+  not_configured: 'Instagram login is not available right now. Please try again later.',
+  provider_error: 'Instagram did not answer. Please try again in a moment.',
+};
 
 export const FB_ERROR_TEXT: Record<string, string> = {
   cancelled: 'You cancelled the Facebook login. You can try again any time.',

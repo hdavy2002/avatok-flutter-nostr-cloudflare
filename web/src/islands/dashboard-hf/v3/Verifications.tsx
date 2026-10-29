@@ -1,13 +1,16 @@
 /* [HF-CREATOR-BADGES-1] My verifications: one card per badge (Phone, Channel, Video KYC, Space) plus "Who can call you".
  * Worker: GET /api/hf/spaces/me (badges, canGoLive, missing, callerLevel, callerLevelLocked), POST /api/hf/spaces/space,
- * POST /api/hf/spaces/caller-level. Channel and KYC steps happen in /hosts/onboarding (deep-linked with ?add=). */
+ * POST /api/hf/spaces/caller-level. [HF-VERIFY-WEB-FLOW] Social media logins start right here (YouTube with Google, Instagram, Facebook) and come
+ * back here. While hfIntroOnboardingEnabled is on (HF-INTRO-22, app-only onboarding) phone and video KYC are done in the app; off, they still
+ * deep-link into /hosts/onboarding as before. */
 import { useCallback, useEffect, useState } from 'react';
 import { hfCall } from '../../../lib/hfCallsApi';
 import { capture } from '../../../lib/analytics';
 import { NEVER_SHARE } from '../../../lib/hfSpaces';
 import SpaceBadges from '../../../components/hosts/SpaceBadges';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
-import { FacebookLoginButton, FacebookReturnNote } from './SocialVerify'; // [HF-INTRO-B4]
+import { FacebookLoginButton, InstagramLoginButton, SocialNote, SocialReturnNote, YouTubeConnectButton, useIntroFlags } from './SocialVerify'; // [HF-INTRO-B4] [HF-VERIFY-WEB-FLOW]
+import { HF_PLAY_URL } from '../../../lib/hfApp';
 import { accountName, belowNeed, belowTitle, socialChip, verifiedLine, type SocialAccount, type SocialSummary } from '../../../lib/hfSocialStates'; // [HF-SOCIAL-STATES]
 import { Failed, Ic, PageHead, Skel, Sticker } from './ui';
 import '../../../styles/hf-verifications.css';
@@ -52,7 +55,7 @@ export default function Verifications({ account }: { account: DashboardAccount }
   const closing = !!account.closing;
   return <>
     <PageHead eyebrow="My verifications" title="Bharosa ke badge" sub="Stack your badges so fans trust you. Add social media verification, video KYC, or both." art={<Sticker name="nazar" w={100} rot={5} />} />
-    <FacebookReturnNote />
+    <SocialReturnNote />
     <section className="hv-summary" aria-live="polite">
       <div className="hv-lead">
         <h2>{canGoLive ? liveTitle(me.hostStatus) : 'Not ready to go live yet'}</h2>
@@ -73,20 +76,29 @@ export default function Verifications({ account }: { account: DashboardAccount }
 }
 
 function PhoneCard({ done }: { done: boolean }) {
+  const appOnly = !!useIntroFlags()?.intro; // [HF-VERIFY-WEB-FLOW] HF-INTRO-22: the website no longer runs the onboarding steps
   return <section className="hv-card">
     <div className="hv-head"><span className="hv-ico" aria-hidden="true"><Ic name="phone" className="" /></span>
       <div><h3>Phone verified</h3><p>Your WhatsApp number. Every creator needs it, and fans never see it.</p></div>
       <span className="hv-status">{done ? <Chip tone="lav">Verified</Chip> : <Chip tone="miss">Not yet</Chip>}</span></div>
-    {!done && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?step=phone">Verify my number</a></div>}
+    {!done && <div className="hv-acts">{appOnly
+      ? <a className="h3-btn rani" href={HF_PLAY_URL} rel="noopener" onClick={() => track('hf_verifications_action', { badge: 'phone', to: 'app' })}>Verify my number in the app</a>
+      : <a className="h3-btn rani" href="/hosts/onboarding?step=phone">Verify my number</a>}</div>}
   </section>;
 }
 
 /** [HF-SOCIAL-STATES] Three states: verified (tick), connected-below-minimum (shown, does not count, Remove), not connected.
- * The connect buttons stay visible in every state so she can add the other platforms. */
+ * The connect buttons stay visible in every state so she can add the other platforms.
+ * [HF-VERIFY-WEB-FLOW] The buttons are the real logins (no link to the old wizard); each returns to this page. */
 export function ChannelCard({ done, closing, social, kycDone, onChanged }: { done: boolean; closing: boolean; social?: SocialSummary | null; kycDone?: boolean; onChanged?: () => Promise<void> }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const flags = useIntroFlags();
   const accounts = social?.accounts ?? [];
+  const has = (p: string) => accounts.some(a => a.platform === p);
+  const anyLogin = !!flags && (flags.facebook || flags.instagram || (flags.channels && !!import.meta.env.PUBLIC_GOOGLE_CLIENT_ID));
+  const ytDone = async (n: { ok: boolean; text: string }) => { setNote(n); if (onChanged) await onChanged(); };
   const state: SocialSummary['state'] = done ? 'verified' : social?.state === 'below_minimum' ? 'below_minimum' : 'none';
   const min = social?.minFollowers ?? 20, minViews = social?.minViews ?? 1000;
   const remove = async (a: SocialAccount) => {
@@ -104,14 +116,29 @@ export function ChannelCard({ done, closing, social, kycDone, onChanged }: { don
       <span className="hv-status">{state === 'verified' ? <Chip tone="lav">Verified</Chip> : state === 'below_minimum' ? <Chip tone="gold">{socialChip(state)}</Chip> : <Chip tone="dec">Not connected</Chip>}</span></div>
     {accounts.length > 0 && <ul className="hv-accts">{accounts.map(a => <li key={a.id} className={`hv-acct ${a.state === 'approved' ? 'ok' : 'low'}`}>
       <div>{a.state === 'approved'
-        ? <b>{a.url ? <a href={a.url} target="_blank" rel="noopener nofollow">{verifiedLine(a)}</a> : verifiedLine(a)}</b>
-        : <><b>{a.url ? <a href={a.url} target="_blank" rel="noopener nofollow">{belowTitle(a)}</a> : belowTitle(a)}</b><small>{belowNeed(a, min, minViews)}</small></>}</div>
+        ? <b><NameLinked line={verifiedLine(a)} a={a} /></b>
+        : <><b><NameLinked line={belowTitle(a)} a={a} /></b><small>{belowNeed(a, min, minViews)}</small></>}</div>
       {!closing && <button type="button" className="h3-btn ghost" disabled={!!busy} onClick={() => void remove(a)}>{busy === a.id ? 'Removing…' : 'Remove'}</button>}
     </li>)}</ul>}
-    {!closing && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?add=channel&step=channel" onClick={() => track('hf_verifications_action', { badge: 'channel', state })}>{state === 'none' ? 'Connect my social media' : 'Add another account'}</a><FacebookLoginButton surface="verifications" /></div>}
-    {state === 'below_minimum' && !closing && !kycDone && <div className="hv-acts"><a className="h3-btn ghost" href="/hosts/onboarding?add=kyc&step=aadhaar" onClick={() => track('hf_verifications_action', { badge: 'video_kyc', from: 'social_below_minimum' })}>Do the Aadhaar check / video KYC</a></div>}
+    <SocialNote note={note} />
+    {!closing && <div className="hv-acts">
+      <YouTubeConnectButton surface="verifications" connected={has('youtube')} onDone={ytDone} />
+      <InstagramLoginButton surface="verifications" ret="verifications" connected={has('instagram')} />
+      <FacebookLoginButton surface="verifications" ret="verifications" connected={has('facebook')} />
+    </div>}
+    {!closing && flags && !anyLogin && <p className="hv-note"><Ic name="star" className="" />Social media logins open here soon. Until then, connect your channels in <a href={HF_PLAY_URL} rel="noopener">our app</a>.</p>}
+    {state === 'below_minimum' && !closing && !kycDone && <div className="hv-acts"><a className="h3-btn ghost" href={flags?.intro ? HF_PLAY_URL : '/hosts/onboarding?add=kyc&step=aadhaar'} onClick={() => track('hf_verifications_action', { badge: 'video_kyc', from: 'social_below_minimum' })}>Do the Aadhaar check / video KYC</a></div>}
     {err && <p className="hv-err" role="alert">{err}</p>}
   </section>;
+}
+
+/** [HF-VERIFY-WEB-FLOW] The account NAME inside the line is a link to the public Page / channel / profile (new tab), for her and for Meta reviewers. */
+function NameLinked({ line, a }: { line: string; a: SocialAccount }) {
+  const url = a.url && /^https:\/\//.test(a.url) ? a.url : '';
+  const name = accountName(a);
+  const i = url ? line.indexOf(name) : -1;
+  if (i < 0) return <>{line}</>;
+  return <>{line.slice(0, i)}<a className="hv-acct-link" href={url} target="_blank" rel="noopener nofollow" aria-label={`${name} (opens in a new tab)`}>{name}<span aria-hidden="true"> ↗</span></a>{line.slice(i + name.length)}</>;
 }
 
 function KycCard({ me, done, closing }: { me: Me; done: boolean; closing: boolean }) {
@@ -119,13 +146,14 @@ function KycCard({ me, done, closing }: { me: Me; done: boolean; closing: boolea
   const aad = !!me.aadhaarVerified;
   const state = done ? 'verified' : sf === 'rejected' ? 'rejected' : sf === 'pending' ? 'pending' : 'start';
   const step = aad ? 'selfie' : 'aadhaar';
+  const appOnly = !!useIntroFlags()?.intro; // [HF-VERIFY-WEB-FLOW] HF-INTRO-22: video KYC happens in the app while app-only onboarding is on
   return <section className="hv-card">
     <div className="hv-head"><span className="hv-ico" aria-hidden="true"><Ic name="shield" className="" /></span>
       <div><h3>Video KYC</h3><p>Aadhaar plus a 10-second selfie video. Perfect for chatting, company and sharing your day. No channel needed.</p></div>
       <span className="hv-status">{state === 'verified' ? <SpaceBadges videoKyc space={null} surface="my_verifications_card" /> : state === 'pending' ? <Chip tone="gold">Being checked</Chip> : state === 'rejected' ? <Chip tone="miss">Try again</Chip> : <Chip tone="dec">Not started</Chip>}</span></div>
     {state === 'pending' && <p className="hv-note"><Ic name="clock" className="" />Our team is checking your selfie video. We will message you on WhatsApp.</p>}
     {state === 'rejected' && <p className="hv-reason" role="alert">Your selfie video was not approved{me.selfie?.reason ? `: ${me.selfie.reason}` : '.'} Please record it again.</p>}
-    {!closing && state !== 'verified' && state !== 'pending' && <div className="hv-acts"><a className="h3-btn rani" href={`/hosts/onboarding?add=kyc&step=${step}`} onClick={() => track('hf_verifications_action', { badge: 'video_kyc' })}>{state === 'rejected' ? 'Record my selfie again' : aad ? 'Record my selfie video' : 'Start video KYC'}</a></div>}
+    {!closing && state !== 'verified' && state !== 'pending' && <div className="hv-acts"><a className="h3-btn rani" href={appOnly ? HF_PLAY_URL : `/hosts/onboarding?add=kyc&step=${step}`} rel={appOnly ? 'noopener' : undefined} onClick={() => track('hf_verifications_action', { badge: 'video_kyc', to: appOnly ? 'app' : 'web' })}>{state === 'rejected' ? 'Record my selfie again' : aad ? 'Record my selfie video' : 'Start video KYC'}{appOnly ? ' in the app' : ''}</a></div>}
   </section>;
 }
 

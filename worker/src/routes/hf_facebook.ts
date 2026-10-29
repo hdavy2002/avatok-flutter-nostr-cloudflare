@@ -1,9 +1,10 @@
 // [HF-FB-LOGIN-1] "Log in with Facebook" for Social media verification (HF-INTRO-3). Spec: Specs/HF-FACEBOOK-LOGIN-1.md. Flags hfChannelsEnabled + hfFacebookLoginEnabled.
-//   GET  /api/hf/channels/facebook/start?client=app|web   signed in -> { ok, url }  the Facebook dialog URL (state = HMAC-signed { uid, client, nonce, exp 10 min } + one-time nonce in KV)
+//   GET  /api/hf/channels/facebook/start?client=app|web[&return=verifications|become]   signed in -> { ok, url }  the Facebook dialog URL (state = HMAC-signed { uid, client, nonce, exp 10 min, ret } + one-time nonce in KV)
+//                                                         [HF-VERIFY-WEB-FLOW] return is an allow-list (anything else = become) and rides inside the signed state.
 //   GET  /api/hf/channels/facebook/callback?code&state    NO sign-in header (a browser redirect from Facebook). Verifies the state, exchanges the code, reads the Page she manages
 //                                                         (name, public link, followers), saves the channel (platform 'facebook', provider_ref 'facebook-oauth', verified) and 302s to:
 //                                                           app: <scheme>://channels?fb=connected&result=<approved|needs_followers>   |  <scheme>://channels?fb=error&reason=<reason>
-//                                                           web: <web origin>/dashboard/become?fb=...   (same query)
+//                                                           web: <web origin>/dashboard/become?fb=...   (same query; /dashboard/verifications when return=verifications)
 //                                                         reason = cancelled | no_page | claimed | limit_reached | bad_state | not_enabled | not_configured | provider_error
 //   POST /api/hf/channels/facebook/deauthorize            Meta callback (signed_request, form encoded): disconnects that Facebook user's channels
 //   POST /api/hf/channels/facebook/data-deletion          Meta callback: same, answers { url, confirmation_code } per Meta's spec
@@ -18,7 +19,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { ProviderError } from "../lib/hf_channel_providers";
-import { appScheme } from "../lib/hf_instagram";
+import { appScheme, webReturnOf, webReturnPath, type WebReturn } from "../lib/hf_instagram";
 import {
   FB_GRAPH_VERSION, FB_PROVIDER_REF, FB_SCOPES, FB_STATE_TTL_S, channelsForFbUser, fbAppIdOf, fbConfigIdOf, fbExchangeCode, fbFetchProfile, fbRedirectUri, parseFbSignedRequest, saveFbLogin,
   signFbState, verifyFbState, wipeFbChannel, type FbProfile,
@@ -33,9 +34,10 @@ const randHex = (bytes: number): string => [...crypto.getRandomValues(new Uint8A
 
 export type FbFailReason = "cancelled" | "no_page" | "claimed" | "limit_reached" | "bad_state" | "not_enabled" | "not_configured" | "provider_error";
 
-function backTo(client: "app" | "web", params: Record<string, string>): Response {
+/** [HF-VERIFY-WEB-FLOW] ret (from the signed state) picks the web page: /dashboard/verifications or /dashboard/become (default). */
+function backTo(client: "app" | "web", params: Record<string, string>, ret?: WebReturn): Response {
   const qs = new URLSearchParams(params).toString();
-  const loc = client === "web" ? `${BRAND.webOrigin}/dashboard/become?${qs}` : `${appScheme()}://channels?${qs}`;
+  const loc = client === "web" ? `${BRAND.webOrigin}${webReturnPath(ret)}?${qs}` : `${appScheme()}://channels?${qs}`;
   return new Response(null, { status: 302, headers: { location: loc, "cache-control": "no-store" } });
 }
 
@@ -123,7 +125,8 @@ export async function hfFacebookRoute(req: Request, env: Env, p: string, ctx?: E
       const nonce = randHex(16);
       const exp = Date.now() + FB_STATE_TTL_S * 1000;
       await env.TOKENS.put(nonceKey(nonce), uid, { expirationTtl: FB_STATE_TTL_S });
-      const state = await signFbState(env, { uid, client, nonce, exp });
+      const ret = webReturnOf(url.searchParams.get("return")); // [HF-VERIFY-WEB-FLOW] allow-list; default "become"
+      const state = await signFbState(env, { uid, client, nonce, exp, ret });
       const configId = fbConfigIdOf(cfgAny);
       const q = new URLSearchParams({ client_id: fbAppIdOf(cfgAny), redirect_uri: fbRedirectUri(), response_type: "code", ...(configId ? { config_id: configId } : { scope: FB_SCOPES }), state });
       emit("hf_channel_oauth_start", { client });
@@ -135,10 +138,11 @@ export async function hfFacebookRoute(req: Request, env: Env, p: string, ctx?: E
     if (!state) return backTo("web", { fb: "error", reason: "bad_state" });
     uid = state.uid;
     const client = state.client;
+    const ret = state.ret;
     const emit = emitFor(env, ctx, uid);
     const fail = (reason: FbFailReason, extra: Record<string, unknown> = {}): Response => {
       emit("hf_channel_oauth_fail", { reason, client, ...extra });
-      return backTo(client, { fb: "error", reason });
+      return backTo(client, { fb: "error", reason }, ret);
     };
     const owner = await env.TOKENS.get(nonceKey(state.nonce)); // one use only
     if (owner !== uid) return fail("bad_state");
@@ -199,7 +203,7 @@ export async function hfFacebookRoute(req: Request, env: Env, p: string, ctx?: E
     emit("hf_channel_threshold", { result: th.result, followers: row.followers, views: 0 });
     emit("hf_channel_oauth_done", { client, result: th.result, followers: row.followers, qualified: st.qualified });
     if (th.result === "approved" && mine?.status !== "approved") emit("hf_verify_badge_added", { badge: "channel" });
-    return backTo(client, { fb: "connected", result: th.result });
+    return backTo(client, { fb: "connected", result: th.result }, ret);
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_channels", uid_set: !!uid } });
     if (which === "callback") return backTo("web", { fb: "error", reason: "provider_error" });
