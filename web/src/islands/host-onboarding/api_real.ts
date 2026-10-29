@@ -269,11 +269,12 @@ function chain(): Promise<void> {
 
 // ── the client ──────────────────────────────────────────────────────────────
 /** [HF-CREATOR-SPACES-1] Channel JSON from the worker -> what the screens show. */
-interface ChannelJson { id: string; platform: string; handle: string; url?: string | null; followers?: number; views?: number; state?: string; verified?: boolean; needsCode?: boolean; verifyCode?: string | null }
+interface ChannelJson { id: string; platform: string; handle: string; displayHandle?: string | null; url?: string | null; followers?: number; views?: number; state?: string; need?: string; verified?: boolean; needsCode?: boolean; verifyCode?: string | null }
 const toChannel = (c: ChannelJson): ChannelItem => ({
-  id: c.id, platform: c.platform === 'youtube' ? 'youtube' : 'instagram', handle: c.handle, url: c.url ?? null,
+  // [HF-SOCIAL-STATES] keep Facebook as Facebook (it used to show as Instagram with the Page id); need='views' -> needs_views
+  id: c.id, platform: c.platform === 'youtube' ? 'youtube' : c.platform === 'facebook' ? 'facebook' : 'instagram', handle: c.handle, displayHandle: c.displayHandle ?? null, url: c.url ?? null,
   followers: Number(c.followers) || 0, views: Number(c.views) || 0,
-  state: (['checking', 'approved', 'needs_followers', 'needs_views', 'disconnected'].includes(String(c.state)) ? c.state : 'checking') as ChannelItem['state'],
+  state: (c.state === 'needs_followers' && c.need === 'views' ? 'needs_views' : ['checking', 'approved', 'needs_followers', 'needs_views', 'disconnected'].includes(String(c.state)) ? c.state : 'checking') as ChannelItem['state'],
   verified: !!c.verified, needsCode: !!c.needsCode, verifyCode: c.verifyCode ?? null,
 });
 const CONSENT = { version: 'web-ch-1', embeds: true, counts: true, ownChannel: true, feed: true };

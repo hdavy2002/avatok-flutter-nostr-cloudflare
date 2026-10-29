@@ -3,6 +3,8 @@
 /// Parsing is tolerant: a missing key is a safe default (not verified), so the app never crashes while the server changes.
 library;
 
+import '../social_states.dart'; // [HF-SOCIAL-STATES]
+
 String? _s(Object? v) {
   final s = v?.toString().trim();
   return (s == null || s.isEmpty) ? null : s;
@@ -80,6 +82,7 @@ class SpaceStatus {
     this.callerLevel = 'everyone',
     this.callerLevelLocked = false,
     this.hostStatus,
+    this.social = SocialSummary.empty,
   });
 
   final bool whatsappVerified;
@@ -120,6 +123,9 @@ class SpaceStatus {
 
   /// [HF-VERIF-WORDING-1] Creator side: the profile status (`live`, `approved`, `pending_review`, ...) or null.
   final String? hostStatus;
+
+  /// [HF-SOCIAL-STATES] Creator side: the proven social accounts in three states. Only `badges.channel` (approved) counts.
+  final SocialSummary social;
 
   bool grantedFor(SpaceLane lane) => lane == SpaceLane.women ? womenGranted : lgbtqGranted;
 
@@ -194,6 +200,7 @@ class SpaceStatus {
       callerLevel: level == 'video_kyc' ? 'video_kyc' : 'everyone',
       callerLevelLocked: j['callerLevelLocked'] == true,
       hostStatus: j['hostStatus'] is String ? j['hostStatus'] as String : null,
+      social: SocialSummary.fromJson(j['social']),
     );
   }
 }

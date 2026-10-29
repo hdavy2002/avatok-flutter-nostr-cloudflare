@@ -10,6 +10,7 @@ import '../../../data/instagram_login.dart';
 import '../../../data/models/intro_onboarding.dart';
 import '../../../data/repos/intro_onboarding_repo.dart';
 import '../../../data/services.dart';
+import '../../../data/social_states.dart'; // [HF-SOCIAL-STATES]
 import '../../../data/telemetry.dart';
 import '../../../data/youtube_sign_in.dart';
 import '../../desi.dart';
@@ -123,6 +124,7 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
   String? _waiting; // platform whose browser login was opened
   String? _error;
   String? _note;
+  bool _noteOk = true; // [HF-SOCIAL-STATES] false = connected but below the minimum (not green)
   bool _igOn = false;
 
   @override
@@ -157,10 +159,13 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
     final ok = IntroOnbSession.lastResult == 'connected';
     Telemetry.event('hf_onb_social_login', {'platform': platform, 'ok': ok});
     if (!mounted) return;
+    final detail = IntroOnbSession.lastDetail;
     setState(() {
       _waiting = null;
       _error = ok ? null : _reasonText(platform, IntroOnbSession.lastReason);
-      _note = ok ? '${_name(platform)} is connected.' : null;
+      // [HF-SOCIAL-STATES] fb=connected&result=needs_followers: connected, but it does not count yet
+      _note = ok ? socialConnectedText(platform, detail) : null;
+      _noteOk = detail == null || detail == 'approved';
     });
     unawaited(widget.onRefresh());
   }
@@ -218,8 +223,14 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
     Telemetry.event('hf_onb_social_login', {'platform': 'youtube', 'ok': ok});
     if (!mounted) return;
     setState(() {
+      final below = fresh?.socialSummary.forPlatform('youtube');
       if (ok) {
         _note = 'YouTube is connected.';
+        _noteOk = true;
+      } else if (below != null && !below.approved) {
+        // [HF-SOCIAL-STATES] signed in and proven, but under the minimum: say so instead of an error
+        _note = socialConnectedText('youtube', below.need == 'views' ? 'needs_views' : 'needs_followers');
+        _noteOk = false;
       } else {
         _error = check.message.isNotEmpty ? check.message : 'We could not verify that channel. You can skip this step.';
       }
@@ -247,13 +258,18 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
     });
   }
 
+  /// [HF-SOCIAL-STATES] Three states per platform: verified (green tick), connected but below the minimum (shown with its numbers and
+  /// what it needs; does not count), not added. The Log in button stays for the last two.
   Widget _row(String platform, Color tile, Widget glyph) {
     final s = widget.me?.social(platform);
-    final verified = s != null;
+    final summary = widget.me?.socialSummary ?? SocialSummary.empty;
+    final acct = summary.forPlatform(platform);
+    final verified = s != null || (acct?.approved ?? false);
+    final below = !verified && acct != null ? acct : null;
     final working = _busy == platform;
     final waiting = _waiting == platform;
-    final handle = s?.handle;
-    final who = (handle == null || handle.isEmpty) ? '' : ' · ${handle.startsWith('@') ? handle : '@$handle'}';
+    final handle = s?.handle ?? acct?.handle;
+    final who = (handle == null || handle.isEmpty) ? '' : ' · ${socialAccountName(platform, handle, acct?.displayHandle)}';
     final followers = (s?.followers ?? 0) > 0 ? ' · ${_compact(s!.followers!)}' : '';
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 64),
@@ -265,15 +281,19 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
             Text(_name(platform), style: t(17, color: IO.ink, w: FontWeight.w800)),
             if (verified)
               Text('✓ Verified$who$followers', style: t(14, color: IO.ok, w: FontWeight.w800))
-            else
+            else if (below != null) ...[
+              Text(socialBelowTitle(below), style: t(14, color: IO.orangeInk, w: FontWeight.w800, h: 1.3)),
+              const SizedBox(height: 2),
+              Text(socialBelowNeed(below, summary.minFollowers, summary.minViews), style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.35)),
+            ] else
               Text(waiting ? 'Finish logging in, then come back here' : 'Not added', style: t(14, color: IO.muted, w: FontWeight.w700, h: 1.3)),
           ]),
         ),
         if (!verified) ...[
           const SizedBox(width: 8),
           GotaPill(
-            label: 'Log in',
-            semanticLabel: 'Log in with ${_name(platform)}',
+            label: below != null ? 'Log in again' : 'Log in',
+            semanticLabel: below != null ? 'Log in again with ${_name(platform)} after you get more followers' : 'Log in with ${_name(platform)}',
             busy: working,
             onTap: () => unawaited(_login(platform)),
           ),
@@ -292,7 +312,8 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    final anyVerified = (widget.me?.socials ?? const <OnbSocial>[]).isNotEmpty;
+    final anyVerified = (widget.me?.socials ?? const <OnbSocial>[]).isNotEmpty || (widget.me?.socialSummary.state == SocialState.verified);
+    final anyBelow = !anyVerified && (widget.me?.socialSummary.firstBelow != null);
     return OnbScaffold(
       step: OnbStep.social,
       eyebrow: 'Optional',
@@ -301,7 +322,7 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
       onBack: widget.onBack,
       primaryLabel: 'Next',
       onPrimary: widget.onNext,
-      secondaryLabel: anyVerified ? null : 'Skip — I don’t use social media',
+      secondaryLabel: anyVerified ? null : (anyBelow ? 'Next — I’ll do the Aadhaar check' : 'Skip — I don’t use social media'),
       onSecondary: widget.onNext,
       error: _error,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -316,7 +337,7 @@ class _OnbSocialStepState extends State<OnbSocialStep> with WidgetsBindingObserv
             ],
           ]),
         ),
-        if (_note != null) ...[const SizedBox(height: 12), Text(_note!, style: t(15, color: IO.ok, w: FontWeight.w800))],
+        if (_note != null) ...[const SizedBox(height: 12), Text(_note!, style: t(15, color: _noteOk ? IO.ok : IO.orangeInk, w: FontWeight.w800, h: 1.4))],
         const SizedBox(height: 14),
         OnbDashed(
           color: IO.orange,

@@ -104,6 +104,14 @@ export async function fbExchangeCode(env: Env, appId: string, code: string, f: F
 }
 
 export interface FbPage { id: string; name: string; handle: string; url: string; followers: number }
+
+/** [HF-SOCIAL-STATES] What we save and show as the Facebook "handle": @username (stored without @), else the Page name, else "Facebook Page". */
+export function fbHandleOf(username: string, name: string): string {
+  const u = username.replace(/^@/, "").trim();
+  if (u && !/^\d+$/.test(u)) return u;
+  const n = name.trim();
+  return n && !/^\d+$/.test(n) ? n : "Facebook Page";
+}
 export interface FbProfile { fbUserId: string; name: string; page: FbPage | null }
 
 /** Who she is + the Facebook Page she manages with the most followers (a public link needs a Page). page=null when she manages none. */
@@ -116,9 +124,13 @@ export async function fbFetchProfile(token: string, f: FetchLike = fetch): Promi
   for (const p of Array.isArray(acc?.data) ? acc.data : []) {
     const id = String(p?.id ?? "");
     if (!/^\d{3,30}$/.test(id)) continue;
-    const link = typeof p?.link === "string" && p.link.startsWith("https://") ? p.link : `https://www.facebook.com/${id}`;
+    // [HF-SOCIAL-STATES] handle = the Page's @username when it has one, else the Page NAME; never the numeric id (that is what the
+    // owner saw on 2026-10-29). url = the Page's public link, else facebook.com/<username>, else facebook.com/<id> (still a working link).
+    const username = String(p?.username ?? "").replace(/^@/, "").trim().slice(0, 60);
+    const name = String(p?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const link = typeof p?.link === "string" && p.link.startsWith("https://") ? p.link : `https://www.facebook.com/${username ? encodeURIComponent(username) : id}`;
     const followers = num(p?.followers_count ?? p?.fan_count);
-    const cand: FbPage = { id, name: String(p?.name ?? "").slice(0, 80), handle: String(p?.username ?? "").replace(/^@/, "").slice(0, 60) || id, url: link, followers };
+    const cand: FbPage = { id, name, handle: fbHandleOf(username, name), url: link, followers };
     if (!best || cand.followers > best.followers) best = cand;
   }
   return { fbUserId, name: String(me?.name ?? "").slice(0, 80), page: best };

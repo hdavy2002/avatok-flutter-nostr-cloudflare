@@ -40,11 +40,13 @@ class Channel {
     this.lastSyncAt,
     this.viaLogin = false,
     this.needsReconnect = false,
+    this.displayHandle,
+    this.need,
   });
 
   final String id;
 
-  /// `instagram` or `youtube`.
+  /// `instagram`, `youtube` or `facebook` ([HF-SOCIAL-STATES]: Log in with Facebook).
   final String platform;
   final String handle;
   final String? url;
@@ -75,9 +77,19 @@ class Channel {
   /// [HF-IG-LOGIN-1] An Instagram channel added by bio code: the app asks her to log in (HF-REEL-61).
   bool get isInstagramBioCode => isInstagram && !viaLogin && state != ChannelState.disconnected;
 
+  /// [HF-SOCIAL-STATES] The handle without a numeric Page id (null when the server only had the id).
+  final String? displayHandle;
+
+  /// [HF-SOCIAL-STATES] What a proven account below the minimum still needs: `followers | views | hidden_count`, or null.
+  final String? need;
+
   bool get isInstagram => platform == 'instagram';
-  String get platformName => isInstagram ? 'Instagram' : 'YouTube';
-  String get followersWord => isInstagram ? 'followers' : 'subscribers';
+  bool get isFacebook => platform == 'facebook';
+  String get platformName => isInstagram ? 'Instagram' : (isFacebook ? 'Facebook' : 'YouTube');
+  String get followersWord => platform == 'youtube' ? 'subscribers' : 'followers';
+
+  /// [HF-SOCIAL-STATES] Proven (login or code) but under the minimum: shown, does not count.
+  bool get belowMinimum => verified && (state == ChannelState.needsFollowers || state == ChannelState.needsViews);
 
   factory Channel.fromJson(Map<String, dynamic> j) => Channel(
         id: (j['id'] ?? '').toString(),
@@ -86,13 +98,15 @@ class Channel {
         url: _s(j['url']),
         followers: _i(j['followers']),
         views: _i(j['views']),
-        state: ChannelState.parse(j['state']),
+        state: j['state'] == 'needs_followers' && j['need'] == 'views' ? ChannelState.needsViews : ChannelState.parse(j['state']),
         verified: j['verified'] == true,
         needsCode: j['needsCode'] == true,
         verifyCode: _s(j['verifyCode']),
         lastSyncAt: j['lastSyncAt'] is num ? (j['lastSyncAt'] as num).toInt() : null,
         viaLogin: j['viaLogin'] == true,
         needsReconnect: j['needsReconnect'] == true,
+        displayHandle: _s(j['displayHandle']),
+        need: _s(j['need']),
       );
 }
 

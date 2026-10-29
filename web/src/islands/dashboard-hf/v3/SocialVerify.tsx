@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { capture } from '../../../lib/analytics';
 import { FB_ERROR_TEXT, facebookStart, introFlags } from '../../../lib/hfIntroDash';
+import { facebookConnectedText } from '../../../lib/hfSocialStates';
 
 const track = (e: string, p: Record<string, unknown>) => { try { capture(e, p as never); } catch { /* telemetry must never break the page */ } };
 
@@ -43,7 +44,7 @@ export function FacebookReturnNote() {
       if (!fb) return;
       const reason = u.searchParams.get('reason') || '', result = u.searchParams.get('result') || '';
       if (fb === 'connected') {
-        setNote({ ok: true, text: result === 'needs_followers' ? 'Facebook is connected. It does not have enough followers yet to count as verified.' : 'Facebook is connected. Your social media verification is updated.' });
+        setNote({ ok: true, text: facebookConnectedText(result) }); // [HF-SOCIAL-STATES] below the minimum is connected, not verified
       } else setNote({ ok: false, text: FB_ERROR_TEXT[reason] || 'Facebook login did not finish. Please try again.' });
       track('hf_social_verify_return', { platform: 'facebook', result: fb === 'connected' ? 'connected' : 'error', reason: reason || undefined });
       ['fb', 'reason', 'result'].forEach(k => u.searchParams.delete(k));

@@ -95,6 +95,9 @@ abstract final class IntroOnbSession {
   static String? lastResult;
   static String? lastReason;
 
+  /// [HF-SOCIAL-STATES] The `result=` of a connected login (`approved`, `needs_followers`, ...), or null.
+  static String? lastDetail;
+
   /// True when [uri] was a social login result and the open flow took it.
   static bool handleSocialReturn(Uri uri) {
     if (!active) return false;
@@ -107,6 +110,8 @@ abstract final class IntroOnbSession {
     lastResult = result == 'connected' ? 'connected' : 'error';
     final reason = q['reason'] ?? '';
     lastReason = RegExp(r'^[a-z_]{1,30}$').hasMatch(reason) ? reason : null;
+    final detail = q['result'] ?? '';
+    lastDetail = RegExp(r'^[a-z_]{1,30}$').hasMatch(detail) ? detail : null;
     socialReturn.value = socialReturn.value + 1;
     return true;
   }

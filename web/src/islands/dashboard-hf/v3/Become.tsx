@@ -8,6 +8,7 @@ import { capture } from '../../../lib/analytics';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { STATUS_NOTE } from '../hostActivity';
 import { FacebookReturnNote } from './SocialVerify'; // [HF-INTRO-B4]
+import { belowStepText, trustDone as trustRule, type SocialSummary } from '../../../lib/hfSocialStates'; // [HF-SOCIAL-STATES]
 import { Card, Ic, PageHead, Skel, Sticker, fmtInt } from './ui';
 
 interface HostMe { host: { status: string; slug: string | null } | null; kyc: { aadhaar: { done: boolean }; selfie: { status: string }; payout: { done: boolean } } }
@@ -16,6 +17,7 @@ interface SpacesMe {
   kind?: 'channel' | 'women' | 'lgbtq' | null; aadhaarVerified: boolean; selfie: { status: 'none' | 'pending' | 'approved' | 'rejected' }; qualified: boolean; minFollowers?: number; minViews?: number;
   /** [HF-CREATOR-BADGES-1] */
   badges?: { phone: boolean; channel: boolean; videoKyc: boolean; space: 'women' | 'lgbtq' | null }; canGoLive?: boolean; missing?: string[];
+  social?: SocialSummary; // [HF-SOCIAL-STATES]
 }
 const PRICES = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
 /** Host earning per connected minute, in paise, for a price in rupees (rulebook HF-REEL-30: we keep ₹2 plus 40% of the rate above ₹2). */
@@ -42,14 +44,17 @@ export default function Become({ account }: { account: DashboardAccount }) {
   const kycDone = !!(sp?.badges?.videoKyc ?? (sp?.aadhaarVerified && selfie === 'approved'));
   const kycStarted = !!sp?.aadhaarVerified || selfie !== 'none';
   const missing = sp?.missing ?? [];
-  const trustDone = chanDone || kycDone || profileDone;
-  const steps: [string, string, boolean][] = [
-    ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
-    ['Build trust: social media verification or video KYC', chanDone ? 'Your social media is verified.' : kycDone ? 'Your video KYC is verified.' : kycStarted ? (selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'Finish Aadhaar and your 10-second selfie video.') : sp ? `Connect YouTube, Instagram or Facebook (${sp.minFollowers ?? 20}+ followers${sp.minViews ? `, ${sp.minViews}+ views on YouTube` : ''}), or do Aadhaar + a 10-second selfie video. You can add both.` : 'Connect YouTube, Instagram or Facebook, or do Aadhaar + a 10-second selfie video.', trustDone],
-    ...(space ? [[`${spaceName} space`, kycDone ? `Your ${spaceName} space is set up.` : 'Needs your video KYC to be verified first.', kycDone]] as [string, string, boolean][] : []),
+  // [HF-SOCIAL-STATES] Step 2 uses exactly the rule step 4 uses (approved social OR video KYC). Profile progress never ticks it, and an
+  // account below the follower minimum is shown but does not count.
+  const trustDone = trustRule(chanDone, kycDone);
+  const below = sp?.social ? belowStepText(sp.social) : null;
+  const steps: [string, string, boolean, string][] = [
+    ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa, '/hosts/onboarding?step=phone'],
+    ['Build trust: social media verification or video KYC', chanDone ? 'Your social media is verified. Tap to add more accounts.' : kycDone ? 'Your video KYC is verified. Tap to add your social media too.' : below ? below : kycStarted ? (selfie === 'pending' ? 'Our team is checking your selfie video.' : selfie === 'rejected' ? 'Please record your selfie video again.' : 'Finish Aadhaar and your 10-second selfie video.') : sp ? `Connect YouTube, Instagram or Facebook (${sp.minFollowers ?? 20}+ followers${sp.minViews ? `, ${sp.minViews}+ views on YouTube` : ''}), or do Aadhaar + a 10-second selfie video. You can add both.` : 'Connect YouTube, Instagram or Facebook, or do Aadhaar + a 10-second selfie video.', trustDone, '/dashboard/verifications'],
+    ...(space ? [[`${spaceName} space`, kycDone ? `Your ${spaceName} space is set up.` : 'Needs your video KYC to be verified first.', kycDone, '/dashboard/verifications']] as [string, string, boolean, string][] : []),
     // Withdrawal details (UPI + Aadhaar) come later, in the wallet.
-    ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', profileDone],
-    ['Review & go live', sp?.canGoLive === false && missing.length ? 'Still needed: ' + missing.map(m => m === 'space_video_kyc' ? 'video KYC for your space' : 'social media verification or video KYC').join(', ') + '.' : 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
+    ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', profileDone, profileDone ? '/dashboard/host' : '/hosts/onboarding'],
+    ['Review & go live', sp?.canGoLive === false && missing.length ? 'Still needed: ' + missing.map(m => m === 'space_video_kyc' ? 'video KYC for your space' : 'social media verification or video KYC').join(', ') + '.' : 'You approve your profile, our team approves it, and you’re live.', st === 'live', missing.length ? '/dashboard/verifications' : profileDone ? '/dashboard/host' : '/hosts/onboarding'],
   ];
   const doneN = steps.filter(s => s[2]).length;
   const cur = steps.findIndex(s => !s[2]);
@@ -64,8 +69,8 @@ export default function Become({ account }: { account: DashboardAccount }) {
         {!me || wa === null ? <Skel h={360} /> : <>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><b className="small">{doneN} of {steps.length} done</b><b className="small">{Math.round((doneN / steps.length) * 100)}%</b></div>
           <div className="h3-progress" style={{ marginBottom: 14 }}><i style={{ width: `${(doneN / steps.length) * 100}%` }} /></div>
-          <div className="h3-steps">{steps.map(([t, d, done], i) => <div key={t} className={`h3-step${done ? ' done' : i === cur ? ' cur' : ''}`}>
-            <div className="n">{done ? '✓' : i + 1}</div><div><b>{t}</b><div className="small muted">{d}</div></div></div>)}</div>
+          <div className="h3-steps">{steps.map(([t, d, done, href], i) => <a key={t} href={href} className={`h3-step${done ? ' done' : i === cur ? ' cur' : ''}`} onClick={() => capture('hf_dash3_become_step', { step: i, done })}>
+            <div className="n">{done ? '✓' : i + 1}</div><div><b>{t}</b><div className="small muted">{d}</div></div></a>)}</div>
           <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
             {st === 'live' ? <a className="h3-btn rani" href="/dashboard/host">Open my influencer profile</a>
               : account.closing ? <span className="small muted">Your account is closing, so you can’t start this now.</span>

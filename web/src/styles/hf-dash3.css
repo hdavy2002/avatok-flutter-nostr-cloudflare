@@ -282,6 +282,8 @@
 .h3-step.done .n{background:var(--peacock);color:#fff}
 .h3-step.cur{border-color:var(--rani);box-shadow:0 0 0 4px var(--blush)}
 .h3-step.cur .n{background:var(--rani);color:#fff}
+/* [HF-SOCIAL-STATES] every step is a link (done steps too, so she can add more accounts) */
+a.h3-step{color:inherit;text-decoration:none}a.h3-step:hover{border-color:var(--rani)}a.h3-step:focus-visible{outline:3px solid var(--rani);outline-offset:2px}
 .h3-progress{height:12px;border-radius:999px;background:#f2e7ee;overflow:hidden}
 .h3-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--rani),var(--marigold));border-radius:999px;transition:width .4s}
 .hf3 input[type=range]{padding:0;border:0;accent-color:var(--rani);background:none;box-shadow:none}

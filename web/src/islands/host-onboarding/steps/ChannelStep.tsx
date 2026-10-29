@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { capture } from '../../../lib/analytics';
 import Icon from '../Icon';
 import type { ChannelAction, ChannelItem, ChannelsInfo, StepProps } from '../types';
+import { accountName, platformName } from '../../../lib/hfSocialStates'; // [HF-SOCIAL-STATES]
 
 const GOOGLE_CLIENT_ID: string | undefined = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || undefined;
 const YT_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
@@ -35,8 +36,9 @@ function loadGoogle(): Promise<void> {
 function stateLine(c: ChannelItem, info: ChannelsInfo): { text: string; ok: boolean } {
   if (c.state === 'approved') return { text: 'Meets the bar', ok: true };
   if (c.needsCode) return { text: 'Waiting for your code', ok: false };
-  if (c.state === 'needs_views') return { text: `Needs at least ${fmt(info.minViews)} total views`, ok: false };
-  if (c.state === 'needs_followers') return { text: `Needs at least ${fmt(info.minFollowers)} followers`, ok: false };
+  // [HF-SOCIAL-STATES] proven but below the minimum: connected, does not count yet
+  if (c.state === 'needs_views') return { text: `${c.verified ? 'Connected · ' : ''}needs ${fmt(info.minViews)} total views to count`, ok: false };
+  if (c.state === 'needs_followers') return { text: `${c.verified ? 'Connected · ' : ''}needs ${fmt(info.minFollowers)} followers to count`, ok: false };
   return { text: 'Checking…', ok: false };
 }
 
@@ -136,7 +138,7 @@ export default function ChannelStep({ draft, update, api, setAction }: StepProps
               <li key={c.id} className="hob-card hob-s-ch">
                 <div className="hob-s-ch-head">
                   <div>
-                    <p className="hob-v-strong">{c.platform === 'youtube' ? 'YouTube' : 'Instagram'} · {c.handle}</p>
+                    <p className="hob-v-strong">{platformName(c.platform)} · {accountName({ platform: c.platform, handle: c.handle, displayHandle: c.displayHandle ?? null })}</p>
                     <p className="hob-help">{fmt(c.followers)} followers{c.platform === 'youtube' ? ` · ${fmt(c.views)} views` : ''}</p>
                   </div>
                   <span className={`hob-s-pill${st.ok ? ' is-ok' : ''}`}>{st.text}</span>
@@ -148,7 +150,7 @@ export default function ChannelStep({ draft, update, api, setAction }: StepProps
                   </div>
                 )}
                 <div className="hob-s-acts">
-                  {c.state !== 'approved' && (
+                  {c.state !== 'approved' && c.platform !== 'facebook' && ( /* [HF-SOCIAL-STATES] a Facebook Page refreshes by logging in again */
                     <button type="button" className="hob-btn hob-btn-primary" disabled={busy !== null} onClick={() => void check(c.id)}>{busy === c.id ? 'Checking…' : 'Check'}</button>
                   )}
                   <button type="button" className="hob-btn hob-btn-ghost" disabled={busy !== null} onClick={() => void remove(c.id)}>Remove</button>

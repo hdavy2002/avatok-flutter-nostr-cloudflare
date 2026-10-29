@@ -188,6 +188,34 @@ describe("callback", () => {
     expect(loc(r).searchParams.get("result")).toBe("needs_followers");
     expect(ch.status).toBe("rejected");
   });
+  it("[HF-SOCIAL-STATES] a Page with no username is saved by its NAME and public link, never the numeric id", async () => {
+    pages = [page({ id: "1378608792005431", username: undefined, name: "  Priya   Vlogs ", link: "https://www.facebook.com/profile.php?id=1378608792005431", followers_count: 0, fan_count: 0 })];
+    const { r, ch } = await connect();
+    expect(loc(r).searchParams.get("result")).toBe("needs_followers");
+    expect(ch).toMatchObject({ handle: "Priya Vlogs", url: "https://www.facebook.com/profile.php?id=1378608792005431", followers: 0, status: "rejected" });
+  });
+  it("[HF-SOCIAL-STATES] no username, no name, no link -> 'Facebook Page' and the id link", async () => {
+    pages = [page({ id: "1378608792005431", username: "", name: "", link: undefined })];
+    const { ch } = await connect();
+    expect(ch.handle).toBe("Facebook Page");
+    expect(ch.url).toBe("https://www.facebook.com/1378608792005431");
+  });
+  it("[HF-SOCIAL-STATES] a reconnect replaces an old numeric handle with the Page name", async () => {
+    pages = [page({ id: "1378608792005431", username: undefined, name: "Priya Vlogs", followers_count: 0, fan_count: 0 })];
+    await connect();
+    db.prepare("UPDATE hf_channels SET handle='1378608792005431' WHERE platform='facebook'").run();
+    const { ch } = await connect();
+    expect(ch.handle).toBe("Priya Vlogs");
+    expect(count("SELECT COUNT(*) AS c FROM hf_channels WHERE platform='facebook'")).toBe(1);
+  });
+  it("[HF-SOCIAL-STATES] GET /api/hf/channels shows a below-minimum Page with need=followers and no numeric displayHandle", async () => {
+    pages = [page({ id: "1378608792005431", username: undefined, name: "Priya Vlogs", followers_count: 0, fan_count: 0 })];
+    await connect();
+    db.prepare("UPDATE hf_channels SET handle='1378608792005431' WHERE platform='facebook'").run(); // the production row from 2026-10-29
+    const j = await (await hfChannelsRoute(new Request("https://x/api/hf/channels", { headers: { "x-test-uid": "u1" } }), env, "/api/hf/channels"))!.json();
+    expect(j.qualified).toBe(false);
+    expect(j.channels[0]).toMatchObject({ platform: "facebook", state: "needs_followers", verified: true, viaLogin: true, need: "followers", displayHandle: null, followers: 0 });
+  });
   it("cancelled in the dialog", async () => {
     const { state } = await start();
     const r = await call(`/api/hf/channels/facebook/callback?error=access_denied&error_reason=user_denied&state=${encodeURIComponent(state)}`);

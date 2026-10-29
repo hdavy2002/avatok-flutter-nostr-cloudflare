@@ -10,6 +10,7 @@ import '../../data/telemetry.dart';
 import '../booking_kit.dart';
 import '../call_kit.dart';
 import '../channel_kit.dart';
+import '../../data/social_states.dart'; // [HF-SOCIAL-STATES]
 import '../space_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -221,6 +222,38 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
         Text(done ? yes : no, style: t(15, color: done ? C.maroon : C.muted, w: FontWeight.w800)),
       ]);
 
+  /// [HF-SOCIAL-STATES] Social media in three states. Verified = tick + each approved account. Connected below the minimum = no tick,
+  /// the account by name with its numbers and what it needs (it does not count). None = "None verified yet".
+  Widget _socialStatus(SpaceStatus st) {
+    final s = st.social;
+    if (st.badges.channel) {
+      final ok = s.accounts.where((a) => a.approved).toList();
+      if (ok.isEmpty) return _status(true, 'Social media verified', '');
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final a in ok)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(children: [
+              const Icon(Icons.check_circle_rounded, size: 20, color: C.maroon),
+              const SizedBox(width: 6),
+              Flexible(child: Text(socialVerifiedLine(a), style: t(15, color: C.maroon, w: FontWeight.w800, h: 1.3))),
+            ]),
+          ),
+      ]);
+    }
+    final low = s.firstBelow;
+    if (low == null) return _status(false, '', 'None verified yet');
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Icon(Icons.radio_button_unchecked_rounded, size: 20, color: C.amber),
+        const SizedBox(width: 6),
+        Flexible(child: Text(socialBelowTitle(low), style: t(15, color: C.maroon, w: FontWeight.w800, h: 1.3))),
+      ]),
+      const SizedBox(height: 4),
+      Text(socialBelowNeed(low, s.minFollowers, s.minViews), style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35)),
+    ]);
+  }
+
   /// One badge row: title, status, and an optional action button.
   Widget _row(String title, Widget status, {String? action, VoidCallback? onTap, bool last = false}) => Container(
         constraints: const BoxConstraints(minHeight: 56),
@@ -304,7 +337,7 @@ class _MyVerificationsScreenState extends State<MyVerificationsScreen> {
       _heading('Your badges'),
       _card([
         _row('Phone', _status(b.phone, 'WhatsApp verified', 'Not verified')),
-        _row('Social media', _status(b.channel, 'Social media verified', 'None verified yet'), action: b.channel ? 'Manage' : 'Connect', onTap: () => unawaited(context.push('/inf/channels'))),
+        _row('Social media', _socialStatus(st), action: b.channel ? 'Manage' : (st.social.state == SocialState.belowMinimum ? 'Add more' : 'Connect'), onTap: () => unawaited(context.push('/inf/channels').then((_) => _load()))),
         _row('Video KYC', _status(b.videoKyc, 'Video KYC verified', 'Not done'), action: b.videoKyc ? null : 'Start', onTap: () => unawaited(_startKyc(st))),
         _row(
           'Space',

@@ -8,6 +8,7 @@ import { NEVER_SHARE } from '../../../lib/hfSpaces';
 import SpaceBadges from '../../../components/hosts/SpaceBadges';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { FacebookLoginButton, FacebookReturnNote } from './SocialVerify'; // [HF-INTRO-B4]
+import { accountName, belowNeed, belowTitle, socialChip, verifiedLine, type SocialAccount, type SocialSummary } from '../../../lib/hfSocialStates'; // [HF-SOCIAL-STATES]
 import { Failed, Ic, PageHead, Skel, Sticker } from './ui';
 import '../../../styles/hf-verifications.css';
 
@@ -18,6 +19,7 @@ interface Me {
   selfie?: { status: 'none' | 'pending' | 'approved' | 'rejected'; reason: string | null };
   badges?: { phone: boolean; channel: boolean; videoKyc: boolean; space: Space | null };
   canGoLive?: boolean; missing?: string[]; callerLevel?: Level; callerLevelLocked?: boolean; videoKycVerified?: boolean; hostStatus?: string | null;
+  social?: SocialSummary; // [HF-SOCIAL-STATES]
 }
 const MISSING_TEXT: Record<string, string> = {
   channel_or_video_kyc: 'Finish social media verification or video KYC',
@@ -62,7 +64,7 @@ export default function Verifications({ account }: { account: DashboardAccount }
     </section>
     <div className="hv-list">
       <PhoneCard done={b.phone} />
-      <ChannelCard done={b.channel} closing={closing} />
+      <ChannelCard done={b.channel} closing={closing} social={me.social} kycDone={b.videoKyc} onChanged={load} />
       <KycCard me={me} done={b.videoKyc} closing={closing} />
       <SpaceCard me={me} current={b.space} kycDone={b.videoKyc} onChanged={load} />
       <CallerCard me={me} onChanged={load} />
@@ -79,12 +81,36 @@ function PhoneCard({ done }: { done: boolean }) {
   </section>;
 }
 
-export function ChannelCard({ done, closing }: { done: boolean; closing: boolean }) {
+/** [HF-SOCIAL-STATES] Three states: verified (tick), connected-below-minimum (shown, does not count, Remove), not connected.
+ * The connect buttons stay visible in every state so she can add the other platforms. */
+export function ChannelCard({ done, closing, social, kycDone, onChanged }: { done: boolean; closing: boolean; social?: SocialSummary | null; kycDone?: boolean; onChanged?: () => Promise<void> }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const accounts = social?.accounts ?? [];
+  const state: SocialSummary['state'] = done ? 'verified' : social?.state === 'below_minimum' ? 'below_minimum' : 'none';
+  const min = social?.minFollowers ?? 20, minViews = social?.minViews ?? 1000;
+  const remove = async (a: SocialAccount) => {
+    if (busy) return;
+    if (!window.confirm(`Remove ${accountName(a)} from your social media verification?`)) return;
+    setBusy(a.id); setErr('');
+    const r = await hfCall<{ ok: boolean }>('DELETE', `/api/hf/channels/${encodeURIComponent(a.id)}`);
+    if (r.ok) { track('hf_social_account_removed', { platform: a.platform, state: a.state, surface: 'verifications' }); if (onChanged) await onChanged(); }
+    else setErr(r.message || 'We could not remove it. Please try again.');
+    setBusy('');
+  };
   return <section className="hv-card">
     <div className="hv-head"><span className="hv-ico" aria-hidden="true"><Ic name="star" className="" /></span>
-      <div><h3>Social media verification</h3><p>Connect your YouTube, Instagram or Facebook so fans see your videos. Needs 20 followers and 1,000 YouTube views.</p></div>
-      <span className="hv-status">{done ? <Chip tone="lav">Connected</Chip> : <Chip tone="dec">Not connected</Chip>}</span></div>
-    {!closing && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?add=channel&step=channel" onClick={() => track('hf_verifications_action', { badge: 'channel' })}>{done ? 'Manage social media' : 'Connect my social media'}</a><FacebookLoginButton surface="verifications" /></div>}
+      <div><h3>Social media verification</h3><p>Connect your YouTube, Instagram or Facebook so fans see your videos. Needs {min.toLocaleString('en-IN')} followers, and {minViews.toLocaleString('en-IN')} views on YouTube.</p></div>
+      <span className="hv-status">{state === 'verified' ? <Chip tone="lav">Verified</Chip> : state === 'below_minimum' ? <Chip tone="gold">{socialChip(state)}</Chip> : <Chip tone="dec">Not connected</Chip>}</span></div>
+    {accounts.length > 0 && <ul className="hv-accts">{accounts.map(a => <li key={a.id} className={`hv-acct ${a.state === 'approved' ? 'ok' : 'low'}`}>
+      <div>{a.state === 'approved'
+        ? <b>{a.url ? <a href={a.url} target="_blank" rel="noopener nofollow">{verifiedLine(a)}</a> : verifiedLine(a)}</b>
+        : <><b>{a.url ? <a href={a.url} target="_blank" rel="noopener nofollow">{belowTitle(a)}</a> : belowTitle(a)}</b><small>{belowNeed(a, min, minViews)}</small></>}</div>
+      {!closing && <button type="button" className="h3-btn ghost" disabled={!!busy} onClick={() => void remove(a)}>{busy === a.id ? 'Removing…' : 'Remove'}</button>}
+    </li>)}</ul>}
+    {!closing && <div className="hv-acts"><a className="h3-btn rani" href="/hosts/onboarding?add=channel&step=channel" onClick={() => track('hf_verifications_action', { badge: 'channel', state })}>{state === 'none' ? 'Connect my social media' : 'Add another account'}</a><FacebookLoginButton surface="verifications" /></div>}
+    {state === 'below_minimum' && !closing && !kycDone && <div className="hv-acts"><a className="h3-btn ghost" href="/hosts/onboarding?add=kyc&step=aadhaar" onClick={() => track('hf_verifications_action', { badge: 'video_kyc', from: 'social_below_minimum' })}>Do the Aadhaar check / video KYC</a></div>}
+    {err && <p className="hv-err" role="alert">{err}</p>}
   </section>;
 }
 

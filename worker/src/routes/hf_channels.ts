@@ -63,7 +63,7 @@ export function minViewsOf(cfg: Record<string, unknown>): number {
   return Number.isInteger(v) && v >= 0 ? v : 1000; // [HF-CREATOR-SPACES-1]
 }
 
-export function channelJson(r: ChRow, extra: { needsReconnect?: boolean } = {}) {
+export function channelJson(r: ChRow, extra: { needsReconnect?: boolean; min?: number; minViews?: number } = {}) {
   const verified = r.verified_at != null;
   const state = r.status === "disconnected" ? "disconnected" : r.status === "approved" ? "approved" : r.status === "rejected" ? "needs_followers" : "checking";
   const needsCode = r.status === "pending" && !verified;
@@ -73,6 +73,9 @@ export function channelJson(r: ChRow, extra: { needsReconnect?: boolean } = {}) 
     lastSyncAt: r.last_sync_at ?? null, createdAt: r.created_at,
     // [HF-IG-LOGIN-1] how ownership was proven: the app asks bio-code Instagram channels to log in, and a dead login to reconnect.
     viaLogin: String(r.provider_ref ?? "").endsWith("-oauth"), ...(extra.needsReconnect ? { needsReconnect: true } : {}),
+    // [HF-SOCIAL-STATES] display name without a numeric id, and (when the minimum is known) what a below-minimum account still needs
+    displayHandle: displayHandleOf(r.handle),
+    ...(extra.min != null && state === "needs_followers" ? { need: socialNeedOf(r, extra.min, extra.minViews ?? 1000) } : {}),
   };
 }
 
@@ -180,6 +183,39 @@ export function thresholdResult(platform: string, followers: number, views: numb
   if (followers < min) return { status: "rejected", result: "needs_followers" };
   if (platform === "youtube" && views < minViews) return { status: "rejected", result: "needs_views" };
   return { status: "approved", result: "approved" };
+}
+
+// [HF-SOCIAL-STATES] Three states for Social media verification. An account she PROVED she owns (login or bio code) but that is below the
+// minimum is "connected, below minimum": shown with its numbers and a Remove option, but it never counts as verification (badges.channel,
+// canGoLive and the Become checklist read only status='approved'). Clients must not show it as "Not connected".
+export type SocialNeed = "followers" | "views" | "hidden_count";
+export interface SocialAccount {
+  id: string; platform: string; handle: string; displayHandle: string | null; url: string | null; followers: number; views: number;
+  state: "approved" | "below_minimum"; need: SocialNeed | null; viaLogin: boolean;
+}
+/** A numeric handle (an old Facebook save stored the Page id) is never shown: clients fall back to "your Facebook Page". */
+export const displayHandleOf = (h: string | null | undefined): string | null => { const s = String(h ?? "").trim(); return !s || /^\d+$/.test(s) ? null : s; };
+/** Why a proven account is not approved. YouTube: followers first, then views (same order as thresholdResult). */
+export function socialNeedOf(r: Pick<ChRow, "platform" | "status" | "followers" | "views">, min: number, minViews: number): SocialNeed | null {
+  if (r.status === "approved") return null;
+  if (Number(r.followers ?? 0) < min) return "followers";
+  if (r.platform === "youtube" && Number(r.views ?? 0) < minViews) return "views";
+  return r.platform === "youtube" ? "hidden_count" : "followers";
+}
+export function socialSummary(rows: ChRow[], min: number, minViews: number): { state: "verified" | "below_minimum" | "none"; accounts: SocialAccount[]; minFollowers: number; minViews: number } {
+  const accounts: SocialAccount[] = rows
+    .filter((r) => r.verified_at != null && (r.status === "approved" || r.status === "rejected"))
+    .map((r) => ({
+      id: r.id, platform: r.platform, handle: r.handle, displayHandle: displayHandleOf(r.handle), url: r.url, followers: Number(r.followers ?? 0), views: Number(r.views ?? 0),
+      state: r.status === "approved" ? "approved" as const : "below_minimum" as const, need: socialNeedOf(r, min, minViews), viaLogin: String(r.provider_ref ?? "").endsWith("-oauth"),
+    }))
+    .sort((a, b) => (a.state === b.state ? 0 : a.state === "approved" ? -1 : 1));
+  const state = accounts.some((a) => a.state === "approved") ? "verified" : accounts.length ? "below_minimum" : "none";
+  return { state, accounts, minFollowers: min, minViews };
+}
+export async function socialSummaryFor(env: Env, uid: string, min: number, minViews: number) {
+  const rows = (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE host_uid=?1 AND status IN ('approved','rejected') AND verified_at IS NOT NULL ORDER BY created_at DESC LIMIT 20`).bind(uid).all<ChRow>()).results ?? [];
+  return socialSummary(rows, min, minViews);
 }
 
 /** Re-read the channel, check the code (until verified once), refresh followers and set the status. Never called for a disconnected channel. */
@@ -310,7 +346,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
       const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
       let dead = new Set<string>(); // [HF-IG-LOGIN-1] channels whose Instagram login must be redone
       try { dead = new Set(((await env.DB_META.prepare("SELECT channel_id FROM hf_channel_tokens WHERE host_uid=?1 AND status='needs_reconnect'").bind(uid).all<{ channel_id: string }>()).results ?? []).map((x) => x.channel_id)); } catch { /* table not applied yet */ }
-      return json({ ok: true, channels: rows.map((r) => channelJson(r, { needsReconnect: dead.has(r.id) })), minFollowers: min, minViews, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
+      return json({ ok: true, channels: rows.map((r) => channelJson(r, { needsReconnect: dead.has(r.id), min, minViews })), minFollowers: min, minViews, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
     }
 
     // ── POST /api/hf/channels ───────────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
 // [HF-INTRO-W1] HF-INTRO-VIDEO-1: influencer onboarding with a recorded intro video and human approval (rulebook section 20). Flag hfIntroOnboardingEnabled (off -> 404 not_enabled).
 //   GET  /api/hf/onboarding/categories            -> { ok, categories:[{id,label,sensitive}], langs:[...], callOptions }       (public)
-//   GET  /api/hf/onboarding/me                    -> { ok, host, video, application, requirements, socials }                   (signed in)
+//   GET  /api/hf/onboarding/me                    -> { ok, host, video, application, requirements, socials, social }           (signed in)
+//        [HF-SOCIAL-STATES] social = the same three-state summary as /api/hf/spaces/me (approved + connected-below-minimum accounts).
+//        socials stays the APPROVED, login-proven list (the D4 rule reads only that).
 //   POST /api/hf/onboarding/intro-video           raw video body (video/mp4|webm) + x-duration-ms, x-video-width, x-video-height [, x-lang, x-topic] -> { ok, video }
 //   PUT  /api/hf/onboarding/intro-video/:id/poster raw image body (jpeg|png|webp, <= 2 MB)                                      -> { ok, video }
 //   POST /api/hf/onboarding/submit                { categories[], lang, intro_video_id, call_option:'A'|'B', topic? }            -> { ok, application }
@@ -19,6 +21,7 @@ import { getHost, mediaUrl } from "../lib/hf_host_store";
 import { validCreatorRate } from "../lib/hf_creator_pricing";
 import { isPhoneVerified } from "../lib/hf_public_verification";
 import { publicChannels } from "../lib/hf_public_channels";
+import { minFollowersOf, minViewsOf, socialSummary, socialSummaryFor } from "./hf_channels"; // [HF-SOCIAL-STATES]
 import { HF_CATEGORIES, normalizeCategories, isSensitiveCategory, isCategoryId, categoriesFromJson } from "../lib/hf_categories";
 import {
   INTRO_VIDEO_MAX_BYTES, INTRO_POSTER_MAX_BYTES, INTRO_LANGS, INTRO_VIDEO_ID_RE, isIntroLang, isCallOption, validateIntroVideo, validateIntroPoster,
@@ -116,6 +119,9 @@ async function me(req: Request, env: Env): Promise<Response> {
     onboardingFacts(env, uid),
     env.DB_META.prepare("SELECT r2_key FROM hf_host_media WHERE uid=?1 AND kind='profile' AND status='active' ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ r2_key: string }>(),
   ]);
+  const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
+  const min = minFollowersOf(cfg), minViews = minViewsOf(cfg);
+  const social = await socialSummaryFor(env, uid, min, minViews).catch(() => socialSummary([], min, minViews));
   return json({
     ok: true,
     host: host ? {
@@ -129,6 +135,7 @@ async function me(req: Request, env: Env): Promise<Response> {
       aadhaarNeededWithoutSensitive: aadhaarNeeded([], facts.socials.length > 0),
     },
     socials: facts.socials.map((s) => ({ platform: s.platform, handle: s.handle, url: s.url })),
+    social,
   }, 200, NO_STORE);
 }
 

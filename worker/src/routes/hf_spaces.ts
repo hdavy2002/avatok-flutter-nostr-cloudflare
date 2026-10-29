@@ -10,6 +10,8 @@
 //   POST /api/hf/spaces/space { space:'women'|'lgbtq'|null, declare?, acceptTerms?, publicTagConsent? } -> { ok, space }  (one at a time; null leaves; same errors as /creator)
 //   POST /api/hf/spaces/caller-level { level:'everyone'|'video_kyc' } -> { ok, callerLevel } | 409 space_locked
 //   /creator stays: kind 'channel' = no space, women / lgbtq = join that space. Space = women_lane / lgbtq_lane (creator_kind is legacy).
+// [HF-SOCIAL-STATES] /me also returns social:{ state:'verified'|'below_minimum'|'none', accounts:[{id,platform,handle,displayHandle,url,followers,views,
+//   state:'approved'|'below_minimum',need:'followers'|'views'|'hidden_count'|null,viaLogin}], minFollowers, minViews }. Only 'approved' counts (badges.channel).
 // Qualification (lib/hf_spaces.ts): WhatsApp + Aadhaar + (women F | lgbtq T-or-declared) + latest selfie approved. Telemetry never carries gender or the declaration.
 import type { Env } from "../types";
 import { json } from "../util";
@@ -19,7 +21,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
-import { ensureHostRow, minFollowersOf, minViewsOf, syncHostState } from "./hf_channels";
+import { ensureHostRow, minFollowersOf, minViewsOf, socialSummary, socialSummaryFor, syncHostState } from "./hf_channels";
 import { spaceFacts, qualifiedFor, parseCreatorKind, parseSpace, parseCallerLevel, creatorBadges, type SpaceName } from "../lib/hf_spaces";
 
 const APP = BRAND.slug;
@@ -48,7 +50,10 @@ async function me(env: Env, uid: string, cfg: Record<string, unknown>): Promise<
   const space = b.badges.space;
   const kind = b.host ? (space ?? "channel") : null;
   const locked = space !== null;
+  // [HF-SOCIAL-STATES] proven accounts with their state (approved / below_minimum). Never fails the page: a read error just means "none".
+  const social = await socialSummaryFor(env, uid, minFollowersOf(cfg), minViewsOf(cfg)).catch(() => socialSummary([], minFollowersOf(cfg), minViewsOf(cfg)));
   return json({
+    social,
     ok: true, kind, whatsappVerified: f.whatsappVerified, aadhaarVerified: f.aadhaarVerified, gender: f.gender, selfie: f.selfie,
     lgbtqDeclared: f.lgbtqDeclared, videoKycVerified: f.videoKycVerified, qualified: b.host ? b.canGoLive : false, hostStatus: b.host?.status ?? null,
     minFollowers: minFollowersOf(cfg), minViews: minViewsOf(cfg),

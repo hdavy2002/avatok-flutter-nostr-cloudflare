@@ -12,6 +12,7 @@ import '../../data/intro_flags.dart'; // [HF-INTRO-A3]
 import '../../data/models/channel.dart';
 import '../../data/repos/channels_repo.dart';
 import '../../data/services.dart';
+import '../../data/social_states.dart'; // [HF-SOCIAL-STATES]
 import '../../data/telemetry.dart';
 import '../../data/youtube_sign_in.dart';
 import '../../ui/async_view.dart';
@@ -63,16 +64,22 @@ String _ago(int? ms) {
   return 'Checked ${d.inDays} days ago';
 }
 
-IconData _platformIcon(String platform) => platform == 'instagram' ? Icons.camera_alt_rounded : Icons.smart_display_rounded;
+IconData _platformIcon(String platform) => platform == 'instagram' ? Icons.camera_alt_rounded : (platform == 'facebook' ? Icons.facebook_rounded : Icons.smart_display_rounded);
 
 // ---------------------------------------------------------------------------------------------- Card
 
 /// One connected channel: platform, @handle, followers, status chip, last check, and its buttons.
 class ChannelCard extends StatelessWidget {
-  const ChannelCard({super.key, required this.channel, required this.minFollowers, this.onResync, this.onRemove, this.onFinish});
+  const ChannelCard({super.key, required this.channel, required this.minFollowers, this.minViews = ChannelsList.defaultMinViews, this.onResync, this.onRemove, this.onFinish, this.resyncLabel = 'RESYNC'});
 
   final Channel channel;
   final int minFollowers;
+
+  /// [HF-SOCIAL-STATES] For the "what it needs" line of a YouTube channel below the minimum.
+  final int minViews;
+
+  /// [HF-SOCIAL-STATES] A Facebook Page has no stored login to re-read: its button says LOG IN AGAIN.
+  final String resyncLabel;
   final VoidCallback? onResync;
   final VoidCallback? onRemove;
 
@@ -93,7 +100,7 @@ class ChannelCard extends StatelessWidget {
     final live = c.state != ChannelState.disconnected;
     return Semantics(
       container: true,
-      label: '${c.platformName} ${c.handle}, ${channelChipLabel(c, minFollowers)}',
+      label: '${c.platformName} ${socialAccountName(c.platform, c.handle, c.displayHandle)}, ${channelChipLabel(c, minFollowers)}',
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
@@ -114,7 +121,7 @@ class ChannelCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(c.handle.startsWith('@') ? c.handle : '@${c.handle}', style: t(18, color: C.deep, w: FontWeight.w900), overflow: TextOverflow.ellipsis),
+                      Text(socialAccountName(c.platform, c.handle, c.displayHandle), style: t(18, color: C.deep, w: FontWeight.w900), overflow: TextOverflow.ellipsis),
                       Text('${_count(c.followers)} ${c.followersWord} · ${c.platformName}', style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],
                   ),
@@ -130,6 +137,14 @@ class ChannelCard extends StatelessWidget {
                 ),
               ],
             ),
+            // [HF-SOCIAL-STATES] connected (she proved it is hers) but below the minimum: say so, and what still counts
+            if (c.belowMinimum) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${c.isFacebook ? 'Facebook Page' : (c.isInstagram ? 'Instagram account' : 'YouTube channel')} connected. ${socialBelowNeed(SocialAccount(id: c.id, platform: c.platform, handle: c.handle, displayHandle: c.displayHandle, followers: c.followers, views: c.views, need: c.need ?? (c.state == ChannelState.needsViews ? 'views' : 'followers')), minFollowers, minViews)}',
+                style: t(14, color: C.deep, w: FontWeight.w700, h: 1.35),
+              ),
+            ],
             const SizedBox(height: 8),
             Text(c.needsCode ? 'Waiting for your code' : _ago(c.lastSyncAt), style: t(14, color: C.muted, w: FontWeight.w700)),
             if (live) ...[
@@ -139,7 +154,7 @@ class ChannelCard extends StatelessWidget {
                   if (c.needsCode && onFinish != null)
                     Expanded(child: ChannelPill(label: 'FINISH CHECKING', gold: true, onTap: onFinish))
                   else if (onResync != null)
-                    Expanded(child: ChannelPill(label: 'RESYNC', onTap: onResync)),
+                    Expanded(child: ChannelPill(label: resyncLabel, onTap: onResync)),
                   if (onRemove != null) ...[
                     const SizedBox(width: 8),
                     Expanded(child: ChannelPill(label: 'REMOVE', onTap: onRemove)),
@@ -220,7 +235,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     final reason = widget.reason ?? '';
     Telemetry.event('hf_ig_login_result', {'ig': ig, if (reason.isNotEmpty) 'reason': reason, if (widget.result != null) 'result': widget.result});
     if (ig == 'connected') {
-      toast(context, widget.result == 'needs_followers' ? 'Instagram connected. We need a few more followers before you can go live.' : 'Instagram connected. Your comments and likes will come in.');
+      toast(context, widget.result == 'needs_followers' ? socialConnectedText('instagram', widget.result) : 'Instagram connected. Your comments and likes will come in.');
       return;
     }
     switch (reason) {
@@ -248,21 +263,11 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     final reason = widget.reason ?? '';
     Telemetry.event('hf_fb_login_result', {'fb': fb, if (reason.isNotEmpty) 'reason': reason, if (widget.result != null) 'result': widget.result});
     if (fb == 'connected') {
-      toast(context, widget.result == 'needs_followers' ? 'Facebook connected. We need a few more followers before you can go live.' : 'Facebook connected.');
+      // [HF-SOCIAL-STATES] result=needs_followers: connected, but it does not count yet (the card below shows the Page and what it needs)
+      toast(context, socialConnectedText('facebook', widget.result));
       return;
     }
-    switch (reason) {
-      case 'cancelled':
-        toast(context, 'Login cancelled. You can try again anytime.');
-      case 'no_page':
-        toast(context, 'We could not find a Facebook Page on that login. Log in with the account that manages your Page.');
-      case 'claimed':
-        toast(context, 'That Facebook Page is already connected to another person.');
-      case 'limit_reached':
-        toast(context, 'You can connect up to 5 social accounts. Remove one first.');
-      default:
-        toast(context, 'Facebook login did not work. Please try again.');
-    }
+    toast(context, socialReasonText('facebook', reason));
   }
 
   /// [HF-REEL-61] A bio-code Instagram channel (or a login that expired) gets a banner asking her to log in.
@@ -307,7 +312,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     final ok = await hfConfirm(
       context,
       title: 'Remove this account?',
-      body: 'Fans will no longer see reels from ${c.handle}.',
+      body: 'Fans will no longer see reels from ${socialAccountName(c.platform, c.handle, c.displayHandle)}.',
       confirmLabel: 'REMOVE',
       cancelLabel: 'KEEP IT',
       destructive: true,
@@ -348,7 +353,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                     Text(
                       v.qualified
                           ? 'You are approved. Keep at least one channel with ${v.minFollowers}+ followers or subscribers.'
-                          : 'We need at least ${v.minFollowers} followers or subscribers on one YouTube or Instagram channel, and ${v.minViews} total views on YouTube (Instagram is checked on followers only).',
+                          : 'We need at least ${v.minFollowers} followers or subscribers on one YouTube, Instagram or Facebook account, and ${v.minViews} total views on YouTube. An account under that is shown here but does not count yet: add another one, or do the Aadhaar check / video KYC.',
                       style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4),
                     ),
                     const SizedBox(height: 14),
@@ -357,7 +362,9 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                       ChannelCard(
                         channel: c,
                         minFollowers: v.minFollowers,
-                        onResync: () => unawaited(_resync(c)),
+                        minViews: v.minViews,
+                        resyncLabel: c.isFacebook ? 'LOG IN AGAIN' : 'RESYNC',
+                        onResync: c.isFacebook ? () => unawaited(context.push('/inf/channels/add/facebook').then((_) => _reload())) : () => unawaited(_resync(c)),
                         onRemove: () => unawaited(_remove(c)),
                         onFinish: () => unawaited(context.push('/inf/channels/${c.id}/checking').then((_) => _reload())),
                       ),

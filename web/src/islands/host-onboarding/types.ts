@@ -111,8 +111,8 @@ export interface SpacesMe {
 
 export type ChannelState = 'checking' | 'approved' | 'needs_followers' | 'needs_views' | 'disconnected';
 export interface ChannelItem {
-  id: string; platform: 'instagram' | 'youtube'; handle: string; url: string | null; followers: number; views: number;
-  state: ChannelState; verified: boolean; needsCode: boolean; verifyCode?: string | null;
+  id: string; platform: 'instagram' | 'youtube' | 'facebook'; handle: string; url: string | null; followers: number; views: number; // [HF-SOCIAL-STATES] facebook = Log in with Facebook
+  displayHandle?: string | null; state: ChannelState; verified: boolean; needsCode: boolean; verifyCode?: string | null;
 }
 export interface ChannelsInfo { channels: ChannelItem[]; minFollowers: number; minViews: number; qualified: boolean }
 export interface ChannelAction extends ApiResult { channel?: ChannelItem; result?: string; message?: string; info?: ChannelsInfo }

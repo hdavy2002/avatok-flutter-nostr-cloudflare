@@ -195,6 +195,16 @@ describe("submit rules", () => {
     expect(j.status).toBe(422);
     expect(j.missing).toEqual(expect.arrayContaining(["description", "photo", "rate"]));
   });
+  it("[HF-SOCIAL-STATES] a login-proven Facebook Page below the minimum shows in me.social but does not count (socials empty, Aadhaar still needed)", async () => {
+    const id = await recordedDraft(); host("u1");
+    db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, platform_user_id, provider_ref, url) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run("hfch_fblow01", "u1", "facebook", "1378608792005431", 0, "rejected", 1, 1, "1378608792005431", "facebook-oauth", "https://www.facebook.com/1378608792005431");
+    const me = await body(await call("/api/hf/onboarding/me"));
+    expect(me.socials).toEqual([]);
+    expect(me.requirements.hasVerifiedSocial).toBe(false);
+    expect(me.social).toMatchObject({ state: "below_minimum", minFollowers: 20, accounts: [{ platform: "facebook", displayHandle: null, followers: 0, state: "below_minimum", need: "followers" }] });
+    expect(await body(await submit(base(id)))).toMatchObject({ status: 409, error: "aadhaar_required" });
+  });
   it("no verified social and no Aadhaar -> aadhaar_required", async () => {
     const id = await recordedDraft(); host("u1");
     const j = await body(await submit(base(id)));

@@ -35,3 +35,13 @@
   .hv-head > :nth-child(2){flex:1 1 0;min-width:0}
   .hv-status{order:3;flex-basis:100%;margin-left:66px}
 }
+/* [HF-SOCIAL-STATES] proven social accounts: verified rows and "connected, below minimum" rows (never shown as Not connected) */
+.hv-accts{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.hv-acct{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-radius:18px;background:#fff;border:1.5px solid var(--line)}
+.hv-acct.ok{border-color:#bfe0e6;background:var(--teatint,#eef8f6)}
+.hv-acct.low{border-color:#f8dcb0;background:var(--goldtint,#fff6e6)}
+.hv-acct > div{flex:1 1 14rem;min-width:0}
+.hv-acct b{display:block;font-weight:900;color:var(--plum);overflow-wrap:anywhere}
+.hv-acct small{display:block;margin-top:2px;font-size:.9375rem;font-weight:700;color:var(--muted);line-height:1.45}
+.hv-acct a{color:inherit}
+.hv-acct .h3-btn{min-height:44px}

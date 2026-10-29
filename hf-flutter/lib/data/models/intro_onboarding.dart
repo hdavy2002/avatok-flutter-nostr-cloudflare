@@ -1,3 +1,5 @@
+import '../social_states.dart'; // [HF-SOCIAL-STATES]
+
 /// [HF-INTRO-A1] Models for the influencer intro-video onboarding (`/api/hf/onboarding/*`, Specs/HF-INTRO-VIDEO-1-API.md section 1).
 /// Parsing is tolerant: a missing key is a safe default, so the app keeps working while the server side changes.
 
@@ -192,13 +194,17 @@ class OnbSocial {
 
 /// `GET /api/hf/onboarding/me`.
 class OnbMe {
-  const OnbMe({this.host, this.video, this.application, this.requirements = const OnbRequirements(), this.socials = const <OnbSocial>[]});
+  const OnbMe({this.host, this.video, this.application, this.requirements = const OnbRequirements(), this.socials = const <OnbSocial>[], this.socialSummary = SocialSummary.empty});
 
   final OnbHost? host;
   final OnbVideo? video;
   final OnbApplication? application;
   final OnbRequirements requirements;
+  /// Approved, login-proven accounts only (what the Aadhaar rule reads).
   final List<OnbSocial> socials;
+
+  /// [HF-SOCIAL-STATES] `social`: approved AND connected-below-minimum accounts, so a Page under the minimum is shown, not "Not added".
+  final SocialSummary socialSummary;
 
   factory OnbMe.fromJson(Map<String, dynamic> j) => OnbMe(
         host: j['host'] is Map ? OnbHost.fromJson(_map(j['host'])) : null,
@@ -206,6 +212,7 @@ class OnbMe {
         application: j['application'] is Map ? OnbApplication.fromJson(_map(j['application'])) : null,
         requirements: OnbRequirements.fromJson(_map(j['requirements'])),
         socials: [for (final s in _maps(j['socials'])) OnbSocial.fromJson(s)].where((s) => s.platform.isNotEmpty).toList(),
+        socialSummary: SocialSummary.fromJson(j['social']),
       );
 
   OnbSocial? social(String platform) {

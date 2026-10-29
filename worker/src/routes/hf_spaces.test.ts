@@ -119,7 +119,37 @@ describe("GET /api/hf/spaces/me", () => {
       ok: true, kind: null, whatsappVerified: false, aadhaarVerified: false, gender: null, selfie: { status: "none", reason: null },
       lgbtqDeclared: false, videoKycVerified: false, qualified: false, hostStatus: null, minFollowers: 20, minViews: 1000,
       badges: { phone: false, channel: false, videoKyc: false, space: null }, canGoLive: false, missing: ["channel_or_video_kyc"], callerLevel: "everyone", callerLevelLocked: false, // [HF-CREATOR-BADGES-1]
+      social: { state: "none", accounts: [], minFollowers: 20, minViews: 1000 }, // [HF-SOCIAL-STATES]
     });
+  });
+  // [HF-SOCIAL-STATES] three states: none / below_minimum (proven, shown, does NOT count) / verified
+  const chan = (id: string, platform: string, handle: string, status: string, followers: number, views = 0, verified = true, ref = "facebook-oauth") =>
+    db.prepare(`INSERT INTO hf_channels (id, host_uid, platform, handle, url, platform_user_id, followers, views, verify_code, verified_at, status, consent_version, consent_at, provider_ref, last_sync_at, created_at)
+      VALUES (?, 'u1', ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'v', 1, ?, 1, ?)`).run(id, platform, handle, `https://www.facebook.com/${handle}`, id + "p", followers, views, verified ? 1 : null, status, ref, Number(id.slice(-1)) || 1);
+  it("[HF-SOCIAL-STATES] a login-proven Facebook Page with 0 followers is below_minimum, has no numeric displayHandle, and does not count", async () => {
+    whatsapp();
+    chan("hfch_fb000001", "facebook", "1378608792005431", "rejected", 0);
+    const b = await (await get())!.json();
+    expect(b.social.state).toBe("below_minimum");
+    expect(b.social.accounts).toEqual([{ id: "hfch_fb000001", platform: "facebook", handle: "1378608792005431", displayHandle: null, url: "https://www.facebook.com/1378608792005431", followers: 0, views: 0, state: "below_minimum", need: "followers", viaLogin: true }]);
+    expect(b.badges.channel).toBe(false);
+    expect(b.canGoLive).toBe(false);
+    expect(b.missing).toEqual(["channel_or_video_kyc"]);
+  });
+  it("[HF-SOCIAL-STATES] YouTube with enough subscribers but few views needs views; pending bio-code and removed accounts are not listed", async () => {
+    chan("hfch_yt000002", "youtube", "mayatv", "rejected", 50, 10, true, "youtube-oauth");
+    chan("hfch_ig000003", "instagram", "pending.one", "pending", 900, 0, false, "treg");
+    chan("hfch_ig000004", "instagram", "gone", "disconnected", 900, 0, true, "instagram-oauth");
+    const b = await (await get())!.json();
+    expect(b.social.accounts.map((a: any) => [a.platform, a.state, a.need])).toEqual([["youtube", "below_minimum", "views"]]);
+  });
+  it("[HF-SOCIAL-STATES] one approved account makes it verified; approved accounts come first", async () => {
+    chan("hfch_fb000005", "facebook", "Priya Vlogs", "rejected", 3);
+    chan("hfch_ig000006", "instagram", "priya.reels", "approved", 900, 0, true, "instagram-oauth");
+    const b = await (await get())!.json();
+    expect(b.social.state).toBe("verified");
+    expect(b.social.accounts.map((a: any) => [a.displayHandle, a.state, a.need])).toEqual([["priya.reels", "approved", null], ["Priya Vlogs", "below_minimum", "followers"]]);
+    expect(b.badges.channel).toBe(true);
   });
   it("reports selfie rejection reason and qualification of a women creator", async () => {
     whatsapp(); aadhaar("F");
