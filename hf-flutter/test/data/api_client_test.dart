@@ -170,7 +170,8 @@ void main() {
     expect(host.role, UserRole.host);
     expect(host.name, isNull);
     expect(host.hostSlug, 'meera');
-    expect(Me.fromJson({'uid': 'u3', 'host': {'status': 'draft'}}).isHost, isTrue);
+    expect(Me.fromJson({'uid': 'u3', 'host': {'status': 'draft'}}).isHost, isFalse); // [HF-INFLUENCER-GATE-1] a draft row is not an influencer
+    expect(Me.fromJson({'uid': 'u4', 'isHost': false, 'host': null, 'influencerApplication': {'status': 'submitted', 'missing': []}}).role, UserRole.fan);
   });
 
   test('update status: forced below min, soft below latest, none when unknown', () {
