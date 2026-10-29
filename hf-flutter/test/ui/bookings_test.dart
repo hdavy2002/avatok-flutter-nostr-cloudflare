@@ -192,7 +192,8 @@ void main() {
       expect(find.text('10:00 am'), findsOneWidget);
       expect(find.text('4:00 pm'), findsOneWidget);
       expect(find.text('6:00 pm'), findsNothing);
-      await tester.tap(find.text('${closed.day}'));
+      // The month grid can also show the next month's first days (6-week grid), so the same number may appear twice; the first is this month's.
+      await tester.tap(find.text('${closed.day}').first);
       await tester.pump();
       expect(find.text('Maya is not taking bookings that day.'), findsOneWidget);
     });
