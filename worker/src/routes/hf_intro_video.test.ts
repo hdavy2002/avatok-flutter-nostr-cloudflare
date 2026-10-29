@@ -33,7 +33,7 @@ import { hfReelsRoute, visibleReel } from "./hf_reels";
 import { hfReelEngageRoute } from "./hf_reel_engage";
 import { sweepIntroVideos } from "../lib/hf_intro_cleanup";
 import { introSelfState } from "../lib/hf_intro_reels";
-import { validateIntroVideo, submissionGate, rejectedMessage } from "../lib/hf_intro_video";
+import { validateIntroVideo, submissionGate, rejectedMessage, INTRO_VIDEO_MAX_BYTES } from "../lib/hf_intro_video";
 import { HF_CATEGORIES, isSensitiveCategory, normalizeCategories } from "../lib/hf_categories";
 
 const require_ = createRequire(import.meta.url);
@@ -91,13 +91,23 @@ function makeEnv() {
   env.DB_WALLET = { prepare: (_q: string) => ({ bind: () => ({ run: async () => ({ meta: { changes: 1 } }) }) }) };
 }
 
-const MP4 = (n = 4096) => { const b = new Uint8Array(n); b.set([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70], 0); return b; };
+// [HF-MOD-1] A minimal real MP4: ftyp + moov/mvhd (timescale 1000, duration = ms) + mdat filler, so the server can read its length.
+const box = (type: string, body: Uint8Array) => { const b = new Uint8Array(8 + body.length); new DataView(b.buffer).setUint32(0, b.length); b.set([...type].map((c) => c.charCodeAt(0)), 4); b.set(body, 8); return b; };
+const mvhd = (ms: number, v = 0) => { if (v === 1) { const body = new Uint8Array(112); body[0] = 1; const dv = new DataView(body.buffer); dv.setUint32(20, 1000); dv.setUint32(24, 0); dv.setUint32(28, ms); return box("mvhd", body); } const body = new Uint8Array(100); const dv = new DataView(body.buffer); dv.setUint32(12, 1000); dv.setUint32(16, ms); return box("mvhd", body); };
+const cat = (...parts: Uint8Array[]) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const MP4 = (n = 4096, ms: number | null = 12000, opts: { v?: number; moovLast?: boolean; brand?: string } = {}) => {
+  const ftyp = box("ftyp", new Uint8Array([...(opts.brand ?? "isom")].map((c) => c.charCodeAt(0)).concat([0, 0, 2, 0])));
+  const moov = ms === null ? new Uint8Array(0) : box("moov", mvhd(ms, opts.v ?? 0));
+  const fill = Math.max(0, n - ftyp.length - moov.length - 8);
+  const mdat = box("mdat", new Uint8Array(fill));
+  return opts.moovLast ? cat(ftyp, mdat, moov) : cat(ftyp, moov, mdat);
+};
 const WEBM = (n = 4096) => { const b = new Uint8Array(n); b.set([0x1a, 0x45, 0xdf, 0xa3], 0); return b; };
 const call = (path: string, init: any = {}, uid = "u1") => hfIntroOnboardingRoute(new Request("https://x" + path, { ...init, headers: { "x-test-uid": uid, ...(init.headers ?? {}) } }), env, path.split("?")[0]);
 const adm = (path: string, init: any = {}) => hfIntroAdminRoute(new Request("https://x" + path, { ...init, headers: { "x-test-uid": "admin1", ...(init.headers ?? {}) } }), env, path.split("?")[0]);
 const body = async (r: Response) => ({ status: r.status, ...(await r.json()) });
 const upload = (o: any = {}, uid = "u1") => call("/api/hf/onboarding/intro-video", {
-  method: "POST", body: o.bytes ?? MP4(),
+  method: "POST", body: o.bytes ?? MP4(4096, o.fileMs ?? o.ms ?? 12000),
   headers: { "content-type": o.mime ?? "video/mp4", "x-duration-ms": String(o.ms ?? 12000), "x-video-width": String(o.w ?? 720), "x-video-height": String(o.h ?? 1280), ...(o.extra ?? {}) },
 }, uid);
 const submit = (b: any, uid = "u1") => call("/api/hf/onboarding/submit", { method: "POST", body: JSON.stringify(b) }, uid);
@@ -133,7 +143,7 @@ describe("catalogue", () => {
 });
 
 describe("recorded video validation (pure)", () => {
-  const ok = (ms: number, w = 720, h = 1280, mime = "video/mp4", b = MP4()) => validateIntroVideo(mime, b, ms, w, h);
+  const ok = (ms: number, w = 720, h = 1280, mime = "video/mp4", b = MP4(4096, ms)) => validateIntroVideo(mime, b, ms, w, h);
   it("accepts 10-20 s portrait mp4 / webm", () => {
     expect(ok(10000).ok).toBe(true);
     expect(ok(20000).ok).toBe(true);
@@ -147,9 +157,38 @@ describe("recorded video validation (pure)", () => {
     expect(ok(12000, 720, 720)).toMatchObject({ ok: false, error: "not_portrait" });
     expect(ok(12000, 720, 1280, "video/quicktime")).toMatchObject({ ok: false, error: "unsupported_type" });
     expect(ok(12000, 720, 1280, "video/mp4", WEBM())).toMatchObject({ ok: false, error: "unsupported_type" });
-    expect(validateIntroVideo("video/mp4", MP4(), undefined, 720, 1280)).toMatchObject({ ok: false, error: "duration_required" });
+    expect(validateIntroVideo("video/webm", WEBM(), undefined, 720, 1280)).toMatchObject({ ok: false, error: "duration_required" });
     expect(validateIntroVideo("video/mp4", MP4(), 12000, null, null)).toMatchObject({ ok: false, error: "size_required" });
     expect(validateIntroVideo("video/mp4", null, 12000, 720, 1280)).toMatchObject({ ok: false, error: "too_large" });
+  });
+});
+
+describe("[HF-MOD-1] the server reads the real length from the file", () => {
+  const chk = (b: Uint8Array, clientMs: number | undefined = 12000, mime = "video/mp4") => validateIntroVideo(mime, b, clientMs, 720, 1280);
+  it("uses the file's length, not the phone's number", () => {
+    expect(chk(MP4(4096, 9000), 12000)).toMatchObject({ ok: false, error: "too_short", message: "Your video is 9 seconds. Please record between 10 and 20 seconds." });
+    expect(chk(MP4(4096, 25000), 15000)).toMatchObject({ ok: false, error: "too_long", message: "Your video is 25 seconds. Please record between 10 and 20 seconds." });
+    expect(chk(MP4(4096, 14000), 3000)).toMatchObject({ ok: true, durationMs: 14000, clientDurationMs: 3000, durationSource: "file" });
+    expect(chk(MP4(4096, 14000), undefined)).toMatchObject({ ok: true, durationMs: 14000, durationSource: "file" });
+  });
+  it("reads moov at the end (phone layout), mvhd version 1 and iPhone .mov brand", () => {
+    expect(chk(MP4(4096, 11000, { moovLast: true }))).toMatchObject({ ok: true, durationMs: 11000 });
+    expect(chk(MP4(4096, 19000, { v: 1 }))).toMatchObject({ ok: true, durationMs: 19000 });
+    expect(chk(MP4(4096, 10000, { brand: "qt  " }))).toMatchObject({ ok: true, durationMs: 10000 });
+  });
+  it("refuses an MP4 whose length cannot be read", () => {
+    expect(chk(MP4(4096, null))).toMatchObject({ ok: false, status: 422, error: "duration_unreadable" });
+  });
+  it("a WebM with no duration inside falls back to the reported number", () => {
+    expect(chk(WEBM(), 12000, "video/webm")).toMatchObject({ ok: true, durationMs: 12000, durationSource: "client" });
+    expect(chk(WEBM(), 9000, "video/webm")).toMatchObject({ ok: false, error: "too_short" });
+  });
+  it("caps the file at 16 MB (Clef limit)", () => {
+    expect(INTRO_VIDEO_MAX_BYTES).toBe(16 * 1024 * 1024);
+    expect(chk(MP4(INTRO_VIDEO_MAX_BYTES + 1, 12000))).toMatchObject({ ok: false, error: "too_large" });
+  });
+  it("the upload route refuses a lying phone", async () => {
+    expect((await body(await upload({ ms: 12000, fileMs: 8000 }))).error).toBe("too_short");
   });
 });
 

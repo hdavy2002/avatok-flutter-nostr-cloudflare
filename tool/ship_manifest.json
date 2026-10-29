@@ -12594,5 +12594,22 @@
         "note": "A fan tapped OK on the Keep your call safe sheet before calling or booking (flag hfCallRecordingEnabled)."
       }
     ]
+  },
+  "HF-MOD-1": {
+    "description": "Intro video length rules: the app refuses a take under 10 s / over 20 s / over 16 MB before upload with a Record again button and a live countdown; the server reads the real length from the MP4/WebM file instead of trusting x-duration-ms; max upload 16 MB.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfIntroOnboardingEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_intro_upload",
+        "property": "duration_source",
+        "exists": true,
+        "min_events": 1,
+        "note": "Server telemetry: every accepted intro upload says whether its length came from the file (expected 'file' for app MP4s) or the phone."
+      }
+    ]
   }
 }

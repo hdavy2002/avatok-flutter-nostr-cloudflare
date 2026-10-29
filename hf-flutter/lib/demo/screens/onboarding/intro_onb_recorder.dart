@@ -83,6 +83,12 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
   bool _retryable = false;
   bool _canUse = true;
 
+  /// [HF-MOD-1] The take is the wrong length or too big: the big button becomes "Record again" and nothing is uploaded.
+  bool _mustRedo = false;
+
+  /// [HF-MOD-1] Same limit as the server (the Clef safety check takes at most 16 MB). A 20 s take is about 5 MB.
+  static const int _maxBytes = 16 * 1024 * 1024;
+
   String? _path;
   Uint8List? _poster;
   Uint8List? _bytes;
@@ -100,6 +106,15 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
 
   /// The take stops a moment before the maximum, so the saved file is never a hair over it.
   int get _autoStopMs => _maxMs - 150;
+
+  /// [HF-MOD-1] Whole seconds still needed before Done unlocks (0 once the minimum is reached).
+  int get _secondsToGo => _elapsedMs >= _doneMs ? 0 : ((_doneMs - _elapsedMs) / 1000).ceil();
+
+  /// [HF-MOD-1] Same sentence as the server's: "Your video is 9 seconds. Please record between 10 and 20 seconds."
+  String _lengthProblem(int ms) {
+    final sec = ms < _minMs ? ms ~/ 1000 : (ms / 1000).ceil();
+    return 'Your video is $sec second${sec == 1 ? '' : 's'}. Please record between ${widget.minSeconds} and ${widget.maxSeconds} seconds.';
+  }
 
   @override
   void initState() {
@@ -381,7 +396,8 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
 
   void _tapStop() {
     if (_elapsedMs < _doneMs) {
-      setState(() => _error = 'Keep going. Please record at least ${widget.minSeconds} seconds.');
+      final n = _secondsToGo;
+      setState(() => _error = 'Keep going — $n more second${n == 1 ? '' : 's'}. Your video needs ${widget.minSeconds} to ${widget.maxSeconds} seconds.');
       return;
     }
     unawaited(_finish());
@@ -463,9 +479,20 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
     _w = w;
     _h = h;
     _player = p;
+    var size = 0;
+    try {
+      size = await File(path).length();
+    } catch (_) {
+      size = 0; // the upload step reads it again and says so
+    }
     String? problem;
-    if (durationMs < _minMs) {
-      problem = 'Your video is shorter than ${widget.minSeconds} seconds. Please record it again.';
+    // [HF-MOD-1] Refused HERE, before anything goes to Cloudflare: under 10 s, over 20 s, or over 16 MB.
+    if (durationMs < _minMs || durationMs > _maxMs + 500) {
+      problem = _lengthProblem(durationMs);
+      Telemetry.event('hf_intro_record', {'duration_ms': durationMs, 'retake_n': _retakes, 'refused_reason': durationMs < _minMs ? 'too_short' : 'too_long'});
+    } else if (size > _maxBytes) {
+      problem = 'This video file is too big (${(size / (1024 * 1024)).toStringAsFixed(1)} MB). Please record it again.';
+      Telemetry.event('hf_intro_record', {'duration_ms': durationMs, 'retake_n': _retakes, 'bytes': size, 'refused_reason': 'too_large'});
     } else if (w > 0 && h > 0 && w >= h) {
       problem = 'The video came out sideways. Please hold your phone upright and record again.';
     }
@@ -474,6 +501,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
       _phase = _Phase.review;
       _error = problem;
       _canUse = problem == null;
+      _mustRedo = problem != null;
       _retryable = false;
       _stopping = false;
     });
@@ -494,6 +522,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
       _error = null;
       _elapsedMs = 0;
       _hintIx = 0;
+      _mustRedo = false;
     });
     await _initCamera();
   }
@@ -538,6 +567,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
         _error = _uploadProblem(e);
         _retryable = retry;
         _canUse = retry;
+        _mustRedo = !retry;
       });
     } catch (_) {
       Telemetry.event('hf_intro_upload', {'bytes': size, 'ms': sw.elapsedMilliseconds, 'ok': false, 'reason': 'read'});
@@ -547,6 +577,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
         _error = 'We could not read the video. Please record it again.';
         _retryable = false;
         _canUse = false;
+        _mustRedo = true;
       });
     }
   }
@@ -554,9 +585,10 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
   String _uploadProblem(ApiException e) {
     switch (e.code) {
       case 'too_short':
-        return 'Your video is a little too short. Please record at least ${widget.minSeconds} seconds.';
       case 'too_long':
-        return 'Your video is too long. Please keep it under ${widget.maxSeconds} seconds.';
+      case 'duration_unreadable':
+        // [HF-MOD-1] the server measured the file itself; its sentence says how long it really was
+        return e.userMessage;
       case 'not_portrait':
         return 'Please hold your phone upright and record again.';
       case 'too_large':
@@ -714,9 +746,25 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
   Widget _progressBar() {
     final frac = (_elapsedMs / _maxMs).clamp(0.0, 1.0).toDouble();
     final minFrac = (_minMs / _maxMs).clamp(0.0, 1.0).toDouble();
+    final recording = _phase == _Phase.recording;
+    final toGo = _secondsToGo;
+    final left = ((_maxMs - _elapsedMs) / 1000).ceil().clamp(0, widget.maxSeconds);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
       child: Column(children: [
+        // [HF-MOD-1] live nudge: she always knows how long is left before Done unlocks, and before it stops
+        if (recording)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                toGo > 0 ? 'Keep going — $toGo more second${toGo == 1 ? '' : 's'}' : 'You can stop now · $left s left',
+                textAlign: TextAlign.center,
+                style: t(17, color: toGo > 0 ? IO.gold : IO.onCamera, w: FontWeight.w900),
+              ),
+            ),
+          ),
         LayoutBuilder(
           builder: (context, box) => SizedBox(
             height: 20,
@@ -910,6 +958,7 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
               child: Row(children: [
+                if (!_mustRedo) ...[
                 SizedBox(
                   width: 110,
                   child: InkWell(
@@ -924,12 +973,14 @@ class _IntroRecorderScreenState extends State<IntroRecorderScreen> with WidgetsB
                   ),
                 ),
                 const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: OnbPrimaryButton(
-                    label: _retryable ? 'Send again' : 'Use this video',
-                    enabled: _canUse,
+                    // [HF-MOD-1] a wrong-length or too-big take can only be recorded again; nothing is uploaded
+                    label: _mustRedo ? 'Record again' : (_retryable ? 'Send again' : 'Use this video'),
+                    enabled: _mustRedo || _canUse,
                     busy: uploading,
-                    onTap: () => unawaited(_use()),
+                    onTap: () => unawaited(_mustRedo ? _redo() : _use()),
                   ),
                 ),
               ]),

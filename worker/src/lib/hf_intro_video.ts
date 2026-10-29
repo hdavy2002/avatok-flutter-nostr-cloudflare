@@ -2,13 +2,15 @@
 // (The old VOICE introduction lives in lib/hf_intro.ts and is untouched.) No I/O here.
 import { BRAND, brandUrl } from "./brand";
 import { WOMEN_TO_WOMEN, isSensitiveCategory } from "./hf_categories";
+import { probeVideoDurationMs } from "./video_probe";
 
 // ── recorded video (D7) ───────────────────────────────────────────────────────────────────────────────────────
 export const INTRO_VIDEO_MIN_MS = 10_000;
 export const INTRO_VIDEO_MAX_MS = 20_000;
 /** A recorder stops a few ms late; anything up to this over the 20 s limit is still accepted. */
 export const INTRO_VIDEO_TOLERANCE_MS = 500;
-export const INTRO_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+/** [HF-MOD-1] 16 MB: the Clef-omni safety check takes at most 16 MiB. A 20 s take at 2 Mbps is about 5 MB. */
+export const INTRO_VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 export const INTRO_POSTER_MAX_BYTES = 2 * 1024 * 1024;
 export const INTRO_VIDEO_MIMES: Readonly<Record<string, string>> = { "video/mp4": "mp4", "video/webm": "webm" };
 export const INTRO_POSTER_MIMES: Readonly<Record<string, string>> = { "image/jpeg": "jpg", "image/webp": "webp", "image/png": "png" };
@@ -17,7 +19,7 @@ export const INTRO_LANGS = ["hi", "en", "mr", "bn", "ta", "te", "gu", "pa", "kn"
 export const isIntroLang = (v: unknown): v is (typeof INTRO_LANGS)[number] => typeof v === "string" && (INTRO_LANGS as readonly string[]).includes(v);
 
 export type VideoCheck =
-  | { ok: true; ext: string; mime: string; durationMs: number; width: number; height: number }
+  | { ok: true; ext: string; mime: string; durationMs: number; width: number; height: number; clientDurationMs: number | null; durationSource: "file" | "client" }
   | { ok: false; status: number; error: string; message: string };
 
 const posInt = (v: unknown): number | null => {
@@ -43,14 +45,25 @@ export function validateIntroVideo(
   if (bytes.byteLength < 1024) return { ok: false, status: 400, error: "empty_video", message: "We did not get your video. Please record it again." };
   if (bytes.byteLength > INTRO_VIDEO_MAX_BYTES) return { ok: false, status: 413, error: "too_large", message: "That video is too large. Please record a shorter one." };
   if (sniffVideo(bytes) !== mime) return { ok: false, status: 415, error: "unsupported_type", message: "That file is not a video recorded with your camera." };
-  const durationMs = posInt(durationRaw);
+  // [HF-MOD-1] The length inside the file is the truth; the phone's number is only a fallback for a WebM that
+  // carries no duration (browser MediaRecorder). An MP4/MOV always has one, so an unreadable MP4 is refused.
+  const clientDurationMs = posInt(durationRaw);
+  const fileMs = probeVideoDurationMs(bytes, mime);
+  if (mime === "video/mp4" && fileMs === null) return { ok: false, status: 422, error: "duration_unreadable", message: "We could not read the length of your video. Please record it again." };
+  const durationMs = fileMs ?? clientDurationMs;
   if (durationMs === null) return { ok: false, status: 400, error: "duration_required", message: "We could not read the length of your video. Please record it again." };
-  if (durationMs < INTRO_VIDEO_MIN_MS) return { ok: false, status: 422, error: "too_short", message: "Your video must be at least 10 seconds. Please record it again." };
-  if (durationMs > INTRO_VIDEO_MAX_MS + INTRO_VIDEO_TOLERANCE_MS) return { ok: false, status: 422, error: "too_long", message: "Your video can be at most 20 seconds. Please record it again." };
+  if (durationMs < INTRO_VIDEO_MIN_MS) return { ok: false, status: 422, error: "too_short", message: lengthMessage(durationMs) };
+  if (durationMs > INTRO_VIDEO_MAX_MS + INTRO_VIDEO_TOLERANCE_MS) return { ok: false, status: 422, error: "too_long", message: lengthMessage(durationMs) };
   const width = posInt(widthRaw), height = posInt(heightRaw);
   if (width === null || height === null) return { ok: false, status: 400, error: "size_required", message: "We could not read your video size. Please record it again." };
   if (width >= height) return { ok: false, status: 422, error: "not_portrait", message: "Please hold your phone upright and record again." };
-  return { ok: true, ext, mime, durationMs, width, height };
+  return { ok: true, ext, mime, durationMs, width, height, clientDurationMs, durationSource: fileMs !== null ? "file" : "client" };
+}
+
+/** "Your video is 9 seconds. Please record between 10 and 20 seconds." (same wording as the app's nudge) */
+export function lengthMessage(ms: number): string {
+  const sec = ms < INTRO_VIDEO_MIN_MS ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+  return `Your video is ${sec} second${sec === 1 ? "" : "s"}. Please record between ${INTRO_VIDEO_MIN_MS / 1000} and ${INTRO_VIDEO_MAX_MS / 1000} seconds.`;
 }
 
 export function validateIntroPoster(declaredMime: string, bytes: Uint8Array | null): { ok: true; ext: string; mime: string } | { ok: false; status: number; error: string; message: string } {

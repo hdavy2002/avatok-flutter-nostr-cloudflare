@@ -180,7 +180,7 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
     return err(500, "store_failed", { message: "We could not save your video. Please try again." });
   }
   for (const r of replaced) await deleteIntroVideoFiles(env, r, "draft_replaced"); // [HF-INTRO-DELETE-1] also marks the row + telemetry
-  emit("hf_intro_upload", { ok: true, bytes: bytes!.byteLength, ms: Date.now() - t0, duration_ms: chk.durationMs });
+  emit("hf_intro_upload", { ok: true, bytes: bytes!.byteLength, ms: Date.now() - t0, duration_ms: chk.durationMs, client_duration_ms: chk.clientDurationMs, duration_source: chk.durationSource }); // [HF-MOD-1]
   const row = await env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE id=?1").bind(id).first<VideoRow>();
   return json({ ok: true, video: videoJson(env, row!) }, 200, NO_STORE);
 }
