@@ -500,7 +500,7 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
     }
     final raw = chosen;
     final framed = crop;
-    if (raw == null || framed == null || !mounted) return;
+    if (raw == null || !mounted) return;
     setState(() {
       st.stage = _Stage.preparing;
       st.error = null;
