@@ -593,3 +593,118 @@ describe("intro video clean-up", () => {
     expect(await sweepIntroVideos(env)).toMatchObject({ rejected: 0, replaced: 0, expired: 0, orphans: 0 });
   });
 });
+
+// ── [HF-MOD-3] intro video safety check (Clef-omni through hf-mod-video), private until approved ─────────────────
+import { runModerationJob } from "../lib/hf_moderation";
+import { privateMediaRoute, introApproveGate } from "../lib/hf_intro_moderation";
+describe("[HF-MOD-3] AI check on intro videos", () => {
+  let digital: Map<string, Uint8Array>, queued: any[], answer: any, calls: any[];
+  const runAll = async () => { for (const m of queued.splice(0)) await runModerationJob(env, m.job_id, 1); };
+  beforeEach(() => {
+    db.exec(mig("2026-10-29-hf-moderation.sql"));
+    db.exec(mig("2026-10-29-hf-moderation-intro.sql"));
+    cfg = { ...cfg, hfIntroModerationEnabled: true };
+    digital = new Map(); queued = []; calls = [];
+    answer = { face: 0.95, nudity: 0.01, sexual: 0.01, minor: 0.02, quality: 0.05 };
+    env.DIGITAL = {
+      put: async (k: string, v: any) => { digital.set(k, v instanceof Uint8Array ? v : new Uint8Array(v)); },
+      get: async (k: string) => (digital.has(k) ? { body: digital.get(k), size: digital.get(k)!.byteLength, httpMetadata: { contentType: "video/mp4" }, arrayBuffer: async () => digital.get(k)!.slice().buffer } : null),
+      delete: async (k: string) => { digital.delete(k); },
+    };
+    env.BLOBS.get = async (k: string) => (blobs.has(k) ? { arrayBuffer: async () => new Uint8Array(blobs.get(k)).buffer } : null);
+    env.Q_MOD_VIDEO = { send: async (m: any) => { queued.push(m); } };
+    env.Q_MOD_PHOTO = { send: async (m: any) => { queued.push(m); } };
+    env.AI = { run: async (model: string, input: any) => {
+      calls.push({ model, input });
+      if (input.questions.where) return { answers: { where: { type: "choice", choice: "middle", probabilities: { start: 0.2, middle: 0.6, end: 0.2 }, confidence: 0.4 } } };
+      return { answers: Object.fromEntries(Object.keys(input.questions).map((k) => [k, { type: "noul", noul: answer[k] ?? 0 }])), usage: { input_tokens: 5000 } };
+    } };
+  });
+
+  it("upload stays private (DIGITAL, signed link) and is queued for Clef-omni", async () => {
+    host("u1");
+    const j = await body(await upload());
+    expect(j.status).toBe(200);
+    expect([...blobs.keys()].filter((k) => k.startsWith("intro-video/"))).toHaveLength(0);
+    expect([...digital.keys()][0]).toMatch(/^intro-video\/u1\/hfin_/);
+    expect(j.video.videoUrl).toMatch(/^https:\/\/x\/api\/hf\/media\/private\/intro-video\/u1\/hfin_.*\?e=\d+&s=[a-f0-9]{64}$/);
+    expect(queued).toHaveLength(1);
+    await runAll();
+    expect(calls[0].model).toBe("@cf/cloudflare/clef-omni");
+    expect(calls[0].input.videos[0].content_type).toBe("video/mp4");
+  });
+
+  it("the signed link streams the private file; a wrong or expired signature is refused", async () => {
+    host("u1");
+    const j = await body(await upload());
+    const u = new URL(j.video.videoUrl);
+    const ok = await privateMediaRoute(new Request(u.toString()), env, u.pathname);
+    expect(ok!.status).toBe(200);
+    const bad = await privateMediaRoute(new Request(u.toString().replace(/s=[a-f0-9]{4}/, "s=0000")), env, u.pathname);
+    expect(bad!.status).toBe(403);
+    const old = new URL(u); old.searchParams.set("e", "1");
+    expect((await privateMediaRoute(new Request(old.toString()), env, u.pathname))!.status).toBe(410);
+  });
+
+  it("passed: list + detail carry the verdict and identity; approve publishes the video to the public bucket", async () => {
+    const s = await submitted();
+    await runAll();
+    const l = await body(await adm("/api/admin/hf/intro-applications"));
+    expect(l.items[0].ai).toMatchObject({ status: "passed", reasons: [], childSafety: false });
+    expect(l.items[0].verify).toMatchObject({ aadhaar: { verified: false }, socials: [{ platform: "youtube", followers: 500 }], whatsapp: expect.any(Boolean) });
+    const d = await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`));
+    expect(d.ai).toMatchObject({ status: "passed", scores: { face: 0.95, nudity: 0.01 }, where: null });
+    expect(d.video.videoUrl).toContain("/api/hf/media/private/");
+    const r = await body(await approve(s.appId));
+    expect(r).toMatchObject({ ok: true, status: "approved" });
+    expect([...blobs.keys()].some((k) => k.startsWith("intro-video/u1/"))).toBe(true);
+    expect(digital.size).toBe(0);
+    expect(db.prepare("SELECT storage FROM hf_intro_videos WHERE id=?").get(s.videoId).storage).toBe("public");
+  });
+
+  it("flagged: rough 'where' hint, approve needs a note (saved), reject reason ai_nudity exists", async () => {
+    answer = { ...answer, nudity: 0.92 };
+    const s = await submitted();
+    await runAll();
+    const d = await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`));
+    expect(d.ai).toMatchObject({ status: "flagged", reasons: ["nudity"], where: "middle", whereConfidence: 0.4 });
+    expect(d.rejectReasons.map((x: any) => x.code)).toContain("ai_nudity");
+    expect(await body(await approve(s.appId))).toMatchObject({ status: 409, error: "note_required" });
+    const ok = await body(await adm(`/api/admin/hf/intro-applications/${s.appId}/approve`, { method: "POST", body: JSON.stringify({ note: "Skin-coloured top, checked myself" }) }));
+    expect(ok).toMatchObject({ ok: true, status: "approved" });
+    expect(db.prepare("SELECT override_by, override_note FROM hf_moderation_jobs WHERE kind='intro_video'").get()).toMatchObject({ override_by: "admin1", override_note: "Skin-coloured top, checked myself" });
+  });
+
+  it("child safety can only be rejected; a pending or failed check blocks approve", async () => {
+    answer = { ...answer, minor: 0.7 };
+    const s = await submitted();
+    expect(await body(await approve(s.appId))).toMatchObject({ status: 409, error: "ai_pending" });
+    await runAll();
+    expect(await body(await adm(`/api/admin/hf/intro-applications/${s.appId}/approve`, { method: "POST", body: JSON.stringify({ note: "looks adult to me" }) }))).toMatchObject({ status: 409, error: "child_safety" });
+    expect(introApproveGate({ status: "failed" } as any, "x")).toMatchObject({ error: "ai_failed" });
+    expect(introApproveGate({ status: "off" } as any, "")).toBeNull();
+  });
+
+  it("a video uploaded before the switch is checked when the admin opens it; reject deletes the private files", async () => {
+    cfg = { ...cfg, hfIntroModerationEnabled: false };
+    const s = await submitted();
+    expect([...blobs.keys()].some((k) => k.startsWith("intro-video/u1/"))).toBe(true); // old public upload
+    cfg = { ...cfg, hfIntroModerationEnabled: true };
+    const d = await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`));
+    expect(d.ai.status).toBe("queued");
+    await runAll();
+    expect((await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`))).ai.status).toBe("passed");
+    const r = await body(await reject(s.appId, { reasons: ["video_dark"] }));
+    expect(r.ok).toBe(true);
+    expect(digital.size).toBe(0);
+  });
+
+  it("switch off: no AI fields change the old flow", async () => {
+    cfg = { ...cfg, hfIntroModerationEnabled: false };
+    const s = await submitted();
+    expect(queued).toHaveLength(0);
+    const l = await body(await adm("/api/admin/hf/intro-applications"));
+    expect(l.items[0].ai).toMatchObject({ status: "off" });
+    expect(await body(await approve(s.appId))).toMatchObject({ ok: true, status: "approved" });
+  });
+});

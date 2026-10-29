@@ -21,7 +21,7 @@ export const PHOTO_KINDS: readonly PhotoKind[] = ["profile_photo", "cover_photo"
 export const isPhotoKind = (k: string): k is PhotoKind => (PHOTO_KINDS as readonly string[]).includes(k);
 
 // ── policy v1 (thresholds live here and only here) ───────────────────────────────────────────────────────────────
-const CONTEXT = "This is a picture uploaded to an Indian app where fans talk to creators. Judge only what is visible.";
+const CONTEXT = "This was uploaded to an Indian app where fans talk to creators. Judge only what is visible.";
 export const PHOTO_QUESTIONS: Record<string, string> = {
   nudity: "Is there nudity: an exposed female breast or nipple, exposed genitals or exposed buttocks? Swimwear, gym wear, sarees and normal clothing are NOT nudity.",
   sexual: "Does the picture show a sexual act, a sexual pose or sexually explicit content?",
@@ -116,6 +116,18 @@ export async function askClef(env: Env, kind: ModKind, bytes: Uint8Array, mime: 
   return { probs, model, inTokens: Number(res?.usage?.input_tokens ?? 0), ms };
 }
 
+/** Rough location of a flagged problem: start / middle / end third of the video, with Clef's confidence. */
+export async function askWhere(env: Env, bytes: Uint8Array, mime: string, reasons: string[]): Promise<{ where: string | null; whereConfidence: number | null }> {
+  const what = reasons.map((r) => VIDEO_QUESTIONS[r] ?? r).join(" ");
+  const res: any = await (env.AI as any).run(`@cf/cloudflare/${VIDEO_MODEL}`, {
+    model: VIDEO_MODEL, state: "An influencer's 10 to 20 second introduction video.", videos: [{ content_type: mime, base64: b64(bytes) }],
+    questions: { where: { type: "choice", instructions: `${CONTEXT}\nIn which part of the video is this problem most visible? ${what}`, criteria: { start: "The first third of the video", middle: "The middle third of the video", end: "The last third of the video" } } },
+  });
+  const a = (res?.answers ?? res?.response?.answers)?.where;
+  const choice = typeof a?.choice === "string" && ["start", "middle", "end"].includes(a.choice) ? a.choice : null;
+  return { where: choice, whereConfidence: typeof a?.confidence === "number" ? a.confidence : null };
+}
+
 // ── jobs ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 export interface ModJobRow {
   id: string; uid: string; kind: ModKind; subject_id: string; r2_key: string; mime: string; bytes: number; status: ModStatus;
@@ -176,7 +188,11 @@ export async function runModerationJob(env: Env, jobId: string, attempt: number)
   void track(env, job.uid, "$ai_generation", APP, { $ai_model: r.model, $ai_provider: "cloudflare", $ai_input_tokens: r.inTokens, $ai_output_tokens: 0, $ai_latency: r.ms / 1000, $ai_is_error: false, $ai_span_name: "hf_upload_check", area: "hf_moderation", kind: job.kind }).catch(() => undefined);
   if (job.kind === "intro_video") {
     const d = decideVideo(r.probs);
-    return finish(env, job, d.status, d.reasons, { probs: r.probs, model: r.model, inTokens: r.inTokens, ms: r.ms, childSafety: d.childSafety });
+    // [HF-MOD-3] owner: when something is flagged, one extra rough question "where in the video?" (Clef gives one score
+    // per question, never frames). A failure here never blocks the verdict.
+    let where: { where: string | null; whereConfidence: number | null } = { where: null, whereConfidence: null };
+    if (d.status === "flagged") where = await askWhere(env, bytes, job.mime, d.reasons).catch(() => ({ where: null, whereConfidence: null }));
+    return finish(env, job, d.status, d.reasons, { probs: r.probs, model: r.model, inTokens: r.inTokens, ms: r.ms, childSafety: d.childSafety, ...where });
   }
   const d = decidePhoto(r.probs);
   return finish(env, job, d.status, d.reasons, { probs: r.probs, model: r.model, inTokens: r.inTokens, ms: r.ms, noFace: d.noFace });

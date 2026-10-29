@@ -12628,5 +12628,22 @@
         "note": "Server telemetry per checked photo: verdict passed / refused / failed, ms_in_queue, ms_model. Success = mostly 'passed' with few 'failed'."
       }
     ]
+  },
+  "HF-MOD-3": {
+    "description": "Clef-omni check on intro videos through hf-mod-video: with hfIntroModerationEnabled the video + poster are stored privately (signed admin links), the admin sees passed / flagged / needs a look with % scores and a rough where-to-look hint, Aadhaar + verified socials; approve is blocked while checking, on a failed check and on child safety, needs a note to overrule a flag; approve publishes the files to the public bucket.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfIntroModerationEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_video_check",
+        "property": "verdict",
+        "exists": true,
+        "min_events": 1,
+        "note": "Server telemetry per checked intro video. Success = verdicts arrive (passed / flagged / needs_look) with few 'failed'."
+      }
+    ]
   }
 }

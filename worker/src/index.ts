@@ -378,7 +378,8 @@ import {
 import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media";
 import { hfUserPhotosRoute } from "./routes/hf_user_photos"; // [HF-MOD-2]
 import { handleModerationQueue } from "./lib/hf_user_photos"; // [HF-MOD-2] importing it registers the photo outcomes
-import { sweepModerationJobs } from "./lib/hf_moderation"; // [HF-MOD-2] // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
+import { sweepModerationJobs } from "./lib/hf_moderation"; // [HF-MOD-2]
+import { privateMediaRoute } from "./lib/hf_intro_moderation"; // [HF-MOD-3] // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { avaGroupModeGet, avaGroupModePost, avaGroupPolicyGet, avaGroupDraftApprove, avaGroupDraftReject, avaGroupDraftsGet } from "./routes/ava_group"; // [AVABRAIN-COMPANION-2]/[AVABRAIN-COMPANION-UI-1] group Companion mode + effective policy + draft approval + pending-draft list
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
@@ -1207,6 +1208,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
+      if (p.startsWith("/api/hf/media/private/")) { const r = await privateMediaRoute(req, env, p); if (r) return r; } // [HF-MOD-3] signed links to private intro videos
       if (p === "/api/hf/me/photo" || p === "/api/hf/me/cover" || p === "/api/hf/me/photos" || p.startsWith("/api/admin/hf/moderation/")) { const r = await hfUserPhotosRoute(req, env, p, ctx); if (r) return r; } // [HF-MOD-2]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
       if (p.startsWith("/api/hf/channels/facebook/")) { const r = await hfFacebookRoute(req, env, p, ctx); if (r) return r; } // [HF-FB-LOGIN-1] callback has no bearer

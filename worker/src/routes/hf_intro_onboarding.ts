@@ -7,6 +7,8 @@
 //   PUT  /api/hf/onboarding/intro-video/:id/poster raw image body (jpeg|png|webp, <= 2 MB)                                      -> { ok, video }
 //   POST /api/hf/onboarding/submit                { categories[], lang, intro_video_id, call_option:'A'|'B', topic? }            -> { ok, application }
 // Contract: Specs/HF-INTRO-VIDEO-1-API.md. Nobody is live until a person approves (routes/hf_intro_admin.ts). No AI check of the video (D1).
+import { signedMediaUrl, introModerationOn } from "../lib/hf_intro_moderation"; // [HF-MOD-3]
+import { enqueueModeration } from "../lib/hf_moderation"; // [HF-MOD-3]
 import type { Env } from "../types";
 import { json } from "../util";
 import { faststartMp4 } from "../lib/mp4_faststart";
@@ -53,6 +55,12 @@ export const videoJson = (env: Env, v: VideoRow) => {
     deletedAt: v.deleted_at ?? null, deletedReason: v.deleted_reason ?? null,
   };
 };
+/** [HF-MOD-3] videoJson, with short-lived signed links when the files are still private (not yet approved). */
+export async function videoOut(env: Env, origin: string, v: VideoRow): Promise<ReturnType<typeof videoJson>> {
+  const j = videoJson(env, v);
+  if ((v as any).storage !== "private" || !j.videoUrl) return j;
+  return { ...j, videoUrl: await signedMediaUrl(env, origin, v.r2_key), posterUrl: v.poster_key ? await signedMediaUrl(env, origin, v.poster_key) : null };
+}
 export const parseJsonArray = (s: unknown): string[] => { try { const v = JSON.parse(String(s ?? "[]")); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; } };
 export const applicationJson = (a: AppRow) => ({
   id: a.id, status: a.status, categories: categoriesFromJson(a.categories_json), lang: a.lang, introVideoId: a.intro_video_id, callOption: a.call_option,
@@ -128,7 +136,7 @@ async function me(req: Request, env: Env): Promise<Response> {
       status: host.status, displayName: host.display_name, about: host.about, ratePerMin: host.price_per_min, photoUrl: photo ? mediaUrl(env, photo.r2_key) : null,
       callOption: host.call_option ?? null, introApprovedAt: host.intro_approved_at ?? null,
     } : null,
-    video: video ? videoJson(env, video) : null,
+    video: video ? await videoOut(env, new URL(req.url).origin, video) : null, // [HF-MOD-3] signed links while private
     application: app ? applicationJson(app) : null,
     requirements: {
       whatsappVerified: facts.whatsappVerified, aadhaarDone: facts.aadhaarDone, aadhaarGender: facts.aadhaarGender, hasVerifiedSocial: facts.socials.length > 0,
@@ -165,16 +173,23 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
   const key = `intro-video/${uid}/${id}.${chk.ext}`;
   const now = Date.now();
   let replaced: IntroFileRow[] = [];
+  // [HF-MOD-3] with the AI check on, the video stays PRIVATE until an admin approves it, and Clef-omni checks it now.
+  const priv = await introModerationOn(env);
+  const bucket = priv ? env.DIGITAL : env.BLOBS;
   try {
     replaced = (await env.DB_META.prepare("SELECT id, uid, r2_key, poster_key, bytes FROM hf_intro_videos WHERE uid=?1 AND status='draft'").bind(uid).all<IntroFileRow>()).results ?? [];
-    await env.BLOBS.put(key, body, { httpMetadata: { contentType: chk.mime, cacheControl: IMMUTABLE } });
+    await bucket.put(key, body, { httpMetadata: { contentType: chk.mime, ...(priv ? {} : { cacheControl: IMMUTABLE }) } });
     await env.DB_META.batch([
       env.DB_META.prepare("UPDATE hf_intro_videos SET status='replaced', updated_at=?2 WHERE uid=?1 AND status='draft'").bind(uid, now),
-      env.DB_META.prepare("INSERT INTO hf_intro_videos (id,uid,r2_key,poster_key,mime,bytes,duration_ms,width,height,lang,topic,views,status,created_at,updated_at) VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,0,'draft',?11,?11)")
-        .bind(id, uid, key, chk.mime, body.byteLength, chk.durationMs, chk.width, chk.height, lang || null, topic || null, now),
+      priv
+        ? env.DB_META.prepare("INSERT INTO hf_intro_videos (id,uid,r2_key,poster_key,mime,bytes,duration_ms,width,height,lang,topic,views,status,created_at,updated_at,storage) VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,0,'draft',?11,?11,'private')")
+          .bind(id, uid, key, chk.mime, body.byteLength, chk.durationMs, chk.width, chk.height, lang || null, topic || null, now)
+        : env.DB_META.prepare("INSERT INTO hf_intro_videos (id,uid,r2_key,poster_key,mime,bytes,duration_ms,width,height,lang,topic,views,status,created_at,updated_at) VALUES (?1,?2,?3,NULL,?4,?5,?6,?7,?8,?9,?10,0,'draft',?11,?11)")
+          .bind(id, uid, key, chk.mime, body.byteLength, chk.durationMs, chk.width, chk.height, lang || null, topic || null, now),
     ]);
+    if (priv) await enqueueModeration(env, { uid, kind: "intro_video", subjectId: id, r2Key: key, mime: chk.mime, bytes: body.byteLength }, ctx);
   } catch (e) {
-    await env.BLOBS.delete(key).catch(() => undefined);
+    await bucket.delete(key).catch(() => undefined);
     await trackException(env, e, { uid, route: "/api/hf/onboarding/intro-video", method: "POST", handled: true, app_name: APP, extra: { area: "hf_intro_onboarding", step: "store" } });
     emit("hf_intro_upload", { ok: false, reason: "store_failed", bytes: bytes!.byteLength, ms: Date.now() - t0 });
     return err(500, "store_failed", { message: "We could not save your video. Please try again." });
@@ -182,7 +197,7 @@ async function uploadVideo(req: Request, env: Env, ctx: ExecutionContext | undef
   for (const r of replaced) await deleteIntroVideoFiles(env, r, "draft_replaced"); // [HF-INTRO-DELETE-1] also marks the row + telemetry
   emit("hf_intro_upload", { ok: true, bytes: bytes!.byteLength, ms: Date.now() - t0, duration_ms: chk.durationMs, client_duration_ms: chk.clientDurationMs, duration_source: chk.durationSource }); // [HF-MOD-1]
   const row = await env.DB_META.prepare("SELECT * FROM hf_intro_videos WHERE id=?1").bind(id).first<VideoRow>();
-  return json({ ok: true, video: videoJson(env, row!) }, 200, NO_STORE);
+  return json({ ok: true, video: await videoOut(env, new URL(req.url).origin, row!) }, 200, NO_STORE);
 }
 
 // ── PUT poster ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -198,18 +213,22 @@ async function uploadPoster(req: Request, env: Env, ctx: ExecutionContext | unde
   const bytes = await boundedBytes(req, INTRO_POSTER_MAX_BYTES).catch(() => null);
   const chk = validateIntroPoster(req.headers.get("content-type") ?? "", bytes);
   if (!chk.ok) return err(chk.status, chk.error, { message: chk.message });
-  const key = `intro-video/${uid}/${id}-poster-${Date.now()}.${chk.ext}`;
+  const posterTs = Date.now();
+  const key = `intro-video/${uid}/${id}-poster-${posterTs}.${chk.ext}`;
+  const priv = (v as any).storage === "private"; // [HF-MOD-3] a private video keeps a private poster
+  const bucket = priv ? env.DIGITAL : env.BLOBS;
   try {
-    await env.BLOBS.put(key, bytes!, { httpMetadata: { contentType: chk.mime, cacheControl: IMMUTABLE } });
+    await bucket.put(key, bytes!, { httpMetadata: { contentType: chk.mime, ...(priv ? {} : { cacheControl: IMMUTABLE }) } });
     await env.DB_META.prepare("UPDATE hf_intro_videos SET poster_key=?2, updated_at=?3 WHERE id=?1").bind(id, key, Date.now()).run();
+    if (priv) await enqueueModeration(env, { uid, kind: "intro_poster", subjectId: `${id}:${posterTs}`, r2Key: key, mime: chk.mime, bytes: bytes!.byteLength }, ctx);
   } catch (e) {
-    await env.BLOBS.delete(key).catch(() => undefined);
+    await bucket.delete(key).catch(() => undefined);
     await trackException(env, e, { uid, route: "/api/hf/onboarding/intro-video/poster", method: "PUT", handled: true, app_name: APP, extra: { area: "hf_intro_onboarding", step: "poster_store" } });
     return err(500, "store_failed", { message: "We could not save the picture. Please try again." });
   }
-  if (v.poster_key) await env.BLOBS.delete(v.poster_key).catch((e) => trackException(env, e, { uid, route: "/api/hf/onboarding/intro-video/poster", handled: true, app_name: APP, extra: { area: "hf_intro_onboarding", step: "delete_old_poster" } }));
+  if (v.poster_key) await bucket.delete(v.poster_key).catch((e) => trackException(env, e, { uid, route: "/api/hf/onboarding/intro-video/poster", handled: true, app_name: APP, extra: { area: "hf_intro_onboarding", step: "delete_old_poster" } }));
   makeEmit(env, ctx, uid)("hf_intro_poster", { ok: true, bytes: bytes!.byteLength });
-  return json({ ok: true, video: videoJson(env, { ...v, poster_key: key }) }, 200, NO_STORE);
+  return json({ ok: true, video: await videoOut(env, new URL(req.url).origin, { ...v, poster_key: key }) }, 200, NO_STORE);
 }
 
 // ── POST submit ───────────────────────────────────────────────────────────────────────────────────────────────

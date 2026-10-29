@@ -21,6 +21,8 @@ import { categoriesFromJson, WOMEN_TO_WOMEN } from "../lib/hf_categories";
 import { APPLICATION_ID_RE, REJECT_REASONS, REJECT_REASON_CODES, GATE_MESSAGES, submissionGate, approvedMessage, rejectedMessage } from "../lib/hf_intro_video";
 import { deleteIntroVideoFiles, type IntroFileRow } from "../lib/hf_intro_cleanup";
 import { readConfig } from "./config";
+import { introModerationOn, introAiFor, introApproveGate, ensureIntroCheck, publishIntroVideo } from "../lib/hf_intro_moderation"; // [HF-MOD-3]
+import { videoOut } from "./hf_intro_onboarding";
 import { onboardingFacts, applicationJson, videoJson, parseJsonArray, type AppRow, type VideoRow } from "./hf_intro_onboarding";
 
 const APP = BRAND.slug;
@@ -82,17 +84,32 @@ async function list(req: Request, env: Env): Promise<Response> {
   const st = new URL(req.url).searchParams.get("status") || "submitted";
   if (!STATUSES.includes(st)) return err(400, "bad_status");
   const rows = (await env.DB_META.prepare(
-    `SELECT a.id, a.uid, a.status, a.categories_json, a.lang, a.call_option, a.rate_rupees, a.has_socials, a.aadhaar_ok, a.submitted_at, a.reviewed_at,
+    `SELECT a.id, a.uid, a.status, a.intro_video_id, a.categories_json, a.lang, a.call_option, a.rate_rupees, a.has_socials, a.aadhaar_ok, a.submitted_at, a.reviewed_at,
             h.display_name AS name, k.gender AS aadhaar_gender
        FROM hf_influencer_applications a LEFT JOIN hf_hosts h ON h.uid=a.uid LEFT JOIN hf_kyc k ON k.uid=a.uid AND k.verified_at IS NOT NULL
       WHERE a.status=?1 ORDER BY ${st === "submitted" ? "a.submitted_at ASC" : "a.reviewed_at DESC"}, a.id ASC LIMIT 100`,
-  ).bind(st).all<{ id: string; uid: string; status: string; categories_json: string; lang: string | null; call_option: string; rate_rupees: number | null; has_socials: number; aadhaar_ok: number; submitted_at: number; reviewed_at: number | null; name: string | null; aadhaar_gender: string | null }>()).results ?? [];
+  ).bind(st).all<{ id: string; uid: string; status: string; intro_video_id: string; categories_json: string; lang: string | null; call_option: string; rate_rupees: number | null; has_socials: number; aadhaar_ok: number; submitted_at: number; reviewed_at: number | null; name: string | null; aadhaar_gender: string | null }>()).results ?? [];
+  // [HF-MOD-3] per row: the AI verdict on the intro video (+ poster) and the verified identity / channels with followers.
+  const on = await introModerationOn(env);
+  const extra = await Promise.all(rows.map(async (r) => {
+    const [ai, facts] = await Promise.all([
+      introAiFor(env, r.intro_video_id, on).catch(() => null),
+      onboardingFacts(env, r.uid).catch(() => null),
+    ]);
+    const verify = facts ? {
+      aadhaar: { verified: facts.aadhaarDone, gender: facts.aadhaarGender === "F" || facts.aadhaarGender === "M" ? facts.aadhaarGender : null },
+      socials: facts.socials.map((x) => ({ platform: x.platform, handle: x.handle, followers: typeof x.followers === "number" ? x.followers : null, url: x.url ?? null })),
+      whatsapp: facts.whatsappVerified,
+    } : null;
+    return { ai, verify };
+  }));
   return json({
     ok: true,
-    items: rows.map((r) => ({
+    items: rows.map((r, i) => ({
       id: r.id, uid: r.uid, status: r.status, name: r.name ?? "", categories: categoriesFromJson(r.categories_json), lang: r.lang, ratePerMin: r.rate_rupees, callOption: r.call_option,
       submittedAt: r.submitted_at, reviewedAt: r.reviewed_at, hasSocials: r.has_socials === 1,
       aadhaar: { status: r.aadhaar_ok === 1 || r.aadhaar_gender ? "verified" : "none", female: r.aadhaar_gender === "F" },
+      ...(extra[i].ai ? { ai: extra[i].ai } : {}), ...(extra[i].verify ? { verify: extra[i].verify } : {}),
     })),
     rejectReasons: rejectReasonList(),
   }, 200, NO_STORE);
@@ -119,11 +136,25 @@ async function detail(req: Request, env: Env, id: string): Promise<Response> {
     await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "calendar" } });
   }
   await audit(env, a.uid, "view", id, { uid: app.uid });
+  // [HF-MOD-3] AI verdict + photo checks for the reviewer; a submitted video with no check yet is checked now.
+  const on = await introModerationOn(env);
+  let ai = await introAiFor(env, app.intro_video_id, on).catch(() => null);
+  if (on && ai?.status === "missing" && video && !video.deleted_at && app.status === "submitted") {
+    await ensureIntroCheck(env, { ...video, storage: (video as any).storage }).catch(() => undefined);
+    ai = await introAiFor(env, app.intro_video_id, on).catch(() => ai);
+  }
+  const hostPhoto = await env.DB_META.prepare("SELECT status, public_key, reason FROM hf_user_photos WHERE uid=?1 AND kind='host' ORDER BY created_at DESC LIMIT 1").bind(app.uid)
+    .first<{ status: string; public_key: string | null; reason: string | null }>().catch(() => null);
+  const photos = {
+    host: { url: photo ? mediaUrl(env, photo.r2_key) : null, status: hostPhoto?.status ?? (photo ? "active" : null), reason: hostPhoto?.reason ?? null },
+    poster: { status: ai && ai.status !== "off" ? (ai.posterReasons.length ? "refused" : "checked") : null, reasons: ai?.posterReasons ?? [] },
+  };
   return json({
     ok: true,
     application: applicationJson(app),
     host: host ? { uid: host.uid, status: host.status, name: host.display_name, description: host.about, ratePerMin: host.price_per_min, photoUrl: photo ? mediaUrl(env, photo.r2_key) : null, callOption: app.call_option } : null,
-    video: video ? videoJson(env, video) : null,
+    video: video ? await videoOut(env, new URL(req.url).origin, video) : null,
+    ...(ai ? { ai } : {}), photos,
     socials: facts.socials.map((s) => ({ platform: s.platform, handle: s.handle, url: s.url, followers: s.followers })),
     aadhaar: { done: facts.aadhaarDone, female: facts.aadhaarGender === "F", gender: facts.aadhaarGender },
     whatsappVerified: facts.whatsappVerified,
@@ -147,6 +178,17 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
   ]);
   if (!host) return err(409, "no_host");
   if (!video) return err(409, "video_missing");
+  // [HF-MOD-3] AI gate (rulebook HF-MOD-5): wait for the check, never on child safety, a note to overrule a flag.
+  const body = await readJson(req);
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 500) : "";
+  const on = await introModerationOn(env);
+  const ai = await introAiFor(env, app.intro_video_id, on);
+  if (on && ai.status === "missing" && !video.deleted_at) await ensureIntroCheck(env, { ...video, storage: (video as any).storage }).catch(() => undefined);
+  const blocked = introApproveGate(ai, note);
+  if (blocked) {
+    await emit(env, a.uid, "hf_admin_review_blocked", { application_id: id, influencer_uid: uid, error: blocked.error, ai_status: ai.status });
+    return err(blocked.status, blocked.error, { message: blocked.message });
+  }
   if (host.status === "paused" || host.status === "archived") return err(409, "host_not_eligible", { status: host.status, message: "This profile is paused or closed." });
   // Re-check at approval time: things can change between submit and review (D4).
   const missing: string[] = [];
@@ -159,6 +201,12 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
   if (gate) return err(409, gate, { message: GATE_MESSAGES[gate] });
   const slug = host.slug || (await ensureSlug(env, uid, host.display_name!));
   if (!slug) return err(500, "slug_failed");
+  // [HF-MOD-3] a private video (+ poster) becomes public only now, just before it goes live.
+  try { await publishIntroVideo(env, { ...video, storage: (video as any).storage }); }
+  catch (e) {
+    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "publish_video" } });
+    return err(500, "publish_failed", { message: "We could not publish the video. Please try again." });
+  }
   const now = Date.now();
   const women = cats.includes(WOMEN_TO_WOMEN) ? 1 : 0;
   // [HF-INTRO-DELETE-1] the older approved video becomes 'replaced' below; its files are deleted once the decision is saved.
@@ -179,7 +227,11 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
   if (!res[0]?.meta?.changes) return err(409, "bad_state", { message: "Someone else just decided on this." });
   let filesDeleted = 0;
   for (const o of older) if (await deleteIntroVideoFiles(env, o, "replaced")) filesDeleted++;
-  await audit(env, a.uid, "approve", id, { uid, replaced_videos_deleted: filesDeleted });
+  if (ai.status === "flagged" && ai.jobId) {
+    await env.DB_META.prepare("UPDATE hf_moderation_jobs SET override_by=?2, override_note=?3, override_at=?4 WHERE id=?1").bind(ai.jobId, a.uid, note, now).run()
+      .catch((e) => trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "override" } }));
+  }
+  await audit(env, a.uid, "approve", id, { uid, replaced_videos_deleted: filesDeleted, ai_status: ai.status, ai_reasons: ai.reasons, ...(ai.status === "flagged" ? { override_note: note } : {}) });
   const notified = await notifyInfluencer(env, a.uid, uid, "approve", approvedMessage(host.display_name), id);
   await pushHostDecision(env, undefined, uid, "approve").catch((e) => trackException(env, e, { uid: a.uid, route: "/api/admin/hf/intro-applications", handled: true, app_name: APP, extra: { area: "hf_intro_admin", step: "push" } }));
   await emit(env, a.uid, "hf_admin_review", { decision: "approve", reasons: "", application_id: id, influencer_uid: uid, women_to_women: women === 1 });

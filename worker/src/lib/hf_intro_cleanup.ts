@@ -43,6 +43,7 @@ export async function deleteIntroVideoFiles(env: Env, row: IntroFileRow, reason:
   const keys = [row.r2_key, row.poster_key].filter((k): k is string => !!k);
   try {
     for (const k of keys) await env.BLOBS.delete(k);
+    for (const k of keys) await env.DIGITAL?.delete(k); // [HF-MOD-3] a private (not yet approved) video lives in DIGITAL
   } catch (e) {
     await trackException(env, e, { uid: row.uid, route: "hf_intro_cleanup", handled: true, app_name: BRAND.slug, extra: { area: "hf_intro_cleanup", step: "r2_delete", reason } }).catch(() => undefined);
     return false;

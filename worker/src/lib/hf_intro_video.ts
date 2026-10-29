@@ -110,6 +110,7 @@ export const REJECT_REASONS: Readonly<Record<string, string>> = {
   audio_unclear: "We could not hear you clearly. Please record again in a quiet place.",
   contact_shared: "Please do not share phone numbers, social handles or links in your video or your description.",
   unsuitable: `Your video or profile is not suitable for ${BRAND.name}.`,
+  ai_nudity: "Your video shows nudity or sexual content, which is not allowed. Please record again fully dressed.", // [HF-MOD-3]
   wrong_category: "The categories you picked do not match your video. Please pick the right ones.",
   description_fix: "Please improve your profile description.",
   rate_fix: "Please change your rate per minute.",
