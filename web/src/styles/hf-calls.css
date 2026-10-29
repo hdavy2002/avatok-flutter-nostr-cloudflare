@@ -100,3 +100,5 @@ fieldset.hfc-field legend{font-weight:800;font-size:1.125rem;padding:0;margin-bo
 
 /* [HF-APP-3] "Open the app to call" link on the plain web (same look as the Call button, which is a <button>) */
 a.hf-call-app{text-decoration:none;text-align:center}
+/* [HF-LOCKED-BTN] A primary button that is a link keeps white text inside dashboard sections (was plum on plum). */
+.hfd-section a.hfc-btn.hfc-primary,.hfd-actions a.hfc-primary,.hfd-section a.hfc-primary:visited{color:#fff}
