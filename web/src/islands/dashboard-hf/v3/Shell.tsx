@@ -53,10 +53,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       { key: 'become', href: '/dashboard/become', label: 'Become an influencer', icon: 'star', disabled: account.closing ? 'Account closing' : undefined },
       { key: 'verifications', href: '/dashboard/verifications', label: 'My verifications', icon: 'shield' }, // [HF-CREATOR-BADGES-1]
     ] },
-    // [HF-CHANNEL-PHOTO-1] Only people who have an influencer profile get this group.
-    { title: 'My public page', items: account.host ? [
-      { key: 'profile-photo', href: '/dashboard/profile-photo', label: 'Profile photo', icon: 'user' },
-    ] : [] },
+    // [HF-ONE-PHOTO-PAGE] the old 'My public page > Profile photo' item is gone: My photo & cover sets the influencer photo too.
     { title: 'Account', items: [
       ...(!account.host && showSafety ? [safetyItem] : []), // [HF-CALL-SAFETY-WEB] paused or struck fans
       { key: 'support', href: '/dashboard/support', label: 'Support', icon: 'help' },

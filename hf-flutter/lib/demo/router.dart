@@ -30,7 +30,6 @@ import 'screens/merch_fan.dart'; // [HF-MERCH-APP-1]
 import '../data/repos/channel_repo.dart'; // [HF-CHANNEL-APP-1]
 import 'screens/bag.dart'; // [HF-CHANNEL-APP-1]
 import 'screens/merch_product.dart'; // [HF-CHANNEL-APP-1]
-import 'screens/profile_photo.dart'; // [HF-CHANNEL-APP-1]
 import 'screens/merch_studio.dart';
 import 'screens/merch_wizard.dart';
 import 'screens/money.dart';
@@ -190,7 +189,7 @@ final router = GoRouter(
         initial: s.extra is ChannelProduct ? s.extra! as ChannelProduct : null,
       ),
     ),
-    GoRoute(parentNavigatorKey: rootKey, path: '/inf/photo', builder: (_, __) => const ProfilePhotoScreen()),
+    GoRoute(parentNavigatorKey: rootKey, path: '/inf/photo', builder: (_, __) => const MyPhotosScreen()), // [HF-ONE-PHOTO-PAGE] one photo page for everyone
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/topup',

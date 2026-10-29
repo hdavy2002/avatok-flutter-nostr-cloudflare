@@ -1,12 +1,5 @@
 ---
-// [HF-CHANNEL-PHOTO-1] Dashboard screen "profile-photo": one shell for every account screen (lib/dashboardRoutes.ts).
+// [HF-ONE-PHOTO-PAGE 2026-10-29] owner: one photo page. The old influencer "Profile photo" page moved into My photo & cover.
 export const prerender = false;
-import Base from '../../layouts/Base.astro';
-import DashboardLoading from '../../components/DashboardLoading.astro'; // [HF-DASH-LOADING-1]
-import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
-import { BRAND } from '../../lib/brand';
-Astro.response.headers.set('Cache-Control', 'private, no-store');
+return Astro.redirect('/dashboard/my-photo', 301);
 ---
-<Base title={`Profile photo | ${BRAND.name}`} description="Upload and crop the big picture at the top of your public page." noindex keywords="">
-  <DashboardApp client:only="react" section="profile-photo" ><div slot="fallback"><DashboardLoading /></div></DashboardApp>
-</Base>

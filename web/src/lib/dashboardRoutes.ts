@@ -3,7 +3,7 @@
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
   | 'orders' | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
-  | 'support' | 'close' | 'become' | 'profile-photo' | 'my-photo' | 'verifications' | 'safety';
+  | 'support' | 'close' | 'become' | 'my-photo' | 'verifications' | 'safety';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
 
@@ -40,8 +40,6 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'availability', path: '/dashboard/host/availability', label: 'Availability', icon: 'clock', group: 'host', hostOnly: true, needsBookings: true, title: 'Availability' },
   { section: 'earnings', path: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', group: 'host', hostOnly: true, title: 'Earnings' },
   { section: 'merch', path: '/dashboard/merch', label: 'Merch', icon: 'shirt', group: 'host', hostOnly: true, needsMerch: true, title: 'Merch' },
-  // [HF-CHANNEL-PHOTO-1] Influencers upload and crop the big photo on their public page. Non-influencers see a note, so no hostOnly block.
-  { section: 'profile-photo', path: '/dashboard/profile-photo', label: 'Profile photo', icon: 'profile', group: 'host', title: 'Profile photo' },
   // [HF-CREATOR-BADGES-1] Trust badges: phone, channel, video KYC, special space, who can call.
   { section: 'verifications', path: '/dashboard/verifications', label: 'My verifications', icon: 'shield', group: 'host', title: 'My verifications' },
   // [HF-CALL-SAFETY-WEB] Strikes, appeals, paused state and the call rules. Open to every signed-in account (a paused fan sees their status here too).

@@ -12714,5 +12714,14 @@
         "note": "Web crop then upload; hf_photo_onboarding_done after shown."
       }
     ]
+  },
+  "HF-ONE-PHOTO-PAGE": {
+    "description": "Removed the duplicate influencer Profile photo page; My photo & cover sets the influencer's public photo too.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotoModerationEnabled"
+    ],
+    "no_telemetry": "Page removal + redirect; photo results already reported by hf_photo_check."
   }
 }

@@ -82,7 +82,12 @@ async function photoOutcome(env: Env, job: ModJobRow, result: { status: string; 
     env.DB_META.prepare("UPDATE hf_user_photos SET status='superseded', updated_at=?3 WHERE uid=?1 AND kind=?2 AND status='active'").bind(row.uid, row.kind, now),
     env.DB_META.prepare("UPDATE hf_user_photos SET status='active', public_key=?2, pending_key=NULL, updated_at=?3 WHERE id=?1").bind(row.id, pub, now),
   ];
-  if (row.kind === "host") {
+  // [HF-ONE-PHOTO-PAGE 2026-10-29] owner: one photo page for everyone (/dashboard/my-photo). An influencer's checked profile photo is
+  // also her public-page photo, so the old separate "Profile photo" page is gone.
+  const isHost = row.kind === "profile"
+    ? !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 LIMIT 1").bind(row.uid).first().catch(() => null))
+    : false;
+  if (row.kind === "host" || isHost) {
     // Same rows the influencer profile has always used (hf_host_photo.ts before HF-MOD-2).
     stmts.push(env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND kind='profile' AND status='active'").bind(row.uid));
     stmts.push(env.DB_META.prepare("INSERT INTO hf_host_media (id,uid,kind,r2_key,status,job_id,created_at) VALUES (?1,?2,'profile',?3,'active',NULL,?4)").bind(crypto.randomUUID(), row.uid, pub, now));
