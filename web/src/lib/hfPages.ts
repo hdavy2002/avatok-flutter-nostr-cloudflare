@@ -1,4 +1,4 @@
-// [HF-PAGES-2] The 14 Hello Fraands policy pages read their text from the API (D1 `site_pages`, HF-PAGES-1).
+// [HF-PAGES-2] The 14 policy pages read their text from the API (D1 `site_pages`, HF-PAGES-1).
 // If the API is down, slow or returns something unusable, the page shows the SEED text instead: web/src/data/hf-pages-seed.json,
 // generated once from the old hard-coded pages by scripts/hf_pages_extract.mjs --json (never hand-retyped).
 // Block shapes mirror worker/src/lib/hf_pages.ts.
