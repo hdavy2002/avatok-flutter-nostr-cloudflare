@@ -1,0 +1,39 @@
+---
+// [HF-SUPPORT-DESK] The Hello Fraands support desk: ONE server-rendered shell + ONE React app (islands/support/).
+//
+// Served at support.<domain>/ (middleware.ts rewrites "/x" -> "/support-desk/x" on that host) and also at
+// <domain>/support-desk/ so it can be tried before DNS exists. The app does its own routing in the browser
+// (islands/support/router.tsx), which is why this is a single catch-all page: it adds ONE worker route and nothing
+// to the 100-rule _routes.json budget.
+//
+// `client:only` on purpose: the app reads window/localStorage/Clerk and is never useful as static HTML, so it is
+// not server-rendered (no SSR 500 risk). Everything under it is private: noindex, no-store (middleware.ts).
+export const prerender = false;
+
+import SupportApp from '../../islands/support/SupportApp.tsx';
+import { BRAND } from '../../lib/brand';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#E9DCC9" />
+    <title>{`Support · ${BRAND.name}`}</title>
+    <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
+    <style is:inline>
+      /* First paint before the app arrives: parchment and the wordmark, so there is no white flash. */
+      @font-face{font-family:Comfortaa;src:url('/fonts/Comfortaa-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+      html,body{margin:0;background:#E9DCC9;color:#2B1530;font-family:Nunito,system-ui,sans-serif}
+      #hfs-boot{min-height:100vh;display:grid;place-items:center;font-family:Comfortaa,system-ui,sans-serif;font-size:22px;color:#4A1747}
+      #hfs-boot span{color:#D81B72}
+    </style>
+  </head>
+  <body>
+    <div id="hfs-boot" aria-hidden="true">{BRAND.name} <span>&nbsp;Support</span></div>
+    <SupportApp client:only="react" />
+    <noscript><p style="padding:24px;font-family:sans-serif">The support desk needs JavaScript. Email {BRAND.emails.support} instead.</p></noscript>
+  </body>
+</html>

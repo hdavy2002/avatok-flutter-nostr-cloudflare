@@ -1,6 +1,7 @@
 import { defineMiddleware, sequence } from 'astro:middleware';
 import { withSecurityHeaders } from './lib/securityHeaders';
 import { BRAND } from './lib/brand';
+import { SUPPORT_RESPONSE_HEADERS, isSupportPath, supportRewritePath } from './lib/supportHost';
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] OWNER DECISION: the old avaTOK / creator-marketplace
 // pages below were DELETED from src/pages. Their URLs answer 410 Gone (not 404) so
@@ -95,7 +96,27 @@ function cacheable(res: Response): boolean {
   return /\bpublic\b/.test(cc) && !/no-store|private/.test(cc) && !!maxAge && Number(maxAge[1]) > 0;
 }
 
+// [HF-SUPPORT-DESK] Every support-desk response is private, uncached and noindex.
+function withSupportHeaders(res: Response): Response {
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SUPPORT_RESPONSE_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
 const routeMiddleware = defineMiddleware(async (context, next) => {
+  // [HF-SUPPORT-DESK] support.<domain> serves the desk (pages/support-desk/[...path].astro) at "/".
+  // This rewrite is only a FALLBACK. The Pages adapter hands any request that matches no route (e.g. /new, /desk/t/HF-1)
+  // and the prerendered "/" straight to static assets WITHOUT running this worker, so the real switch is the zone
+  // "Rewrite URL" Transform Rule in Specs/RULEBOOK-HELLO-FRAANDS.md (it rewrites the whole support host to /support-desk/...).
+  const locals = context.locals as { supportRewritten?: boolean };
+  if (!locals.supportRewritten) {
+    const target = supportRewritePath(context.url);
+    if (target) {
+      locals.supportRewritten = true; // guard: never rewrite twice if the chain re-runs
+      return withSupportHeaders(await next(target));
+    }
+  }
+  if (isSupportPath(context.url.pathname)) return withSupportHeaders(await next());
   // Both legacy index spellings have the same deliberate permanent redirect.
   if (context.url.pathname === '/rituals' || context.url.pathname === '/rituals/') {
     return new Response(null, { status: 301, headers: { Location: '/blog/' } });
