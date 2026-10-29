@@ -2,6 +2,7 @@
 // message (with its attachments and the ticket bookkeeping), validate pre-uploaded attachments, merge, split.
 // Writes that must be all-or-nothing go through DB_META.batch (one D1 transaction).
 import type { Env } from "../types";
+import { BRAND } from "./brand";
 import {
   addEvent, allocateTicketNumber, ackMessage, isBusinessTime, defaultPriority, isPriority, firstResponseDue, getTicket, isMoneyCategory, loadSettings, makePreview,
   MAX_MESSAGE_ATTACHMENT_BYTES, MAX_TEXT_CHARS, reindexTicket, setTicketStatus, ticketCode, clip, type SupportSettings, type TicketRow,
@@ -116,8 +117,8 @@ export async function createTicket(env: Env, a: CreateTicketArgs): Promise<{ num
   if (status === "spam") st.push(env.DB_META.prepare("UPDATE support_tickets SET unread_staff=0 WHERE number=?1").bind(number));
   if (a.writeAck) {
     st.push(env.DB_META.prepare(
-      `INSERT INTO support_messages (id,ticket_number,author_type,author_name,text,preview,created_at) VALUES (?1,?2,'system','Hello Fraands',?3,?4,?5)`,
-    ).bind(crypto.randomUUID(), number, ackMessage(number, a.now, settings), makePreview(ackMessage(number, a.now, settings)), a.now + 1));
+      `INSERT INTO support_messages (id,ticket_number,author_type,author_name,text,preview,created_at) VALUES (?1,?2,'system',?6,?3,?4,?5)`,
+    ).bind(crypto.randomUUID(), number, ackMessage(number, a.now, settings), makePreview(ackMessage(number, a.now, settings)), a.now + 1, BRAND.name));
   }
   st.push(env.DB_META.prepare("INSERT INTO support_events (ticket_number,actor,type,data_json,created_at) VALUES (?1,?2,'created',?3,?4)")
     .bind(number, a.uid ?? "customer", JSON.stringify({ channel: a.channel, category: a.category, linkedFrom: a.linkedFrom ?? null }), a.now));
