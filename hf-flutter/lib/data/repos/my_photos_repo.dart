@@ -28,16 +28,32 @@ class PhotoSlot {
 }
 
 class MyPhotos {
-  const MyPhotos({this.profile = const PhotoSlot(), this.cover = const PhotoSlot()});
+  const MyPhotos({this.profile = const PhotoSlot(), this.cover = const PhotoSlot(), this.photosComplete, this.photosMissing = const <String>[]});
 
   factory MyPhotos.fromJson(Map<String, dynamic> j) {
     final p = j['photos'];
     final m = p is Map ? p : const <String, Object?>{};
-    return MyPhotos(profile: PhotoSlot.fromJson(m['profile']), cover: PhotoSlot.fromJson(m['cover']));
+    final missing = j['photos_missing'];
+    final c = j['photos_complete'];
+    return MyPhotos(
+      profile: PhotoSlot.fromJson(m['profile']),
+      cover: PhotoSlot.fromJson(m['cover']),
+      photosComplete: c is bool ? c : null,
+      photosMissing: missing is List ? missing.whereType<String>().toList() : const <String>[],
+    );
   }
 
   final PhotoSlot profile;
   final PhotoSlot cover;
+
+  /// [HF-PHOTO-CROP-APP] The server's own verdict: both pictures approved (`photos_complete`). Null when an older server did not say.
+  final bool? photosComplete;
+
+  /// Which of `profile` / `cover` is still missing (`photos_missing`).
+  final List<String> photosMissing;
+
+  /// Complete by the server's word, or by the two slots both showing a picture when the server said nothing.
+  bool get isComplete => photosComplete ?? (profile.url != null && cover.url != null);
 
   PhotoSlot slot(PhotoKind k) => k == PhotoKind.profile ? profile : cover;
 }

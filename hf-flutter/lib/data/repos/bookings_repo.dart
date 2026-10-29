@@ -1,6 +1,7 @@
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/booking.dart';
+import '../photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 import '../response_cache.dart';
 
 /// Bookings (HF-WIRE-8). The server holds 10 x the rate when a booking is made, starts the call at the booked
@@ -38,13 +39,13 @@ class BookingsRepo {
   /// Like [book], but also says whether the booking now waits for the influencer ([BookResult.needsApproval]) and the
   /// server's own sentence for the "Request sent" screen. [topic] is one of the influencer's topic slugs.
   Future<BookResult> bookRequest(String slug, DateTime startAt, {String? note, String? topic, int? durationMinutes}) async {
-    final j = await _api.postJson('/api/hf/bookings', body: {
+    final j = await PhotosGate.watch(_api.postJson('/api/hf/bookings', body: {
       'hostSlug': slug,
       'startAt': startAt.toUtc().toIso8601String(),
       if (durationMinutes != null) 'durationMinutes': durationMinutes, // [HF-CALL-MODES-E2] only sent while booking lengths are on
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       if (topic != null && topic.isNotEmpty) 'topic': topic,
-    });
+    })); // [HF-PHOTO-CROP-APP] a 403 photos_required sends the person to /onboarding/photos
     final b = j['booking'];
     if (b is! Map) throw ApiException.parse(200);
     return BookResult(

@@ -12,12 +12,14 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../data/api_exception.dart';
 import '../../data/intro_flags.dart';
 import '../../data/merch_art_picker.dart';
+import '../../data/photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 import '../../data/repos/my_photos_repo.dart';
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../channel_pop_kit.dart';
 import '../desi.dart';
 import '../theme.dart';
+import 'photo_crop_editor.dart'; // [HF-PHOTO-CROP-APP]
 
 /// [HF-MOD-APP-PHOTOS] The fan's own profile photo and cover, built to the owner-approved canvas artboards
 /// AppMe (the card on top of the Me tab), AppPhotos ("My photo & cover") and AppRefused.
@@ -48,6 +50,53 @@ ShrunkPhoto shrinkPhoto((Uint8List, int) a) {
       var scale = math.min(1.0, PhotoLimits.coverMaxW / img.width);
       if (img.height * scale < PhotoLimits.coverMinH) scale = PhotoLimits.coverMinH / img.height;
       if (scale < 1) img = im.copyResize(img, width: (img.width * scale).round(), interpolation: im.Interpolation.average);
+    }
+    return (Uint8List.fromList(im.encodeJpg(img, quality: 80)), null);
+  } catch (_) {
+    return (null, 'bad');
+  }
+}
+
+/// [HF-PHOTO-CROP-APP] [cropPhoto] input: the picture, the [PhotoKind] index and the visible area as fractions of the picture
+/// (left, top, right, bottom), measured on the upright picture (after the camera's rotation flag is applied).
+typedef CropArgs = (Uint8List, int, double, double, double, double);
+
+/// Like [shrinkPhoto], but crops exactly the area the person framed in the editor. Top level so [compute] can run it in an isolate.
+/// Profile: a square, longest side 1080 (never under 200). Cover: 3 : 1, 1500 x 500 (or the source's own width when smaller, never
+/// under 640 x 213). Same checks, same JPEG quality 80, same `bad` / `small` problems.
+ShrunkPhoto cropPhoto(CropArgs a) {
+  try {
+    var img = im.decodeImage(a.$1);
+    if (img == null) return (null, 'bad');
+    img = im.bakeOrientation(img);
+    final profile = a.$2 == PhotoKind.profile.index;
+    if (profile) {
+      if (img.width < PhotoLimits.profileMin || img.height < PhotoLimits.profileMin) return (null, 'small');
+    } else {
+      if (img.width < PhotoLimits.coverMinW || img.height < PhotoLimits.coverMinH) return (null, 'small');
+    }
+    var w = (((a.$5 - a.$3) * img.width).round()).clamp(1, img.width).toInt();
+    var h = (((a.$6 - a.$4) * img.height).round()).clamp(1, img.height).toInt();
+    if (profile) {
+      final side = math.min(w, h);
+      w = side;
+      h = side;
+    } else {
+      h = math.max(1, (w / 3).round());
+      if (h > img.height) {
+        h = img.height;
+        w = math.min(img.width, h * 3);
+      }
+    }
+    final x = ((a.$3 * img.width).round()).clamp(0, img.width - w).toInt();
+    final y = ((a.$4 * img.height).round()).clamp(0, img.height - h).toInt();
+    img = im.copyCrop(img, x: x, y: y, width: w, height: h);
+    if (profile) {
+      final target = w.clamp(PhotoLimits.profileMin, PhotoLimits.profileLongSide).toInt();
+      if (target != w) img = im.copyResize(img, width: target, height: target, interpolation: target < w ? im.Interpolation.average : im.Interpolation.cubic);
+    } else {
+      final tw = w.clamp(PhotoLimits.coverMinW, PhotoLimits.coverMaxW).toInt();
+      if (tw != w) img = im.copyResize(img, width: tw, height: (tw / 3).round(), interpolation: tw < w ? im.Interpolation.average : im.Interpolation.cubic);
     }
     return (Uint8List.fromList(im.encodeJpg(img, quality: 80)), null);
   } catch (_) {
@@ -274,9 +323,16 @@ class _SlotState {
 
 /// "My photo & cover": change the cover and the profile photo; each new picture is checked first.
 class MyPhotosScreen extends StatefulWidget {
-  const MyPhotosScreen({super.key, this.repo});
+  const MyPhotosScreen({super.key, this.repo, this.onboarding = false, this.gate});
 
   final MyPhotosRepo? repo;
+
+  /// [HF-PHOTO-CROP-APP] The mandatory "Add your photos" step (`/onboarding/photos`): same cards, plus the explanation, the progress
+  /// and a Continue button that unlocks the app. Works even when the photo & cover card flag is off.
+  final bool onboarding;
+
+  /// Tests pass their own; the app uses [PhotosGate.instance].
+  final PhotosGate? gate;
 
   @override
   State<MyPhotosScreen> createState() => _MyPhotosScreenState();
@@ -290,11 +346,24 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
   String? _loadError;
   int _gen = 0;
 
+  bool _continuing = false;
+  String? _continueError;
+
   MyPhotosRepo get _repo => widget.repo ?? MyPhotosRepo.instance;
+  PhotosGate get _gate => widget.gate ?? PhotosGate.instance;
 
   @override
   void initState() {
     super.initState();
+    if (widget.onboarding) {
+      final why = _gate.takeMessage();
+      Telemetry.event('hf_photo_onboarding_shown', {'missing': _gate.missing.join(',')});
+      if (why != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(why, style: t(15, color: C.white, w: FontWeight.w700))));
+        });
+      }
+    }
     unawaited(_init());
   }
 
@@ -307,7 +376,7 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
   Future<void> _init() async {
     await IntroFlags.ensureLoaded();
     if (!mounted) return;
-    _enabled = IntroFlags.photoModeration;
+    _enabled = widget.onboarding || IntroFlags.photoModeration;
     if (!_enabled) {
       setState(() => _ready = true);
       return;
@@ -381,7 +450,10 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
           }
         }
       });
-      if (_watching.isEmpty) return;
+      if (_watching.isEmpty) {
+        unawaited(_gate.refresh()); // [HF-PHOTO-CROP-APP] the cached "photos complete" answer follows the new pictures
+        return;
+      }
     }
     if (!mounted || gen != _gen) return;
     setState(() {
@@ -397,24 +469,38 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
     final st = _s[k]!;
     if (st.busy || st.server.checking) return;
     Telemetry.event('hf_photo_pick', {'kind': k.name, 'source': selfie ? 'camera' : 'gallery'});
-    Uint8List? raw;
+    Uint8List? chosen;
+    PhotoCropResult? crop;
     try {
-      if (selfie) {
-        raw = await Navigator.of(context).push<Uint8List>(MaterialPageRoute(builder: (_) => const SelfieCaptureScreen()));
-      } else {
-        final picked = await MerchArtPicker.pick();
-        if (picked == null) return;
-        if (picked.problem != null) {
-          if (mounted) setState(() => st.error = picked.problem);
-          return;
+      // [HF-PHOTO-CROP-APP] pick -> "Adjust your photo" -> only then shrink and upload. "Choose another" goes back to the picker.
+      while (crop == null || crop.another) {
+        Uint8List? data;
+        if (selfie) {
+          data = await Navigator.of(context).push<Uint8List>(MaterialPageRoute(builder: (_) => const SelfieCaptureScreen()));
+        } else {
+          final picked = await MerchArtPicker.pick();
+          if (picked == null) return;
+          if (picked.problem != null) {
+            if (mounted) setState(() => st.error = picked.problem);
+            return;
+          }
+          data = picked.bytes;
         }
-        raw = picked.bytes;
+        if (data == null || !mounted) return;
+        final bytesToEdit = data;
+        chosen = bytesToEdit;
+        crop = await Navigator.of(context).push<PhotoCropResult>(
+          MaterialPageRoute<PhotoCropResult>(fullscreenDialog: true, builder: (_) => PhotoCropEditor(bytes: bytesToEdit, kind: k)),
+        );
+        if (crop == null || !mounted) return;
       }
     } catch (_) {
       if (mounted) setState(() => st.error = 'We could not open your photos. Please try again.');
       return;
     }
-    if (raw == null || !mounted) return;
+    final raw = chosen;
+    final framed = crop;
+    if (raw == null || framed == null || !mounted) return;
     setState(() {
       st.stage = _Stage.preparing;
       st.error = null;
@@ -423,7 +509,7 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
       st.thumb = null;
     });
     final sw = Stopwatch()..start();
-    final (bytes, problem) = await compute(shrinkPhoto, (raw, k.index));
+    final (bytes, problem) = await compute(cropPhoto, (raw, k.index, framed.left, framed.top, framed.right, framed.bottom));
     if (!mounted) return;
     if (bytes == null) {
       setState(() {
@@ -477,7 +563,7 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
     return Scaffold(
       backgroundColor: C.page,
       body: Column(children: [
-        const GpHeader(title: 'My photo & cover', bag: false),
+        GpHeader(title: widget.onboarding ? 'Add your photos' : 'My photo & cover', bag: false),
         Expanded(child: _body(context)),
       ]),
     );
@@ -501,12 +587,12 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
         Align(alignment: Alignment.centerLeft, child: DesiButton('Try again', icon: Icons.refresh_rounded, onTap: () => unawaited(_refresh()))),
       ]);
     }
+    final onb = widget.onboarding;
     return ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 28), children: [
-      _coverCard(),
-      const SizedBox(height: 14),
-      _profileCard(),
+      if (onb) ...[_onboardingIntro(), const SizedBox(height: 14), _profileCard(), const SizedBox(height: 14), _coverCard()] else ...[_coverCard(), const SizedBox(height: 14), _profileCard()],
       const SizedBox(height: 14),
       const _SafetyNote(),
+      if (onb) ...[const SizedBox(height: 18), _continueArea()],
       if (_anyProblem) ...[
         const SizedBox(height: 14),
         Center(
@@ -526,13 +612,134 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
     ]);
   }
 
+  /// A slot counts as done when a picture is live, nothing is being sent and no new one is being checked.
+  bool _slotDone(PhotoKind k) {
+    final st = _s[k]!;
+    return st.server.url != null && !st.server.checking && !st.busy;
+  }
+
+  Widget _progressLine(PhotoKind k, String label) {
+    final st = _s[k]!;
+    final IconData icon;
+    final Color color;
+    final String note;
+    if (_slotDone(k)) {
+      icon = Icons.check_circle_rounded;
+      color = C.maroon;
+      note = 'Done';
+    } else if (st.busy || st.server.checking) {
+      icon = Icons.hourglass_top_rounded;
+      color = C.amber;
+      note = 'Checking…';
+    } else if (st.error != null || st.server.refused != null) {
+      icon = Icons.cancel_rounded;
+      color = C.ruby;
+      note = 'Not accepted. The reason is below.';
+    } else {
+      icon = Icons.radio_button_unchecked_rounded;
+      color = C.muted;
+      note = 'Needed';
+    }
+    return Semantics(
+      container: true,
+      label: '$label: $note',
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, size: 26, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_slotDone(k) ? '$label ✓' : label, style: t(17, w: FontWeight.w900, h: 1.2)),
+                Text(note, style: t(15, color: C.muted, w: FontWeight.w600, h: 1.35)),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// The explanation and the two-step progress shown above the cards in the mandatory setup.
+  Widget _onboardingIntro() {
+    return Container(
+      decoration: _cardDeco(),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Add your photos', style: t(24, w: FontWeight.w900, h: 1.15)),
+        const SizedBox(height: 8),
+        Text(
+          'Every Hello Fraands member needs two photos before calling or booking: a clear photo of your face, and a cover photo. '
+          'This keeps everyone on the app real and safe. We check each photo in a few seconds.',
+          style: t(16, w: FontWeight.w600, h: 1.5),
+        ),
+        const SizedBox(height: 10),
+        _progressLine(PhotoKind.profile, 'Profile photo'),
+        _progressLine(PhotoKind.cover, 'Cover photo'),
+      ]),
+    );
+  }
+
+  Future<void> _continue() async {
+    if (_continuing) return;
+    setState(() {
+      _continuing = true;
+      _continueError = null;
+    });
+    await _gate.refresh();
+    if (!mounted) return;
+    if (_gate.blocking) {
+      setState(() {
+        _continuing = false;
+        _continueError = 'Your photos are not accepted yet. Please wait for the checks to finish, or choose a different photo.';
+      });
+      return;
+    }
+    Telemetry.event('hf_photo_onboarding_done');
+    context.go(Services.instance.viewerIsInfluencer ? '/inf/home' : '/reels');
+  }
+
+  Widget _continueArea() {
+    final ready = _slotDone(PhotoKind.profile) && _slotDone(PhotoKind.cover);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_continueError != null) ...[_ProblemBox(title: 'Not ready yet', body: _continueError!), const SizedBox(height: 12)],
+      PhotoButton(_continuing ? 'Please wait…' : 'Continue', icon: Icons.arrow_forward_rounded, onTap: ready && !_continuing ? () => unawaited(_continue()) : null),
+      if (!ready)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text('Continue opens when both photos are accepted.', textAlign: TextAlign.center, style: t(15, color: C.muted, w: FontWeight.w600, h: 1.4)),
+        ),
+      const SizedBox(height: 10),
+      Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
+        _linkButton('Contact support', () => unawaited(context.push<Object?>('/help'))),
+        _linkButton('Sign out', () => unawaited(_signOut())),
+      ]),
+    ]);
+  }
+
+  Widget _linkButton(String label, VoidCallback onTap) => InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+          child: Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text(label, style: t(16, color: C.tan, w: FontWeight.w800)))),
+        ),
+      );
+
+  Future<void> _signOut() async {
+    await Services.instance.signOut();
+    unawaited(_gate.refresh());
+    if (mounted) context.go('/reels');
+  }
+
   Widget _eyebrow(String text) => Text(text.toUpperCase(), style: t(14, color: C.tan, w: FontWeight.w900, ls: 1.4));
 
   /// The red box (role alert) for a refused picture or a failed upload.
   Widget? _problem(PhotoKind k) {
     final st = _s[k]!;
     if (st.error != null) return _ProblemBox(title: 'We couldn\'t upload that photo', body: st.error!);
-    if (!st.server.checking && !st.busy && st.server.refused != null) return _ProblemBox(title: 'We couldn\'t use that photo', body: st.server.refused!);
+    if (!st.server.checking && !st.busy && st.server.refused != null) return _ProblemBox(title: 'Why your photo was not accepted', body: st.server.refused!);
     return null;
   }
 
@@ -613,7 +820,12 @@ class _MyPhotosScreenState extends State<MyPhotosScreen> {
                 ],
                 if (refusedOnly && st.thumb == null) ...[
                   const SizedBox(width: 14),
-                  Expanded(child: Text('Your old photo is still showing. The refused photo was deleted and nobody saw it.', style: t(14, color: C.muted, w: FontWeight.w600, h: 1.45))),
+                  Expanded(
+                    child: Text(
+                      st.server.url != null ? 'Your old photo is still showing. The refused photo was deleted and nobody saw it.' : 'The refused photo was deleted and nobody saw it. Please choose a new one.',
+                      style: t(14, color: C.muted, w: FontWeight.w600, h: 1.45),
+                    ),
+                  ),
                 ],
               ]),
               if (status is! SizedBox) ...[const SizedBox(height: 12), status],

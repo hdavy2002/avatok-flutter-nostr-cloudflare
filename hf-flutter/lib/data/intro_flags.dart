@@ -18,6 +18,9 @@ abstract final class IntroFlags {
   /// [HF-MOD-APP-PHOTOS] `hfPhotoModerationEnabled`: the Me-tab photo & cover card and the "My photo & cover" screen.
   static bool photoModeration = false;
 
+  /// [HF-PHOTO-CROP-APP] `hfPhotosRequiredEnabled`: every signed-in member needs an approved profile photo and cover before using the app.
+  static bool photosRequired = false;
+
   static Future<void>? _loading;
 
   static void apply(Map<String, dynamic> j) {
@@ -25,6 +28,7 @@ abstract final class IntroFlags {
     introOnboarding = j['hfIntroOnboardingEnabled'] == true;
     facebookLogin = j['hfFacebookLoginEnabled'] == true;
     photoModeration = j['hfPhotoModerationEnabled'] == true;
+    photosRequired = j['hfPhotosRequiredEnabled'] == true;
   }
 
   /// Reads the config once. A failed read leaves every flag false and the next call tries again. Never throws.
@@ -40,12 +44,16 @@ abstract final class IntroFlags {
     }
   }
 
+  /// Tests: pretend the config was read, so [ensureLoaded] makes no network call.
+  static void markLoadedForTest() => _loading = Future<void>.value();
+
   /// Tests: back to the all-off state.
   static void reset() {
     callOption = false;
     introOnboarding = false;
     facebookLogin = false;
     photoModeration = false;
+    photosRequired = false;
     _loading = null;
   }
 }

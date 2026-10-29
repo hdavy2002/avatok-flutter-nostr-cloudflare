@@ -1,5 +1,6 @@
 import '../api_client.dart';
 import '../models/queue.dart';
+import '../photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 
 /// [HF-CALL-MODES-E2] The call queue (dark behind `hfCallQueueEnabled`).
 ///
@@ -16,7 +17,7 @@ class QueueRepo {
   final ApiClient _api;
 
   Future<QueueJoinResult> join(String slug) async =>
-      QueueJoinResult.fromJson(await _api.postJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/queue'));
+      QueueJoinResult.fromJson(await PhotosGate.watch(_api.postJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/queue'))); // [HF-PHOTO-CROP-APP]
 
   Future<void> leave(String slug) async {
     await _api.deleteJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/queue');

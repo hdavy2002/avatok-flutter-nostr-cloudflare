@@ -2,6 +2,7 @@ import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/call.dart';
 import '../models/queue.dart';
+import '../photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 
 /// Instant calls (HF-WIRE-7). The worker places the call (Vobiz rings the influencer, then this phone);
 /// the app only starts it, follows it and ends it.
@@ -22,7 +23,7 @@ class CallsRepo {
 
   /// Returns the new call id. Throws [ApiException] (see [CallProblem]).
   Future<String> start(String slug, {String? lane}) async {
-    final j = await _api.postJson('/api/hf/calls', body: {'hostSlug': slug, if (lane != null) 'lane': lane});
+    final j = await PhotosGate.watch(_api.postJson('/api/hf/calls', body: {'hostSlug': slug, if (lane != null) 'lane': lane})); // [HF-PHOTO-CROP-APP]
     final id = j['callId'];
     if (id is! String || id.isEmpty) throw ApiException.parse(200);
     return id;

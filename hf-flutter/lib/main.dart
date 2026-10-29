@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'core/brand.dart';
 import 'core/deep_links.dart';
+import 'data/photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 import 'data/push.dart';
 import 'data/telemetry.dart';
 import 'demo/router.dart';
@@ -36,6 +37,7 @@ Future<void> main() async {
     // [HF-BOOK-APPROVE-PUSH] Firebase + notification taps (cold start, background, foreground banner). A tap that
     // lands during the splash waits for DeepLinks.markReady like a link does.
     unawaited(PushNotifications.init());
+    PhotosGate.instance.start(); // [HF-PHOTO-CROP-APP] photos-required gate: refreshed on sign-in and app resume
   }, Telemetry.zoneError);
 }
 

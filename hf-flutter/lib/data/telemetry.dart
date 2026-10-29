@@ -29,6 +29,11 @@ abstract final class Telemetry {
     'hf_photo_pick', // {kind, source}
     'hf_photo_upload_app', // {kind, bytes, ms, ok, error?}
     'hf_photo_result_app', // {kind, result: live|refused|timeout}
+    // [HF-PHOTO-CROP-APP] crop editor and the photos-required gate (never carries the picture)
+    'hf_photo_crop', // {kind, zoom, ms}
+    'hf_photo_onboarding_shown', // {missing}
+    'hf_photo_onboarding_done', // {}
+    'hf_photo_gate_redirect', // {from, missing}
     // [HF-INTRO-A1] influencer intro-video onboarding (never carries a name, the description, Aadhaar details or the video)
     'hf_onb_step_view', // {step}
     'hf_onb_categories', // {n, has_sensitive}

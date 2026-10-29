@@ -6,6 +6,7 @@ import 'screens/blocked_people.dart'; // [HF-BLOCK-PROFILE-1]
 import 'screens/call_rules.dart'; // [HF-CALL-SAFETY-APP]
 import 'screens/safety_strikes.dart'; // [HF-CALL-SAFETY-APP]
 import '../data/models/reel.dart';
+import '../data/photos_gate.dart'; // [HF-PHOTO-CROP-APP]
 import '../data/services.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
@@ -53,6 +54,10 @@ final router = GoRouter(
   navigatorKey: rootKey,
   observers: [ReelGate.observer],
   initialLocation: '/splash',
+  // [HF-PHOTO-CROP-APP] While the photos-required gate is blocking (signed in, hfPhotosRequiredEnabled on, no approved profile photo
+  // and cover) every route except the exempt ones opens the photo setup screen. Reads a cached answer: no network per navigation.
+  refreshListenable: PhotosGate.instance,
+  redirect: (_, s) => photosGateRedirect(PhotosGate.instance, s.uri.path),
   errorBuilder: hfErrorPage, // [HF-REELS-FAV-1] never the raw GoException
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
@@ -242,6 +247,7 @@ final router = GoRouter(
       builder: (_, __) => const BlockedPeopleScreen(),
     ), // [HF-BLOCK-PROFILE-1]
     GoRoute(parentNavigatorKey: rootKey, path: '/me/photos', builder: (_, __) => const MyPhotosScreen()), // [HF-MOD-APP-PHOTOS]
+    GoRoute(parentNavigatorKey: rootKey, path: '/onboarding/photos', builder: (_, __) => const MyPhotosScreen(onboarding: true)), // [HF-PHOTO-CROP-APP]
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/help',
