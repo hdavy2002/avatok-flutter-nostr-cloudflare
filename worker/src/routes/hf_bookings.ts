@@ -221,17 +221,22 @@ const BOOKING_APP = "hf_booking";
 const QUOTE_TTL_MS = 5 * 60_000;
 
 /** [HF-FIX-BOOKING-NAMES-1] Display names joined onto a booking: host name/slug (public), customer first-name handle (never phone/email). */
-export type BookingNames = { hostName: string | null; hostSlug: string | null; fanName: string | null };
+export type BookingNames = { hostName: string | null; hostSlug: string | null; fanName: string | null; fanPhoto?: string | null };
 
 export async function loadBookingNames(env: Env, ids: string[]): Promise<Map<string, BookingNames>> {
   const out = new Map<string, BookingNames>();
   if (!ids.length) return out;
   const marks = ids.map((_, i) => "?" + (i + 1)).join(",");
-  const rows = (await env.DB_META.prepare(
-    "SELECT b.id AS id, h.display_name AS host_name, h.slug AS host_slug, u.display_name AS fan_name FROM hf_bookings b " +
-    "LEFT JOIN hf_hosts h ON h.uid=b.host_uid LEFT JOIN users u ON u.uid=b.customer_uid WHERE b.id IN (" + marks + ")",
-  ).bind(...ids).all<{ id: string; host_name: string | null; host_slug: string | null; fan_name: string | null }>()).results ?? [];
-  for (const r of rows) out.set(r.id, { hostName: r.host_name, hostSlug: r.host_slug, fanName: r.fan_name });
+  type Row = { id: string; host_name: string | null; host_slug: string | null; fan_name: string | null; fan_photo?: string | null };
+  const base = "SELECT b.id AS id, h.display_name AS host_name, h.slug AS host_slug, u.display_name AS fan_name";
+  const from = " FROM hf_bookings b LEFT JOIN hf_hosts h ON h.uid=b.host_uid LEFT JOIN users u ON u.uid=b.customer_uid WHERE b.id IN (" + marks + ")";
+  // [HF-MOD-3] owner: the influencer sees the fan's (AI-checked) profile photo on bookings. Only an 'active' row of
+  // hf_user_photos is ever used, so an unchecked or refused photo can not show. Falls back if the table is absent.
+  const photo = ", (SELECT p.public_key FROM hf_user_photos p WHERE p.uid=b.customer_uid AND p.kind='profile' AND p.status='active' ORDER BY p.created_at DESC LIMIT 1) AS fan_photo";
+  let rows: Row[];
+  try { rows = (await env.DB_META.prepare(base + photo + from).bind(...ids).all<Row>()).results ?? []; }
+  catch { rows = (await env.DB_META.prepare(base + from).bind(...ids).all<Row>()).results ?? []; }
+  for (const r of rows) out.set(r.id, { hostName: r.host_name, hostSlug: r.host_slug, fanName: r.fan_name, fanPhoto: r.fan_photo ? `${env.BLOSSOM_BASE_URL}/${r.fan_photo}` : null });
   return out;
 }
 
@@ -250,7 +255,7 @@ export function bookingPublic(row: BookingRow, role: "host" | "customer", names?
     ...(names ? { hostName: (names.hostName ?? "").trim() || "Influencer", hostSlug: names.hostSlug ?? null } : {}),
   };
   if (role === "host") {
-    return { ...common, expectedHostNetPaise: Number(row.expected_host_net_paise), ...(names ? { customerHandle: capFirst(callerHandle(names.fanName)) } : {}) };
+    return { ...common, expectedHostNetPaise: Number(row.expected_host_net_paise), ...(names ? { customerHandle: capFirst(callerHandle(names.fanName)), customerPhotoUrl: names.fanPhoto ?? null } : {}) };
   }
   return common;
 }

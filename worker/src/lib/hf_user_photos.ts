@@ -85,6 +85,8 @@ async function photoOutcome(env: Env, job: ModJobRow, result: { status: string; 
   }
   await env.DB_META.batch(stmts);
   await env.DIGITAL.delete(row.pending_key!).catch(() => undefined);
+  // [HF-MOD-3] owner: a fan's checked profile photo shows next to their reel comments (they read users.avatar_url).
+  if (row.kind === "profile") await env.DB_META.prepare("UPDATE users SET avatar_url=?2 WHERE uid=?1").bind(row.uid, mediaUrl(env, pub)).run().catch(() => undefined);
 }
 
 onModerationResult("profile_photo", photoOutcome);
