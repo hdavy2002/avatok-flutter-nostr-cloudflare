@@ -56,6 +56,7 @@ export function AlreadyHostPanel() {
           <h1 id="hia-h">Manage your account</h1>
           <p className="hia-lead">Connect or remove your YouTube, Instagram and Facebook on My verifications. Your profile, intro video and video KYC are done in the app.</p>
           <p className="hia-open"><a className="hia-open-btn" href="/dashboard/verifications" data-hia="verifications">Go to My verifications</a></p>
+          <p className="hia-lead">Where your withdrawals are paid: <a href="/dashboard/host/earnings#payout-details" data-hia="payout">Payout details</a>.</p>
           <div className="hia-stores">
             <a className="hia-play" href={HF_PLAY_URL} rel="noopener" data-hia="play" onClick={() => trackDownloadApp('play')}>
               <img src="/assets/hf-desi/btn-google-play.webp" alt="Get it on Google Play" width="420" height="125" />

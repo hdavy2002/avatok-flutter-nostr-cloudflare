@@ -12,7 +12,7 @@ import {
   type PayoutSummary, type WithdrawalList, type WithdrawalRequest,
 } from '../../lib/hfPayoutApi';
 import { formatPaise } from '../../lib/money';
-import UpiSetup from './UpiSetup';
+import UpiSetup, { PAYOUT_CHANGED } from './UpiSetup';
 
 interface Props {
   /** Which button/field classes to use: the dashboard (h3) or the older account pages (hfc). */
@@ -25,6 +25,8 @@ interface Props {
   debtOpen?: boolean;
   /** Called after a request is made or cancelled, so the page can re-read its own balance. */
   onChanged?: () => void;
+  /** [HF-PAYOUT-CARD] Anchor of the "Payout details" card on the same page. Set = the UPI ID is added / changed there, not inside this card. */
+  detailsHref?: string;
 }
 
 const WEEK_MS = 7 * 24 * 3600 * 1000;
@@ -33,7 +35,7 @@ const STATUS_TEXT: Record<WithdrawalRequest['status'], string> = {
 };
 const day = (ms: number) => new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
-export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Props) {
+export default function Withdraw({ skin, next, where, debtOpen, onChanged, detailsHref }: Props) {
   const [sum, setSum] = useState<PayoutSummary | null>(null);
   const [list, setList] = useState<WithdrawalList | null>(null);
   const [failed, setFailed] = useState(false);
@@ -62,6 +64,11 @@ export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Pro
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { // [HF-PAYOUT-CARD] a save in the Payout details card refreshes this card
+    const on = () => { void load(); };
+    window.addEventListener(PAYOUT_CHANGED, on);
+    return () => window.removeEventListener(PAYOUT_CHANGED, on);
+  }, [load]);
 
   const primary = skin === 'h3' ? 'h3-btn rani' : 'hfc-btn hfc-primary';
   const plain = skin === 'h3' ? 'h3-btn ghost' : 'hfc-btn';
@@ -147,11 +154,15 @@ export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Pro
 
     {setupNeeded && <div style={{ display: 'grid', gap: 8 }}>
       <p className="small" role="status"><b>Before your first withdrawal:</b> add your own UPI ID{needKyc ? ' and do the one-time ID check' : ''}.</p>
-      <UpiSetup where="wallet" skin={skin} next={next} onSaved={() => { void load(); onChanged?.(); }} />
+      {detailsHref
+        ? <p className="small"><a className={small} href={detailsHref}>{needUpi ? 'Add your UPI ID in Payout details' : 'Open Payout details'}</a></p>
+        : <UpiSetup where="wallet" skin={skin} next={next} onSaved={() => { void load(); onChanged?.(); }} />}
     </div>}
 
-    {!setupNeeded && sum.upi && <p className="small">Goes to your UPI ID <b>{maskUpi(sum.upi.vpa)}</b> only. <button type="button" className={small} style={{ marginLeft: 6 }} onClick={() => setShowSetup(v => !v)}>{showSetup ? 'Hide' : 'Change UPI ID'}</button></p>}
-    {!setupNeeded && showSetup && <UpiSetup where="wallet" skin={skin} next={next} onSaved={() => { void load(); onChanged?.(); setShowSetup(false); }} />}
+    {!setupNeeded && sum.upi && <p className="small">Goes to your UPI ID <b>{maskUpi(sum.upi.vpa)}</b> only. {detailsHref
+      ? <a className={small} style={{ marginLeft: 6 }} href={detailsHref}>Change in Payout details</a>
+      : <button type="button" className={small} style={{ marginLeft: 6 }} onClick={() => setShowSetup(v => !v)}>{showSetup ? 'Hide' : 'Change UPI ID'}</button>}</p>}
+    {!setupNeeded && showSetup && !detailsHref && <UpiSetup where="wallet" skin={skin} next={next} onSaved={() => { void load(); onChanged?.(); setShowSetup(false); }} />}
 
     {blocker && !setupNeeded && <p className="small" role="status" style={{ fontWeight: 700 }}>{blocker}</p>}
 

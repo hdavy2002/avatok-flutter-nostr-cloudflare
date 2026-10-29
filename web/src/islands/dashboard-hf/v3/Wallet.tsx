@@ -13,6 +13,7 @@ import { fetchRefunds, type RefundInfo } from '../../../lib/hfWalletExitApi';
 import { fetchReceipts, openReceipt, receiptSplit, RECEIPT_FAIL_MSG, RECEIPT_POPUP_MSG, type ReceiptItem } from '../../../lib/hfReceiptsApi';
 import TokensPanel from '../../wallet/TokensPanel';
 import Withdraw from '../../wallet/Withdraw'; // [HF-WITHDRAW-1] Withdraw card (UPI setup + ID check + request + status list)
+import PayoutDetails, { PAYOUT_DETAILS_ID } from '../../wallet/PayoutDetails'; // [HF-PAYOUT-CARD]
 import { useDash, spendablePaise } from './data';
 import { Card, Dialog, Empty, Failed, FlowerCluster, Ic, PageHead, Petals, Skel, Sticker, fmtInt, istDay, useToast } from './ui';
 
@@ -68,7 +69,11 @@ export default function Wallet() {
         "Withdrawal setup" (UPI ID + one-time ID check) lives inside this card and shows first while either is missing. #payout is kept as an alias. */}
     <Card title="Withdraw" note="Take your wallet money out to your own UPI. No fee." id="withdraw">
       <span id="payout" />
-      <Withdraw where="wallet" skin="h3" next="/dashboard/wallet" debtOpen={!!w?.wallet?.debtOpen} onChanged={() => reload('wallet')} />
+      <Withdraw where="wallet" skin="h3" next="/dashboard/wallet" debtOpen={!!w?.wallet?.debtOpen} onChanged={() => reload('wallet')} detailsHref={`#${PAYOUT_DETAILS_ID}`} />
+    </Card>
+    {/* [HF-PAYOUT-CARD] Add / change the UPI ID and see the name check + ID check. Replaces /hosts/onboarding?step=payout. */}
+    <Card title="Payout details" note="Where your withdrawals are paid" tone={1} id={PAYOUT_DETAILS_ID}>
+      <PayoutDetails where="wallet" skin="h3" next="/dashboard/wallet" />
     </Card>
 
     <section className="h3-row c21">

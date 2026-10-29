@@ -2,6 +2,7 @@
  * Worker: GET /api/hosts/me/calls (today), GET /api/hf/wallet (host block), the shared Withdraw card (/api/hf/payouts, same as Wallet and the app). */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Withdraw from '../../wallet/Withdraw'; // [HF-WITHDRAW-1] same Withdraw card as the Wallet page
+import PayoutDetails, { PAYOUT_DETAILS_ID } from '../../wallet/PayoutDetails'; // [HF-PAYOUT-CARD]
 import { fetchWallet, hfCall, hostPaise, relDate, type WalletInfo } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
@@ -46,7 +47,9 @@ export default function Earnings({ account }: { account: DashboardAccount }) {
         <p className="hfc-sub" style={{ margin: 0 }}><a href="/dashboard/wallet">See wallet and history</a></p>
       </section>}
       <MerchRoyalty uid={account.uid} />
-      <section className="hfc-card" id="withdraw" aria-labelledby="hfc-wd"><h2 id="hfc-wd">Withdraw</h2><Withdraw key={account.uid} where="earnings" skin="hfc" next="/dashboard/host/earnings" onChanged={() => void load()} /></section>
+      <section className="hfc-card" id="withdraw" aria-labelledby="hfc-wd"><h2 id="hfc-wd">Withdraw</h2><Withdraw key={account.uid} where="earnings" skin="hfc" next="/dashboard/host/earnings" onChanged={() => void load()} detailsHref={`#${PAYOUT_DETAILS_ID}`} /></section>
+      {/* [HF-PAYOUT-CARD] Add / change the UPI ID, name check and ID check. Replaces /hosts/onboarding?step=payout. */}
+      <section className="hfc-card" id={PAYOUT_DETAILS_ID} aria-labelledby="hfc-pd"><h2 id="hfc-pd">Payout details</h2><PayoutDetails key={account.uid} where="earnings" skin="hfc" next="/dashboard/host/earnings" /></section>
     </div>
   </div>;
 }

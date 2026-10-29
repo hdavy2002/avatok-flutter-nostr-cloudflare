@@ -121,9 +121,9 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
       {info.upiOk ? (
         <p className="hfc-sub" style={{ margin: '8px 0' }}>Paid to your UPI ID. Withdrawals go only to UPI.</p>
       ) : info.enabled ? (
-        <p className="hfc-sub" style={{ margin: '8px 0' }}><a href="/hosts/onboarding?step=payout">Add your UPI ID</a> to withdraw.</p>
+        <p className="hfc-sub" style={{ margin: '8px 0' }}><a href="/dashboard/host/earnings#payout-details">Add your UPI ID</a> to withdraw.</p>
       ) : null}
-      {blocker && <p className="hfc-sub" role="status" style={{ margin: '8px 0' }}>{blocker}{!info.enabled ? '' : (!info.kycOk || !info.upiOk) ? <> <a href="/hosts/onboarding?step=payout">Continue</a></> : ''}</p>}
+      {blocker && <p className="hfc-sub" role="status" style={{ margin: '8px 0' }}>{blocker}{!info.enabled ? '' : (!info.kycOk || !info.upiOk) ? <> <a href="/dashboard/host/earnings#payout-details">Continue</a></> : ''}</p>}
       <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'grid', gap: 4, fontSize: '.9rem' }}>
           Amount in rupees{info.minRupees > 0 ? ` (at least ${inr(info.minRupees)})` : ' (no minimum)'}
