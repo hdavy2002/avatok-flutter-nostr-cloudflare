@@ -7,7 +7,7 @@
 // The host is derived from the brand config. Never hard-code the domain.
 import { BRAND } from './brand';
 
-/** Path prefix the desk is mounted at on the main site (hellofraands.com/support-desk/...). */
+/** Path prefix the desk is mounted at on the main site (<main domain>/support-desk/...). */
 export const SUPPORT_BASE = '/support-desk';
 
 /** "support.<brand domain>". */

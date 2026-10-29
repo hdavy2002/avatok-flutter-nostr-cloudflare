@@ -103,7 +103,7 @@ function EmailSignIn({ presetEmail }: { presetEmail?: string }) {
   const send = async (e?: FormEvent) => {
     e?.preventDefault();
     if (busy) return;
-    if (!validEmail(email)) { setErr('Enter the email on your Hello Fraands account.'); return; }
+    if (!validEmail(email)) { setErr(`Enter the email on your ${BRAND.name} account.`); return; }
     setBusy(true); setErr(null);
     try { await be.signInSend(email.trim().toLowerCase()); setStage('code'); setCode(''); setResendAt(Date.now() + 45_000); }
     catch (x) { setErr(signInMessage(x)); }

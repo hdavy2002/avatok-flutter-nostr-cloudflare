@@ -5,6 +5,7 @@
 // Keep the response shapes in step with the contract. The state lives in memory, so a page reload resets it.
 import { defaultSignature } from './signature';
 import { CATEGORIES } from './types';
+import { BRAND } from '../../lib/brand';
 
 type Q = Record<string, string | undefined>;
 export interface MockResult { status: number; data: unknown }
@@ -221,7 +222,7 @@ export function mockHandle(method: string, path: string, q: Q, body: Record<stri
       const number = `HF-${nextNo++}`;
       const t = mk(number, customerMe.key, subject, cat, cat === 'report' ? 'urgent' : cat === 'wallet' || cat === 'withdraw' ? 'high' : 'normal', 'new', 0, 24 * HOUR, [
         msg('customer', customerMe.name, message, 0, ((body.attachmentIds as string[]) ?? []).map((id) => ({ id, name: 'attachment', size: 1000, contentType: 'image/png' }))),
-        msg('system', 'Hello Fraands', `Your ticket ${number} is open. Someone from Hello Fraands will respond back soon.`, 0),
+        msg('system', BRAND.name, `Your ticket ${number} is open. Someone from ${BRAND.name} will respond back soon.`, 0),
       ], { channel: 'Web', unread: true });
       tickets.unshift(t);
       return ok({ ticket: { number, subject, category: cat, status: 'new', statusLabel: 'Open' } });

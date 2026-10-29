@@ -6,6 +6,7 @@ import { fullDate, plural } from './format';
 import { SubHeader, useStaff } from './staff';
 import type { FailedJob, QueueStat, Suppression } from './types';
 import { Empty, ErrorBox, Modal, Spinner, useInterval, usePageVisible, useToast } from './ui';
+import { BRAND } from '../../lib/brand';
 
 const WHAT: Record<string, string> = {
   'support-inbound': 'Incoming emails becoming tickets',
@@ -147,7 +148,7 @@ export default function AdminQueues() {
           <section className="hfs-card hfs-qside">
             <h2>WhatsApp speed</h2>
             <div>
-              <label htmlFor="hfs-wa" className="hfs-label">Hello Fraands number · 1 message every</label>
+              <label htmlFor="hfs-wa" className="hfs-label">{BRAND.name} number · 1 message every</label>
               <div className="hfs-inline">
                 <input id="hfs-wa" className="hfs-input hfs-input--short" inputMode="decimal" value={secs} onChange={(e) => setSecs(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveSpeed(); }} />
                 <span className="hfs-strong">seconds</span>

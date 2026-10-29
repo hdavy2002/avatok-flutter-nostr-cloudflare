@@ -1,4 +1,4 @@
-// [HF-SUPPORT-DESK] Who is signed in. Real mode: the website's own Clerk session (the same one hellofraands.com uses; the
+// [HF-SUPPORT-DESK] Who is signed in. Real mode: the website's own Clerk session (the same one the main site uses; the
 // cookie/session is shared with subdomains of the primary domain). Mock mode (PUBLIC_SUPPORT_MOCK=1): a fake person you can
 // switch from the little bar at the bottom of the screen.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
