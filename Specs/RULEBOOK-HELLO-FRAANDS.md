@@ -490,6 +490,16 @@ Plan: project doc `claude/hello-fraands-upload-moderation-plan.md`. Approved adm
 ---
 
 
+## 23. Policy pages live in the database (owner 2026-10-29, HF-PAGES-1)
+
+The app's Settings > Terms / Privacy / Refunds opened the website in an external browser tab, which failed. The text is now stored once and read by both the app (native in-app pages) and the website, so both always show the same latest text.
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-PAGES-1 | **Policy pages live in D1 `site_pages`; app and web both read them.** 14 pages (terms, privacy, refunds, wallet-terms, community-guidelines, disclaimer, rules-of-engagement, grievance, safety, cookies, data-deletion, age-policy, child-safety, intermediary-policy) are stored as blocks (`h2`, `p`, `ul`, `ol`, `note`, `links`) with placeholders (`{brand.name}`, `{business.postalAddress}` ...) resolved by the API. `GET /api/hf/pages/:slug` is public; admin edits go through `PUT /api/admin/hf/pages/:slug` and bump the version. The app shows these natively and never opens a browser for a policy. | ADOPTED | TODO (app UI and website rendering wait for design approval) | BUILT (table, seed, API; not yet applied to production) |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -739,3 +749,4 @@ else, or come back later."
 | 2026-10-29 | [HF-ADMIN-FACECHECK] (owner) HF-INTRO-27 face check links under the video on the admin New influencers page. Facebook Page "Hello Fraands" created for testing the Facebook login. |
 | 2026-10-29 | [HF-SOCIAL-STATES] (owner) HF-INTRO-3 amended: social media verification has a third state, "connected, below the minimum" (a login-proven account under 20 followers / 1,000 YouTube views): shown on the website (My verifications, Get verified) and in the app (onboarding step, Social media verification, My verifications) with what it needs and Remove, but it does not count. The Get verified checklist's "Build trust" step now uses the same rule as "Review & go live" (approved social media OR video KYC; profile progress no longer ticks it) and every step is a link. Facebook Pages are saved by @username or Page name, never the numeric id. |
 | 2026-10-29 | [HF-MOD-1] (owner) New section 22, AI safety check on uploads: HF-MOD-1 10–20 s intro refused in the app before upload and the server reads the real length from the file; HF-MOD-2 small/sharp video and 16 MB cap; HF-MOD-3..5 queues, photo check for all users, admin decides videos (planned). |
+| 2026-10-29 | [HF-PAGES-1] (owner) New section 23: policy pages move to the database (`site_pages`) so the app can show them natively and the website and app show the same text. Backend only: table + seed of the 14 pages + `GET /api/hf/pages[/:slug]` + admin `PUT`. App and website UI wait for design approval. |
