@@ -12645,5 +12645,74 @@
         "note": "Server telemetry per checked intro video. Success = verdicts arrive (passed / flagged / needs_look) with few 'failed'."
       }
     ]
+  },
+  "HF-PHOTO-GATE-API": {
+    "description": "Profile/influencer photos refused without a clear face (no_face), specific refusal sentences, photos-required gate on call/booking/queue behind hfPhotosRequiredEnabled, queue + blocked lists carry name/handle/avatar, not-live host gets an empty queue.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotoModerationEnabled",
+      "hfPhotosRequiredEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_photo_check",
+        "property": "verdict",
+        "exists": true,
+        "min_events": 1,
+        "note": "Refused profile photos carry reasons incl. no_face; hf_photo_gate_block fires only for members missing a photo."
+      }
+    ]
+  },
+  "HF-PHOTO-CROP-APP": {
+    "description": "App: move/zoom crop editor for profile (circle) and cover (3:1) before upload; mandatory /onboarding/photos for signed-in members without both photos.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotoModerationEnabled",
+      "hfPhotosRequiredEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_photo_crop",
+        "property": "kind",
+        "exists": true,
+        "min_events": 1,
+        "note": "Success = hf_photo_crop then hf_photo_result_app result=live; hf_photo_onboarding_done after hf_photo_onboarding_shown."
+      }
+    ]
+  },
+  "HF-ME-SETTINGS-MOVE": {
+    "description": "App: influencer tools (social verification, my verifications, availability, calls booked, call queue) moved from Settings to Me; Settings shows the real profile photo; avatars in Blocked people and the call queue.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_me_tools_open",
+        "property": "item",
+        "exists": true,
+        "min_events": 1,
+        "note": "Rows opened from the Me page."
+      }
+    ]
+  },
+  "HF-PHOTO-CROP-WEB": {
+    "description": "Website: crop editor on /dashboard/my-photo, refused-reason cards, mandatory photo onboarding (?onboarding=1) for signed-in members; support desk never gated.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotoModerationEnabled",
+      "hfPhotosRequiredEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_photo_crop",
+        "property": "kind",
+        "exists": true,
+        "min_events": 1,
+        "note": "Web crop then upload; hf_photo_onboarding_done after shown."
+      }
+    ]
   }
 }
