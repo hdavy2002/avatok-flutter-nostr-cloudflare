@@ -2,6 +2,9 @@
 // [HF-PAGES-1] One-off converter: web/src/pages/<policy>.astro -> site_pages seed SQL.
 //   node scripts/hf_pages_extract.mjs            writes worker/migrations/2026-10-29-hf-site-pages-seed.sql
 //   node scripts/hf_pages_extract.mjs --dump terms   prints that page's blocks as JSON (spot check)
+//   node scripts/hf_pages_extract.mjs --json         [HF-PAGES-2] writes web/src/data/hf-pages-seed.json (the website's fallback text)
+//   NOTE [HF-PAGES-2]: --json/--dump/SQL read the OLD hard-coded web/src/pages/<slug>.astro. Those pages are now 3-line
+//   wrappers over the seed JSON, so this script only works on a checkout from before HF-PAGES-2 (git show 0f4b1fcf).
 // Text is copied verbatim (whitespace collapsed like HTML does). Placeholders:
 //   {BRAND.x.y} -> {brand.x.y}, {BUSINESS_CONTACT.x} -> {business.x}, mailto:${BRAND.emails.x} -> mailto:{brand.emails.x}
 // Block shapes: h2 | p (+lang) | ul | ol | note | links (safety-centre cards). Dropped (web-only): <script>, <style>, empty <p>.
@@ -63,6 +66,7 @@ function convert(slug) {
   const src = readFileSync(join(root, 'web/src/pages', slug + '.astro'), 'utf8');
   const { attrs, end } = pageTag(src);
   const title = attr(attrs, 'title'), summary = attr(attrs, 'summary'), updated = attr(attrs, 'updated');
+  const review = attr(attrs, 'review') === true || /review=\{true\}/.test(attrs);
   const related = attr(attrs, 'related') ?? [];
   let body = src.slice(end, src.lastIndexOf('</HelloFraandsPage>'));
   body = body.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '');
@@ -153,7 +157,7 @@ function convert(slug) {
   (function walk(v) { if (typeof v === 'string') strings.push(v); else if (v && typeof v === 'object') Object.values(v).forEach(walk); })(blocks);
   const leftover = strings.join('\u0001').match(/\{(?!brand\.|business\.)[^}]*\}|\$\{|BRAND\.|BUSINESS_CONTACT/g);
   if (leftover) problems.push(`${slug}: untranslated expression(s): ${[...new Set(leftover)].join(' | ')}`);
-  return { slug, title, summary, updated, related, blocks };
+  return { slug, title, summary, updated, review, related, blocks };
 }
 
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
@@ -163,6 +167,15 @@ if (dump > -1) {
   const p = pages.find((x) => x.slug === process.argv[dump + 1]);
   console.log(JSON.stringify(p, null, 1));
   if (problems.length) console.error('PROBLEMS:\n' + problems.join('\n'));
+  process.exit(0);
+}
+if (process.argv.includes('--json')) {
+  const seed = {};
+  for (const p of pages) seed[p.slug] = { title: p.title, summary: p.summary, updated: p.updated, review: p.review, related: p.related, version: 1, blocks: p.blocks };
+  const outJson = join(root, 'web/src/data/hf-pages-seed.json');
+  writeFileSync(outJson, JSON.stringify(seed, null, 1) + '\n');
+  console.log(`wrote ${outJson}`);
+  if (problems.length) console.log('NOTES / PROBLEMS:\n' + problems.join('\n'));
   process.exit(0);
 }
 const lines = [

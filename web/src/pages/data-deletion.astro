@@ -1,35 +1,7 @@
 ---
-import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+// The Meta deletion-status line + script stay page code, placed after the "Instagram login data" section.
+import PolicyPage from '../components/legal/PolicyPage.astro';
+import DataDeletionStatus from '../components/legal/DataDeletionStatus.astro';
 ---
-<HelloFraandsPage updated="2026-10-19" title="Data deletion" summary="Account aur apni jaankari hatane ka anurodh kar sakte hain." review={true} related={[]}>
-<h2>How deletion works</h2>
-<p>When your account deletion is processed, we remove your withdrawal details, your voice intro and your profile media and your influencer profile. Reviews you wrote or received are removed too. Your public profile stops being shown.</p>
-<h2>Your money is paid out first</h2>
-<p>If you still have real money in your wallet, withdraw it with the Withdraw button before you close your account, so you never lose money by closing it. We send it to your UPI after a one-time ID (KYC) and UPI check. Influencer earnings still inside the 7-day hold can be withdrawn when the hold ends. Test credits are not real money and are simply removed.</p>
-<p>Deletion completes after your money is settled. Each payment is approved by a person, so this can take a few days. You can start it, see its progress, or cancel it (until a payment has been approved) at <a href="/account/close">Close my account</a>. If you have no money to settle, deletion starts straight away and follows the steps below.</p>
-<h2>Requesting deletion</h2>
-<p>Email <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a> for deletion requests. Identify the account using its registered contact details. Identity must be verified before deletion. Never email an OTP or Aadhaar number.</p>
-<h2>What is removed</h2>
-<p>Account deletion removes withdrawal details, voice intro and profile media. Call details (time, length, price, how the call ended) and safety flags are kept for 1 year for safety and legal reasons, then deleted.</p>
-<p>Unused balance is handled as described above and under the <a href="/refunds">refund terms</a>: all refunds go to your wallet, and you can withdraw wallet money with the Withdraw button.</p>
-<h2>Records that may remain</h2>
-<p>Call details and safety logs are kept for 1 year, in line with the DPDP Rules 2025, which ask us to keep records for at least one year, and then deleted. Payment records, unresolved disputes, and lawful preservation requests may require different treatment. Any retained records should have restricted access and must not keep a deleted profile publicly active.</p>
-<p>After three confirmed strikes, a phone-number restriction may be kept to prevent re-registration.</p>
-<h2>Instagram login data</h2>
-<p>If you remove {BRAND.name} in your Instagram settings, or ask Instagram to delete your data, we delete the Instagram login we held for your account and the comments we imported from your reels, and we hide those reels. Comments that our own users replied to stay, with their text replaced by "Comment removed". You can also press Remove on your channel inside the app.</p>
-<p id="ig-del-status" hidden></p>
-<script define:vars={{ api: BRAND.apiOrigin }}>
-  // [HF-IG-LOGIN-1] The status page behind Meta's data-deletion callback: /data-deletion?code=<confirmation code>
-  const code = new URLSearchParams(location.search).get('code');
-  const el = document.getElementById('ig-del-status');
-  if (code && el && /^hfigdel_[a-f0-9]{24}$/.test(code)) {
-    fetch(`${api}/api/hf/channels/instagram/data-deletion-status?code=${code}`)
-      .then((r) => r.json())
-      .then((j) => { el.textContent = j && j.status === 'complete' ? `Your Instagram data deletion request ${code} is complete.` : 'We could not find that deletion request.'; el.hidden = false; })
-      .catch(() => { el.textContent = 'We could not check that request right now. Please try again later.'; el.hidden = false; });
-  }
-</script>
-<h2>Confirmation and review</h2>
-<p>Read the <a href="/privacy">privacy policy</a> and <a href="/grievance">grievance process</a> for more.</p>
-</HelloFraandsPage>
+<PolicyPage slug="data-deletion" slotAfter={/Instagram login data/}><DataDeletionStatus /></PolicyPage>

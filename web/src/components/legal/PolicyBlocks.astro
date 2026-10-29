@@ -1,0 +1,36 @@
+---
+// [HF-PAGES-2] Renders the policy blocks (h2 | p | ul | ol | note | links) as the same plain markup the hand-written pages used,
+// so layouts/HelloFraandsPage.astro splits it into the same ghat steps. Text is escaped; links are checked (see lib/hfPages.ts).
+// The default slot is placed ONCE: at the end of the section whose heading matches `slotAfter` (or at the very end when no
+// heading matches, or none is given). data-deletion uses it for the Meta deletion-status element + script.
+import { escText, spansToHtml, type Block } from '../../lib/hfPages';
+interface Props { blocks: Block[]; slotAfter?: RegExp }
+const { blocks, slotAfter } = Astro.props;
+let slotAt = blocks.length;
+if (slotAfter) {
+  const h = blocks.findIndex((b) => b.t === 'h2' && slotAfter.test(b.text));
+  if (h >= 0) {
+    const next = blocks.findIndex((b, i) => i > h && b.t === 'h2');
+    slotAt = next === -1 ? blocks.length : next;
+  }
+}
+---
+{blocks.map((b, i) => (
+  <Fragment>
+    {i === slotAt && <slot />}
+    {b.t === 'h2' && <h2 set:html={escText(b.text)} />}
+    {b.t === 'p' && <p lang={b.lang} set:html={spansToHtml(b.spans)} />}
+    {b.t === 'note' && <aside class="hf-note" role="note"><p set:html={spansToHtml(b.spans)} /></aside>}
+    {b.t === 'ul' && <ul>{b.items.map((it) => <li set:html={spansToHtml(it)} />)}</ul>}
+    {b.t === 'ol' && <ol>{b.items.map((it) => <li set:html={spansToHtml(it)} />)}</ol>}
+    {b.t === 'links' && (
+      <div class="safety-cards">
+        {b.items.map((it) => <a href={it.href}><strong set:html={escText(it.title)} /><span set:html={escText(it.text)} /></a>)}
+      </div>
+    )}
+  </Fragment>
+))}
+{slotAt >= blocks.length && <slot />}
+<style is:global>
+.safety-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:1rem}.safety-cards a{display:grid;gap:.5rem;padding:1.2rem;border:1px solid #ded8cf;border-radius:16px;text-decoration:none}.safety-cards span{font-size:.95rem}
+</style>

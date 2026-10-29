@@ -1,34 +1,5 @@
 ---
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
-import { BRAND } from '../lib/brand';
-export const prerender = true;
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+import PolicyPage from '../components/legal/PolicyPage.astro';
 ---
-<HelloFraandsPage updated="2026-10-28"
-  title="Rules of engagement"
-  summary="Clear boundaries for respectful, private conversations."
-  related={[
-    { href: '/community-guidelines', label: 'Community guidelines' },
-    { href: '/privacy', label: 'Privacy policy' },
-  ]}
->
-  <h2>Be respectful</h2>
-  <p>Speak to every person with dignity. Harassment, threats, hateful conduct, sexual pressure and abusive language are not allowed.</p>
-
-  <h2>Keep personal contact details private</h2>
-  <p>Do not ask for or share phone numbers, UPI IDs, email addresses, social handles, home addresses or off-platform meeting details during a call.</p>
-
-  <h2>Do not sell, and never pay outside</h2>
-  <p>Do not sell products, services or courses on a call, and do not give financial tips, loans or network-marketing offers. Influencers can use the {BRAND.name} Shop to sell. Never ask for or send money outside {BRAND.name}. If someone asks you to, say no and report it after the call.</p>
-
-  <h2>Respect consent and boundaries</h2>
-  <p>Either person may end a call at any time. An influencer may decline a call, and a caller may choose not to continue. Do not pressure someone to stay.</p>
-
-  <h2>Use the service for calls with influencers</h2>
-  <p>Calls are conversations, not medical, legal, financial or emergency services. Do not promise diagnoses, guaranteed outcomes or emergency response.</p>
-
-  <h2>Protect call privacy</h2>
-  <p>Every call is recorded for safety and checked by AI after the call. Nobody listens live. Do not share or redistribute anything said on a call. Follow the <a href="/safety">safety centre</a> guidance, and report conduct that breaks these rules.</p>
-
-  <h2>Reviews must be genuine</h2>
-  <p>Only review a call you genuinely joined. Describe your own experience without contact details, private information or abuse.</p>
-</HelloFraandsPage>
+<PolicyPage slug="rules-of-engagement" />

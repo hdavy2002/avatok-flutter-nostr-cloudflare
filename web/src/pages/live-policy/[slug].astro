@@ -1,0 +1,19 @@
+---
+// [HF-PAGES-2] Live twin of the 14 policy pages: rendered per request from the API (edge-cached), falling back to the seed text.
+// Not linked anywhere and not indexed. The static policy pages fetch this and swap in <main> when the text has been edited.
+export const prerender = false;
+import PolicyPage from '../../components/legal/PolicyPage.astro';
+import DataDeletionStatus from '../../components/legal/DataDeletionStatus.astro';
+import { contentStamp, fetchLivePage, seedPage } from '../../lib/hfPages';
+const slug = Astro.params.slug ?? '';
+const fallback = seedPage(slug);
+if (!fallback) return new Response('Not found', { status: 404, headers: { 'cache-control': 'public, max-age=300' } });
+const data = (await fetchLivePage(slug)) ?? fallback;
+Astro.response.headers.set('x-hf-page-stamp', contentStamp(data));
+Astro.response.headers.set('x-hf-page-source', data.source); // api | seed (seed = the API call failed)
+Astro.response.headers.set('x-robots-tag', 'noindex');
+Astro.response.headers.set('cache-control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=300');
+---
+{slug === 'data-deletion'
+  ? <PolicyPage slug={slug} data={data} live={true} slotAfter={/Instagram login data/}><DataDeletionStatus /></PolicyPage>
+  : <PolicyPage slug={slug} data={data} live={true} />}

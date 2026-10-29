@@ -1,13 +1,5 @@
 ---
-import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+import PolicyPage from '../components/legal/PolicyPage.astro';
 ---
-<HelloFraandsPage updated="2026-10-15" title="Cookie policy" summary="Zaroori cookies sign-in aur suraksha mein madad karti hain." review={false} related={[]}>
-<h2>Essential cookies</h2>
-<p>Essential cookies and similar browser storage keep you signed in, protect your session, and remember choices needed to run the service. Clerk may use cookies for account access. Blocking these may prevent sign-in or other features from working.</p>
-<h2>Analytics</h2>
-<p>If optional analytics are used, they help us understand how pages perform and where users encounter problems. Any required choice or consent will be presented before optional cookies are used. This page does not mean every type of analytics is enabled.</p>
-<h2>Your choices</h2>
-<p>Use the site's cookie controls, where available, to change optional choices. You can also block or delete cookies in your browser settings. Deleting cookies may sign you out. Contact <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a> if you need help with a cookie or privacy choice.</p>
-<p>Read the <a href="/privacy">privacy policy</a> for the data we use and your rights.</p>
-</HelloFraandsPage>
+<PolicyPage slug="cookies" />

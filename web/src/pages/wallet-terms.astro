@@ -1,31 +1,5 @@
 ---
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+import PolicyPage from '../components/legal/PolicyPage.astro';
 ---
-<HelloFraandsPage updated="2026-10-28" title="Payment & wallet terms" summary="Wallet ka paisa platform par baat karne ke liye hai. Aap use Withdraw button se apne UPI par nikal sakte hain." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
-<h2>Prepaid talk-time wallet</h2>
-<p>Callers add money to a prepaid wallet and spend it on call minutes. The wallet holds rupees. It is for calls on this platform only; it is not a bank account and earns no interest.</p>
-<h2>Adding money and GST</h2>
-<p>You can add any whole-rupee amount from ₹10 to ₹5,000. 18% GST is deducted from the amount you pay, so your wallet gets the amount divided by 1.18. For example, if you pay ₹120, your GST of ₹18.31 is deducted and ₹101.69 is added to your wallet. Pay ₹240 and ₹203.39 is added. Pay ₹600 and ₹508.47 is added. Pay ₹1,200 and ₹1,016.95 is added.</p>
-<p>Before you pay, you see the total, the GST and the amount added to your wallet. The same three amounts are on your receipt. Money is added only after your payment is confirmed, and only once. No GST is charged again when you spend wallet money on calls.</p>
-<h2>Call price and minimum balance</h2>
-<p>Each influencer sets their own per-minute rate, and you see it before you call. You are charged that rate for the minutes you speak. Minutes you have already talked are never charged again at a new price.</p>
-<ul><li>The rate is shown before you start a call.</li><li>You pay by the minute while you are connected.</li></ul>
-<p>You need at least ₹20 in your wallet to start a call. If 5 minutes at the influencer's rate costs more than ₹20, you need that amount instead. The same applies when you join an influencer's queue. A call can last up to 5 hours.</p>
-<h2>When charges start</h2>
-<p>A call is made once we have rung both of you and joined the call. You are billed by the minute for the time you speak, at the influencer's rate. Ringing, a declined, cancelled or missed call, and a call that fails before we join you all cost ₹0.</p>
-<p>A call goes on until either person hangs up or your wallet money is used up. Money is set aside 5 minutes at a time while you talk, and whatever you do not use comes back to your wallet. If your wallet cannot cover the next 5 minutes, only you hear a voice message that the call will end soon; top up while you are talking and the call keeps going. Your balance can never go below zero.</p>
-<p>If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.</p>
-<h2>Booked calls</h2>
-<p>A booked call holds the cost of the first 15 minutes (or of the whole call if it is 15 minutes) in your wallet. The rest is charged 5 minutes at a time while you talk, and anything unused comes back. You can cancel free until 1 hour before the booked time. If the influencer does not pick up at the booked time, or if the influencer cancels, the full hold comes back to your wallet. If an influencer approves bookings, your request shows "Waiting for approval"; if it is declined or not accepted in time, or you withdraw it, the full amount comes back. If you cancel a confirmed booking later than 1 hour before, the hold is kept.</p><h2>Waiting in a queue</h2><p>If an influencer is on a call you can join the queue. Nothing is charged while you wait, and you can leave any time. When their call ends we connect you automatically after about a minute's break. If you miss our call you are removed from the queue.</p>
-<h2>Refunds always go to your wallet</h2>
-<p>We do not refund calls that were made, except under the first-minute rule above. Any call refund we do make goes back to your wallet, never to your card or UPI. T-shirt orders are different: a refund goes back the way you paid, there are no returns, and a wrong or damaged item must be reported within 48 hours of delivery with a photo. Free test credit cannot be used to buy T-shirts. See the <a href="/refunds">refund policy</a>.</p>
-<h2>Withdrawing wallet money</h2>
-<p>Anyone can withdraw wallet money with the Withdraw button. We send it only to your own UPI ID (never a bank account) after a one-time ID (KYC) check. You can withdraw any amount in whole rupees, with no fee, up to 2 times a week. Each request shows its status, and the bank reference (UTR) once it is paid. Test credits can be spent on calls but cannot be withdrawn.</p><h2>Closing your account</h2><p>When you close your account we settle your money first: your wallet balance is paid to your own UPI ID in whole rupees (the part below ₹1 is not paid), and your account is deleted after 30 days. Earnings still in the 7-day hold are paid on their release date.</p>
-<h2>Influencer earnings</h2>
-<p>Influencers earn a share of the rate for every minute spoken. We keep ₹2 a minute plus 40% of the rate above ₹2, and the influencer keeps the rest. Earnings are held for 7 days, then they can be withdrawn with the Withdraw button.</p>
-<h2>Paused accounts</h2>
-<p>If your account is paused, you cannot call or book, but you can still sign in and withdraw your wallet money with the Withdraw button. If an influencer's account is paused, their booked calls are cancelled with a full refund to your wallet, and their earnings are held until our review ends. If a ban is confirmed, fans of the flagged calls are refunded first from their held earnings, and the rest is paid to their UPI ID as for a closed account.</p>
-<h2>Ended calls, bans and disputes</h2>
-<p>A call ended by either person, by # or by a safety action bills the minutes spoken up to that moment. If an account is banned, it can no longer make or receive calls, but the owner can still sign in and withdraw wallet money with the Withdraw button. Money is never forfeited as a penalty.</p>
-<p>See <a href="/refunds">refunds and billing errors</a> for incorrect charges, and <a href="/grievance">grievance redressal</a> to ask for a review of an account restriction.</p>
-</HelloFraandsPage>
+<PolicyPage slug="wallet-terms" />

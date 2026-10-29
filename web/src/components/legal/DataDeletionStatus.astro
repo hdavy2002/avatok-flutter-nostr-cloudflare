@@ -1,0 +1,17 @@
+---
+// [HF-PAGES-2] Page code that stays outside the database text: the status line behind Meta's data-deletion callback
+// (/data-deletion?code=<confirmation code>). Moved verbatim from the old pages/data-deletion.astro.
+import { BRAND } from '../../lib/brand';
+---
+<p id="ig-del-status" hidden></p>
+<script define:vars={{ api: BRAND.apiOrigin }}>
+  // [HF-IG-LOGIN-1] The status page behind Meta's data-deletion callback: /data-deletion?code=<confirmation code>
+  const code = new URLSearchParams(location.search).get('code');
+  const el = document.getElementById('ig-del-status');
+  if (code && el && /^hfigdel_[a-f0-9]{24}$/.test(code)) {
+    fetch(`${api}/api/hf/channels/instagram/data-deletion-status?code=${code}`)
+      .then((r) => r.json())
+      .then((j) => { el.textContent = j && j.status === 'complete' ? `Your Instagram data deletion request ${code} is complete.` : 'We could not find that deletion request.'; el.hidden = false; })
+      .catch(() => { el.textContent = 'We could not check that request right now. Please try again later.'; el.hidden = false; });
+  }
+</script>

@@ -1,28 +1,5 @@
 ---
-import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+import PolicyPage from '../components/legal/PolicyPage.astro';
 ---
-<HelloFraandsPage updated="2026-10-24" title="Child safety standards" summary="Bachchon ki suraksha: zero tolerance. Hum har report par turant kaam karte hain." review={false} related={[]}>
-<h2>Zero tolerance for child sexual abuse and exploitation</h2>
-<p>{BRAND.name} has zero tolerance for child sexual abuse and exploitation (CSAE) and child sexual abuse material (CSAM). Any content, call, message, profile or behaviour that sexualises, grooms, exploits or endangers a child is banned on our app and website.</p>
-<h2>Adults only</h2>
-<p>{BRAND.name} is for people aged 18 and over. Callers and influencers must be adults. If we find that an account belongs to someone under 18, we close it. See our <a href="/age-policy">age policy</a>.</p>
-<h2>What is not allowed</h2>
-<ul>
-<li>Sharing, asking for or linking to any sexual image or video of a person under 18.</li>
-<li>Grooming: building trust with a child to abuse or exploit them, or asking a child to move to another app.</li>
-<li>Sexual talk with, or about, a child, including role-play.</li>
-<li>Sextortion, trafficking or any offer of a child for sexual purposes.</li>
-</ul>
-<h2>What we do</h2>
-<ul>
-<li>We remove the content and permanently ban the account, with no warning or strike.</li>
-<li>We keep the relevant records and report CSAM and child exploitation to the authorities in India, including the National Cybercrime Reporting Portal (<a href="https://cybercrime.gov.in/">cybercrime.gov.in</a>) and the police, as Indian law requires.</li>
-<li>We cooperate with law-enforcement requests made under Indian law.</li>
-</ul>
-<h2>How to report</h2>
-<p>In the app, open the profile or call and use <strong>Report</strong>, pick "Inappropriate talk or behaviour" and write "child safety" in the note. You can also <a href="/report">report on the website</a> or email our designated child-safety contact below. Do not download, save or forward the material yourself.</p>
-<p><strong>Child safety contact:</strong> <a href={`mailto:${BRAND.emails.grievance}`}>{BRAND.emails.grievance}</a> (Grievance Officer). We act on child-safety reports as a priority.</p>
-<p>If a child is in immediate danger in India, call <a href="tel:112">112</a>. You can also call the Childline <a href="tel:1098">1098</a>.</p>
-<p>Related: <a href="/community-guidelines">community guidelines</a>, <a href="/safety">safety centre</a>, <a href="/privacy">privacy policy</a>.</p>
-</HelloFraandsPage>
+<PolicyPage slug="child-safety" />

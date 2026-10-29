@@ -1,0 +1,42 @@
+---
+// [HF-PAGES-2] One policy page = the shared ghat layout + the text from the database (or the committed seed text).
+//   Static route (src/pages/terms.astro ...): prerendered at build from the SEED text, so the page always works, is crawlable and the
+//     CI content contract (web/scripts/check-hello-fraands-pages.mjs) still reads real HTML. A small script then asks the live twin
+//     (/live-policy/<slug>, rendered per request from the API) and swaps <main> in only when the text there differs.
+//   Live twin (src/pages/live-policy/[slug].astro): passes `data` fetched from the API and `live` (no refresh script).
+// The default slot is forwarded to PolicyBlocks (see slotAfter there).
+import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
+import PolicyBlocks from './PolicyBlocks.astro';
+import { contentStamp, seedPage, type PolicyPageData } from '../../lib/hfPages';
+interface Props { slug: string; data?: PolicyPageData; live?: boolean; slotAfter?: RegExp }
+const { slug, data: given, live = false, slotAfter } = Astro.props;
+const data = given ?? seedPage(slug);
+if (!data) throw new Error(`[HF-PAGES-2] no policy page "${slug}"`);
+const stamp = contentStamp(data);
+---
+<HelloFraandsPage path={`/${slug}`} updated={data.updated} title={data.title} summary={data.summary} review={data.review} related={data.related}>
+  <PolicyBlocks blocks={data.blocks} slotAfter={slotAfter}><slot /></PolicyBlocks>
+  <Fragment slot="foot">{!live && (
+    <script is:inline define:vars={{ slug, stamp }}>
+      (function () {
+        // Fresh text without a redeploy: ask the live twin; swap <main> only if its text fingerprint differs from the baked one.
+        try {
+          fetch('/live-policy/' + slug, { credentials: 'omit' }).then(function (r) {
+            var s = r.headers.get('x-hf-page-stamp');
+            return r.ok && s && s !== stamp ? r.text() : null;
+          }).then(function (t) {
+            if (!t) return;
+            var doc = new DOMParser().parseFromString(t, 'text/html');
+            var next = doc.querySelector('main'), cur = document.querySelector('main');
+            if (!next || !cur) return;
+            next = document.importNode(next, true);
+            next.querySelectorAll('script').forEach(function (o) { var n = document.createElement('script'); n.textContent = o.textContent; o.replaceWith(n); });
+            cur.replaceWith(next);
+            if (doc.title) document.title = doc.title;
+            if (location.hash) { var el = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (el) el.scrollIntoView(); }
+          }).catch(function () {});
+        } catch (e) {}
+      })();
+    </script>
+  )}</Fragment>
+</HelloFraandsPage>

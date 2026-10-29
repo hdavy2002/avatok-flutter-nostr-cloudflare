@@ -24,10 +24,11 @@ import '../styles/legal-ghat.css';
 // the 2026-10-18 copy clean-up (re-dated 2026-10-19 for the HF-WIRE-15 money rewrite) instead of the old literal "{{DATE}}". Bump it when the shared copy changes.
 const DEFAULT_UPDATED = '2026-10-19';
 interface Link { href: string; label: string }
-interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string; updated?: string }
-const { title, summary, review = false, related = [], description = summary, updated = DEFAULT_UPDATED } = Astro.props;
+// [HF-PAGES-2] `path` lets the live twin (/live-policy/<slug>) render exactly as the real route (breadcrumb, canonical, flavour).
+interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string; updated?: string; path?: string }
+const { title, summary, review = false, related = [], description = summary, updated = DEFAULT_UPDATED, path } = Astro.props;
 const identity = brandConfig.homepageIdentity;
-const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const pathname = (path ?? Astro.url.pathname).replace(/\/+$/, '') || '/';
 const canonical = `https://${identity.domain}${pathname}`;
 const pageTitle = `${title} | ${identity.name}`;
 const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`;
@@ -183,5 +184,6 @@ const tones = ['ivory', 'stone', 'tint', 'ivory', 'river'];
       </main>
       <Footer />
     </div>
+    <slot name="foot" />
   </body>
 </html>

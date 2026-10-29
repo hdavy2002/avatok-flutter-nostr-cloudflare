@@ -1,15 +1,5 @@
 ---
-import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+// [HF-PAGES-2] Text comes from the database (seed fallback): see components/legal/PolicyPage.astro.
+import PolicyPage from '../components/legal/PolicyPage.astro';
 ---
-<HelloFraandsPage updated="2026-10-15" title="Intermediary & content policy" summary="Galat content ki report aur kanooni requests ka process yahan hai." review={true} related={[{"href":"/community-guidelines","label":"Community guidelines"},{"href":"/grievance","label":"Grievance redressal"},{"href":"/terms","label":"Terms of use"},{"href":"/privacy","label":"Privacy policy"}]}>
-<h2>Our role</h2>
-<p>{BRAND.name} provides a platform that connects users with social media influencers for private phone calls. This policy sets out its intended intermediary role under section 79 of the Information Technology Act and the IT Rules 2021. Any legal protection depends on meeting the conditions in the law; it is not automatic.</p>
-<h2>Due diligence</h2>
-<p>Our safety measures include number masking, a strike system, a grievance contact, and published community guidelines. Users must not share illegal content, threaten others, impersonate someone, or breach the <a href="/community-guidelines">community guidelines</a>.</p>
-<h2>Reports and action</h2>
-<ol><li>Send a report with the profile name, call ID or content location, and a description of the concern.</li><li>Trust &amp; Safety reviews the report and relevant records. We may ask for more information.</li><li>We may restrict access, take down content, end a call, or suspend an account as appropriate. We preserve records when legally required.</li><li>We respond to valid legal orders and requests within the applicable legal deadlines. Users may request review through the grievance process.</li></ol>
-<h2>Law-enforcement contact</h2>
-<p>Send lawful requests to <a href={`mailto:${BRAND.emails.grievance}`}>{BRAND.emails.grievance}</a>. Include the requesting authority, legal basis, relevant account or call identifiers, scope, and contact details for verification. We assess requests under applicable law and disclose only as legally required.</p>
-<p>For ordinary complaints, use <a href="/report">Report a user</a> or contact the <a href="/grievance">grievance contact</a>.</p>
-</HelloFraandsPage>
+<PolicyPage slug="intermediary-policy" />
