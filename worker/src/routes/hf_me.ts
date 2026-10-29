@@ -152,7 +152,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
 }
 
 /** [HF-WIRE-1B] Caller's own spendable balance in paise; null if unreadable. Token mode reads the lot ledger, the old mode the rupee WalletDO. */
-async function readWalletPaise(env: Env, uid: string, tokensMode: boolean): Promise<number | null> {
+export async function readWalletPaise(env: Env, uid: string, tokensMode: boolean): Promise<number | null> {
   try {
     if (tokensMode) return Math.max(0, Math.trunc((await balanceSummary(env, uid)).availablePaise));
     const snap = await walletOp(env, uid, { op: "balance", uid });
