@@ -77,3 +77,11 @@
   .hf-admin .hfi-dl dd { margin-bottom: 10px; }
   .hf-admin .hfi-acts > *, .hf-admin .hfi-reject .hfh-acts > *, .hf-admin .hfi-confirm .hfh-acts > * { flex: 1 1 100%; }
 }
+/* [HF-ADMIN-FACECHECK] Face check: the social accounts she logged in with, under the video. Solid buttons, no gradients. */
+.hf-admin .hfi-facecheck { margin-top: 14px; padding: 14px 16px; border-radius: 20px; border: 1.5px solid var(--a-line); background: #fff; display: grid; gap: 8px; }
+.hf-admin .hfi-facecheck-h { margin: 0; font-family: 'Nunito', 'Comfortaa', sans-serif; font-weight: 900; font-size: var(--fs-body, 18px); color: var(--a-plum); }
+.hf-admin .hfi-facecheck .hfa-note, .hf-admin .hfi-facecheck .hfi-warn { margin: 0; }
+.hf-admin .hfi-facecheck-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hf-admin .hfi-facecheck-btn { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 16px; border-radius: 999px; background: var(--a-marigold); color: #3b1600; font-weight: 800; font-size: var(--fs-small); text-decoration: none; overflow-wrap: anywhere; }
+.hf-admin .hfi-facecheck-btn:hover { filter: brightness(1.05); }
+.hf-admin .hfi-facecheck-btn:focus-visible { outline: 3px solid var(--a-rani); outline-offset: 2px; }

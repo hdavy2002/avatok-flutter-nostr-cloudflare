@@ -236,6 +236,18 @@ function Detail({ api, item, reasons: listReasons, panelId, onDone }: {
           <strong>Video deleted</strong>
           <span>Removed from storage on {dateIST(d.video.deletedAt)}, when it was {d.video.deletedReason === 'replaced' ? 'replaced by a newer one' : d.video.deletedReason === 'draft_expired' ? 'never sent' : 'rejected'}</span>
         </div> : <div className="hfi-video hfi-novideo"><Video size={40} aria-hidden="true" /><p>No video on this application.</p></div>}
+        {/* [HF-ADMIN-FACECHECK] The accounts she logged in with, next to the video, so a person can compare the face. */}
+        <div className="hfi-facecheck" role="group" aria-label="Face check">
+          <p className="hfi-facecheck-h">Face check</p>
+          {d.socials.length ? <>
+            <p className="hfa-note">Open the accounts she logged in with and check it is the same person as in this video.</p>
+            <ul className="hfi-facecheck-list">{d.socials.map((s) => <li key={'fc' + s.platform + s.handle}>
+              <a className="hfi-facecheck-btn" href={s.url} target="_blank" rel="noopener noreferrer">
+                <BadgeCheck size={18} aria-hidden="true" />Open {PLATFORMS[s.platform] ?? s.platform} · {s.handle}<ExternalLink size={16} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            </li>)}</ul>
+          </> : <p className="hfi-warn">No social account. She proved who she is with Aadhaar{d.aadhaar.done ? '' : ' (not done yet)'}; check the face against the Aadhaar check instead.</p>}
+        </div>
         {d.video?.durationMs ? <p className="hfa-note hfi-center">{Math.round(d.video.durationMs / 1000)} seconds{d.video.width && d.video.height ? ` · ${d.video.width}×${d.video.height}` : ''}</p> : null}
       </div>
 
