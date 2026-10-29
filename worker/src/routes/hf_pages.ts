@@ -2,26 +2,29 @@
 //   GET /api/hf/pages                 -> { ok, pages:[{slug,title,version,updatedAt}] }               public, published only
 //   GET /api/hf/pages/:slug           -> { ok, slug,title,summary,related,version,updatedAt,blocks }  public; placeholders resolved; ETag = version
 //   GET /api/admin/hf/pages/:slug     -> raw row (placeholders NOT resolved, even if unpublished)     admin (ADMIN_UIDS)
-//   PUT /api/admin/hf/pages/:slug     { title?, summary?, related?, body, published? } -> { ok, version } admin; bumps version
-// A page's `version` is what the re-accept flow can pin instead of a file hash (see HF-PAGES-1 notes).
+//   PUT /api/admin/hf/pages/:slug     { title?, summary?, related?, body, published?, material? } -> { ok, version, materialVersion } admin; always bumps version
+// [HF-PAGES-2] `material: true` ALSO bumps `material_version`, and for the five registration agreements (terms, privacy, disclaimer,
+// community-guidelines, rules-of-engagement) that is what makes every user accept again: pin = `site:<slug>:<material_version>`
+// (lib/hf_registration_policies.ts). A normal edit never asks anyone to re-accept.
 import type { Env } from "../types";
 import { CORS, json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { isAdminUid } from "../lib/preview";
+import { resetPolicyPinCache } from "../lib/hf_registration_policies";
 import { SLUG_RE, resolveBlocks, resolvePlaceholders, validateBlocks, validateRelated, type Block, type Related } from "../lib/hf_pages";
 
 const PUBLIC_CACHE = "public, max-age=60, stale-while-revalidate=86400";
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ ok: false, error, message: error, ...extra }, status, NO_STORE);
 
-type Row = { slug: string; title: string; summary: string; related: string; body: string; version: number; updated_at: string; published: number; updated_by: string };
+type Row = { slug: string; title: string; summary: string; related: string; body: string; version: number; material_version: number; updated_at: string; published: number; updated_by: string };
 const parse = <T,>(s: string, fallback: T): T => { try { return JSON.parse(s) as T; } catch { return fallback; } };
 const etagFor = (r: Row) => `"hfpage-${r.slug}-${r.version}"`;
 
 async function row(env: Env, slug: string): Promise<Row | null> {
-  return await env.DB_META.prepare("SELECT slug,title,summary,related,body,version,updated_at,published,updated_by FROM site_pages WHERE slug=?1").bind(slug).first<Row>();
+  return await env.DB_META.prepare("SELECT slug,title,summary,related,body,version,material_version,updated_at,published,updated_by FROM site_pages WHERE slug=?1").bind(slug).first<Row>();
 }
 
 async function listPages(env: Env): Promise<Response> {
@@ -38,14 +41,14 @@ async function getPage(req: Request, env: Env, slug: string): Promise<Response> 
   const related = parse<Related[]>(r.related, []).map((x) => ({ href: x.href, label: resolvePlaceholders(x.label) }));
   return json({
     ok: true, slug: r.slug, title: resolvePlaceholders(r.title), summary: resolvePlaceholders(r.summary), related,
-    version: r.version, updatedAt: r.updated_at, blocks: resolveBlocks(parse<Block[]>(r.body, [])),
+    version: r.version, materialVersion: r.material_version, updatedAt: r.updated_at, blocks: resolveBlocks(parse<Block[]>(r.body, [])),
   }, 200, headers);
 }
 
 async function adminGet(env: Env, slug: string): Promise<Response> {
   const r = await row(env, slug);
   if (!r) return err(404, "not_found");
-  return json({ ok: true, slug: r.slug, title: r.title, summary: r.summary, related: parse(r.related, []), body: parse(r.body, []), version: r.version, updatedAt: r.updated_at, published: r.published === 1, updatedBy: r.updated_by }, 200, NO_STORE);
+  return json({ ok: true, slug: r.slug, title: r.title, summary: r.summary, related: parse(r.related, []), body: parse(r.body, []), version: r.version, materialVersion: r.material_version, updatedAt: r.updated_at, published: r.published === 1, updatedBy: r.updated_by }, 200, NO_STORE);
 }
 
 async function adminPut(req: Request, env: Env, slug: string, uid: string): Promise<Response> {
@@ -63,17 +66,21 @@ async function adminPut(req: Request, env: Env, slug: string, uid: string): Prom
   if (relBad) return err(400, relBad);
   const published = b.published === undefined ? (existing ? existing.published : 1) : b.published === true || b.published === 1 ? 1 : b.published === false || b.published === 0 ? 0 : -1;
   if (published === -1) return err(400, "invalid_published");
+  if (b.material !== undefined && typeof b.material !== "boolean") return err(400, "invalid_material");
+  const material = b.material === true;
   const today = new Date().toISOString().slice(0, 10);
   const bodyJson = JSON.stringify(b.body);
   if (!existing) {
     await env.DB_META.prepare("INSERT INTO site_pages (slug,title,summary,related,body,version,updated_at,published,updated_by) VALUES (?1,?2,?3,?4,?5,1,?6,?7,?8)")
       .bind(slug, title.trim(), summary, JSON.stringify(related), bodyJson, today, published, uid).run();
-    return json({ ok: true, slug, version: 1, created: true }, 201, NO_STORE);
+    resetPolicyPinCache();
+    return json({ ok: true, slug, version: 1, materialVersion: 1, created: true }, 201, NO_STORE);
   }
-  await env.DB_META.prepare("UPDATE site_pages SET title=?2,summary=?3,related=?4,body=?5,version=version+1,updated_at=?6,published=?7,updated_by=?8 WHERE slug=?1")
-    .bind(slug, title.trim(), summary, JSON.stringify(related), bodyJson, today, published, uid).run();
+  await env.DB_META.prepare("UPDATE site_pages SET title=?2,summary=?3,related=?4,body=?5,version=version+1,material_version=material_version+?9,updated_at=?6,published=?7,updated_by=?8 WHERE slug=?1")
+    .bind(slug, title.trim(), summary, JSON.stringify(related), bodyJson, today, published, uid, material ? 1 : 0).run();
+  resetPolicyPinCache(); // this isolate sees the new pin at once; others within the pin cache TTL
   const after = await row(env, slug);
-  return json({ ok: true, slug, version: after?.version ?? existing.version + 1 }, 200, NO_STORE);
+  return json({ ok: true, slug, version: after?.version ?? existing.version + 1, materialVersion: after?.material_version ?? existing.material_version + (material ? 1 : 0), material }, 200, NO_STORE);
 }
 
 export async function hfPagesRoute(req: Request, env: Env, p: string): Promise<Response | null> {

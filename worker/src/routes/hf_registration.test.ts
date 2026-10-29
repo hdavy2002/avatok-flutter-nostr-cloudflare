@@ -2,7 +2,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 
 vi.mock("../authz", () => ({
   requireUser: async (req: Request) => ({ uid: req.headers.get("x-test-uid") ?? "u1" }),
@@ -12,7 +11,7 @@ vi.mock("../money", () => ({ rateLimit: async () => null }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackException: async () => {} }));
 
 import { hfRegistrationRoute, normalizeHfUsername } from "./hf_registration";
-import { HF_REGISTRATION_POLICIES } from "../lib/hf_registration_policies";
+import { HF_LEGACY_POLICY_HASHES, HF_POLICY_SLUGS, REGISTRATION_POLICY_NAMES, buildPins, currentPolicyAcceptances, pendingPolicyNames, policyPinString, resetPolicyPinCache, receiptSatisfiesPin } from "../lib/hf_registration_policies";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
 let db: any;
@@ -38,6 +37,11 @@ function setup() {
   `);
   db.exec(readFileSync(new URL('../../migrations/2026-10-12-hf-registration-progress.sql', import.meta.url), 'utf8'));
   db.exec(readFileSync(new URL('../../migrations/2026-10-23-hf-policy-reacceptances.sql', import.meta.url), 'utf8'));
+  // [HF-PAGES-2] The pins come from site_pages.material_version (all five agreements start at 1, like production after the ALTER).
+  db.exec(readFileSync(new URL('../../migrations/2026-10-29-hf-site-pages.sql', import.meta.url), 'utf8'));
+  db.exec(readFileSync(new URL('../../migrations/2026-10-29-hf-site-pages-material-alters.sql', import.meta.url), 'utf8'));
+  for (const slug of Object.values(HF_POLICY_SLUGS)) db.prepare("INSERT INTO site_pages (slug,title,updated_at) VALUES (?1,?1,'2026-10-29')").run(slug);
+  resetPolicyPinCache();
   kv = new Map();
   const statement = (sql: string, values: unknown[] = []) => ({
     bind: (...next: unknown[]) => statement(sql, next),
@@ -66,7 +70,7 @@ function setup() {
 }
 
 const policies = ["terms", "privacy", "disclaimer", "community", "engagement"];
-const acceptedPolicyVersions = Object.fromEntries(Object.entries(HF_REGISTRATION_POLICIES).map(([key, value]) => [key, value.version]));
+const acceptedPolicyVersions = Object.fromEntries(REGISTRATION_POLICY_NAMES.map((name) => [name, policyPinString(name, 1)]));
 const registration = { firstName: 'Maya', lastName: 'Sharma', username: 'maya', acceptedPolicies: policies, acceptedPolicyVersions };
 const call = (method = 'GET', body?: unknown, uid = 'u1') => hfRegistrationRoute(request('/api/hf/me/registration', method, body, uid), env, '/api/hf/me/registration');
 const request = (path: string, method = "GET", body?: unknown, uid = "u1") => new Request(`https://x${path}`, {
@@ -172,11 +176,13 @@ describe("HF immutable registration username", () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM hf_user_registration').get().n).toBe(0);
   });
 
-  it('pins versions to the linked policy sources', () => {
-    for (const policy of Object.values(HF_REGISTRATION_POLICIES)) {
-      const source = readFileSync(new URL(`../../../web/src/pages${policy.path}.astro`, import.meta.url));
-      expect(policy.version).toBe(`sha256:${createHash('sha256').update(source).digest('hex')}`);
-    }
+  it('pins are site:<slug>:<material_version> read from D1, and the legacy sha256 pins are frozen', async () => {
+    expect(acceptedPolicyVersions).toEqual({ terms: 'site:terms:1', privacy: 'site:privacy:1', disclaimer: 'site:disclaimer:1', community: 'site:community-guidelines:1', engagement: 'site:rules-of-engagement:1' });
+    expect((await (await call()).json()).policies.community).toEqual({ path: '/community-guidelines', version: 'site:community-guidelines:1' });
+    db.prepare("UPDATE site_pages SET material_version=3 WHERE slug='privacy'").run();
+    resetPolicyPinCache();
+    expect((await (await call()).json()).policies.privacy.version).toBe('site:privacy:3');
+    for (const hash of Object.values(HF_LEGACY_POLICY_HASHES)) expect(hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
   it('asks a registered person to accept changed policies once, and keeps the first receipt', async () => {
@@ -228,5 +234,87 @@ describe("HF immutable registration username", () => {
     expect(await (await call()).json()).toMatchObject({ step: 2, emailChallenge: null });
     db.prepare("INSERT INTO hf_registration_progress (uid,accepted_policies_json,updated_at) VALUES ('u1',?,1)").run(JSON.stringify({ terms: 'old' }));
     expect((await (await call()).json()).acceptedPolicyVersions).toEqual({});
+  });
+});
+
+// [HF-PAGES-2] Re-accept only on a material edit; the old sha256 pin counts as material version 1.
+describe("HF-PAGES-2 policy pins", () => {
+  const policyCall = (method = 'GET', body?: unknown, uid = 'u1') => hfRegistrationRoute(request('/api/hf/me/policy-update', method, body, uid), env, '/api/hf/me/policy-update');
+  const legacyVersions = HF_LEGACY_POLICY_HASHES;
+  const registerThenHoldLegacyReceipts = async () => {
+    expect((await call('POST', registration)).status).toBe(200);
+    for (const name of REGISTRATION_POLICY_NAMES) db.prepare("UPDATE hf_registration_policy_acceptances SET document_version=?2 WHERE policy=?1").run(name, legacyVersions[name]);
+  };
+
+  it('a receipt with the current legacy sha256 pin equals site:<slug>:1, nothing else does', () => {
+    const v1 = buildPins({}); const v2 = buildPins({ terms: 2 });
+    for (const name of REGISTRATION_POLICY_NAMES) {
+      expect(receiptSatisfiesPin(name, legacyVersions[name], v1)).toBe(true);
+      expect(receiptSatisfiesPin(name, policyPinString(name, 1), v1)).toBe(true);
+      expect(receiptSatisfiesPin(name, 'sha256:' + '0'.repeat(64), v1)).toBe(false);
+      expect(receiptSatisfiesPin(name, undefined, v1)).toBe(false);
+    }
+    expect(receiptSatisfiesPin('terms', legacyVersions.terms, v2)).toBe(false); // a material edit is NOT satisfied by the old hash
+    expect(receiptSatisfiesPin('terms', 'site:terms:1', v2)).toBe(false);
+    expect(receiptSatisfiesPin('terms', 'site:terms:2', v2)).toBe(true);
+    expect(receiptSatisfiesPin('privacy', legacyVersions.privacy, v2)).toBe(true); // other policies unaffected
+    expect(receiptSatisfiesPin('terms', legacyVersions.privacy, v1)).toBe(false); // a hash only equals its own policy
+  });
+
+  it('pendingPolicyNames and currentPolicyAcceptances use the same rule', () => {
+    const legacyReceipts = REGISTRATION_POLICY_NAMES.map((policy) => ({ policy, document_version: legacyVersions[policy] }));
+    expect(pendingPolicyNames(buildPins({}), legacyReceipts)).toEqual([]);
+    expect(pendingPolicyNames(buildPins({ terms: 2, engagement: 4 }), legacyReceipts)).toEqual(['terms', 'engagement']);
+    expect(currentPolicyAcceptances(legacyVersions, buildPins({}))).toEqual(acceptedPolicyVersions); // stored as the new pin
+    expect(currentPolicyAcceptances(legacyVersions, buildPins({ terms: 2 })).terms).toBeUndefined();
+  });
+
+  it('shipping the new scheme does NOT ask users who hold the legacy sha256 receipts to accept again', async () => {
+    await registerThenHoldLegacyReceipts();
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] });
+    expect(await (await policyCall('POST', { acceptedPolicyVersions })).json()).toEqual({ ok: true, required: false });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM hf_policy_reacceptances').get().n).toBe(0);
+  });
+
+  it('a NON-material edit (version bump only) does not ask anyone to accept again', async () => {
+    await registerThenHoldLegacyReceipts();
+    db.prepare("UPDATE site_pages SET version=version+1, updated_at='2026-11-01' WHERE slug IN ('terms','privacy')").run();
+    resetPolicyPinCache();
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] });
+  });
+
+  it('a MATERIAL edit asks once; legacy hash is refused for it; new receipts go to hf_policy_reacceptances', async () => {
+    await registerThenHoldLegacyReceipts();
+    db.prepare("UPDATE site_pages SET material_version=material_version+1, version=version+1 WHERE slug='terms'").run();
+    resetPolicyPinCache();
+    const status = await (await policyCall()).json();
+    expect(status.required).toBe(true);
+    expect(status.pending).toEqual([{ policy: 'terms', path: '/terms', version: 'site:terms:2' }]);
+    const refused = await policyCall('POST', { acceptedPolicyVersions: { ...legacyVersions } });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).missing).toEqual(['terms']);
+    expect((await policyCall('POST', { acceptedPolicyVersions: { terms: 'site:terms:2' } })).status).toBe(200);
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] });
+    expect(db.prepare("SELECT policy,document_version FROM hf_policy_reacceptances").all()).toEqual([{ policy: 'terms', document_version: 'site:terms:2' }]);
+    expect(db.prepare("SELECT document_version FROM hf_registration_policy_acceptances WHERE policy='terms'").get().document_version).toBe(legacyVersions.terms); // first receipt untouched
+  });
+
+  it('a new person registering with an old app that posts legacy hashes is accepted and stored as the site: pin (while v1)', async () => {
+    expect((await call('POST', { ...registration, acceptedPolicyVersions: { ...legacyVersions } })).status).toBe(200);
+    for (const r of db.prepare("SELECT policy,document_version FROM hf_registration_policy_acceptances").all()) expect(r.document_version).toBe(acceptedPolicyVersions[r.policy]);
+  });
+
+  it('a new person must accept the CURRENT pin after a material edit (old pin is stale)', async () => {
+    db.prepare("UPDATE site_pages SET material_version=2 WHERE slug='community-guidelines'").run();
+    resetPolicyPinCache();
+    expect((await call('POST', registration)).status).toBe(409);
+    expect((await call('POST', { ...registration, acceptedPolicyVersions: { ...acceptedPolicyVersions, community: 'site:community-guidelines:2' } })).status).toBe(200);
+  });
+
+  it('falls back to material version 1 (= the legacy pins) when site_pages cannot be read', async () => {
+    await registerThenHoldLegacyReceipts();
+    db.exec('DROP TABLE site_pages');
+    resetPolicyPinCache();
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] });
   });
 });

@@ -24,6 +24,7 @@ let env: any;
 function setup() {
   db = new DatabaseSync(":memory:");
   db.exec(readFileSync(new URL("../../migrations/2026-10-29-hf-site-pages.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../../migrations/2026-10-29-hf-site-pages-material-alters.sql", import.meta.url), "utf8")); // [HF-PAGES-2]
   db.exec(readFileSync(new URL("../../migrations/2026-10-29-hf-site-pages-seed.sql", import.meta.url), "utf8"));
   const statement = (sql: string, values: unknown[] = []) => ({
     bind: (...next: unknown[]) => statement(sql, next),
@@ -140,5 +141,25 @@ describe("admin PUT", () => {
     const res = await call("/api/admin/hf/pages/brand-new", "PUT", { title: "Brand new", body: goodBody }, "admin1");
     expect(res.status).toBe(201);
     expect((await call("/api/hf/pages/brand-new")).status).toBe(200);
+  });
+  // [HF-PAGES-2] `material: true` is what makes users accept an agreement again.
+  it("always bumps version; bumps material_version only when material is true", async () => {
+    const mv = () => db.prepare("SELECT version,material_version FROM site_pages WHERE slug='terms'").get();
+    expect(mv()).toEqual({ version: 1, material_version: 1 });
+    const plain = await (await call("/api/admin/hf/pages/terms", "PUT", { body: goodBody }, "admin1")).json();
+    expect(plain).toMatchObject({ version: 2, materialVersion: 1, material: false });
+    const explicitFalse = await (await call("/api/admin/hf/pages/terms", "PUT", { body: goodBody, material: false }, "admin1")).json();
+    expect(explicitFalse).toMatchObject({ version: 3, materialVersion: 1 });
+    const important = await (await call("/api/admin/hf/pages/terms", "PUT", { body: goodBody, material: true }, "admin1")).json();
+    expect(important).toMatchObject({ version: 4, materialVersion: 2, material: true });
+    expect(mv()).toEqual({ version: 4, material_version: 2 });
+    expect((await (await call("/api/hf/pages/terms")).json()).materialVersion).toBe(2);
+    expect((await (await call("/api/admin/hf/pages/terms", "GET", undefined, "admin1")).json()).materialVersion).toBe(2);
+  });
+  it("rejects a non-boolean material flag and changes nothing", async () => {
+    const res = await call("/api/admin/hf/pages/terms", "PUT", { body: goodBody, material: "yes" }, "admin1");
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_material");
+    expect(db.prepare("SELECT version,material_version FROM site_pages WHERE slug='terms'").get()).toEqual({ version: 1, material_version: 1 });
   });
 });

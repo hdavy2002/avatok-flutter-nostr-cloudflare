@@ -7,7 +7,10 @@ import { rateLimit } from "../money";
 import { contactLeak } from "../lib/hf_options";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
-import { HF_REGISTRATION_POLICIES, HF_POLICY_CHANGE_NOTE, REGISTRATION_POLICY_NAMES, currentPolicyAcceptances, type RegistrationPolicy } from "../lib/hf_registration_policies";
+import { HF_POLICY_CHANGE_NOTE, REGISTRATION_POLICY_NAMES, currentPolicyAcceptances, getPolicyPins, pendingPolicyNames, type PolicyPins, type RegistrationPolicy } from "../lib/hf_registration_policies";
+
+// [HF-PAGES-2] The pins are `site:<slug>:<material_version>` read from D1 (see lib/hf_registration_policies.ts), not file hashes.
+const pinsForClient = (pins: PolicyPins) => Object.fromEntries(REGISTRATION_POLICY_NAMES.map((n) => [n, { path: pins[n].path, version: pins[n].version }]));
 
 const APP = BRAND.slug;
 const REQUIRED_POLICIES = REGISTRATION_POLICY_NAMES;
@@ -43,8 +46,8 @@ async function readDraft(env: Env, uid: string): Promise<Draft | null> {
 }
 
 async function progress(env: Env, uid: string): Promise<Response> {
-  const [proof, draft, registered, signup, challengeRaw] = await Promise.all([
-    contactProof(env, uid), readDraft(env, uid),
+  const [pins, proof, draft, registered, signup, challengeRaw] = await Promise.all([
+    getPolicyPins(env), contactProof(env, uid), readDraft(env, uid),
     env.DB_META.prepare("SELECT first_name,last_name,username FROM hf_user_registration WHERE uid=?1").bind(uid).first<{ first_name: string; last_name: string; username: string }>(),
     env.DB_META.prepare("SELECT 1 AS x FROM hf_phone_signup WHERE uid=?1 AND state='done'").bind(uid).first(),
     env.TOKENS.get(`otp:email:${uid}`),
@@ -68,7 +71,7 @@ async function progress(env: Env, uid: string): Promise<Response> {
     firstName: registered?.first_name ?? draft?.first_name ?? null, lastName: registered?.last_name ?? draft?.last_name ?? null,
     username: registered?.username ?? draft?.username ?? null,
     kycNow: draft?.kyc_choice == null ? null : draft.kyc_choice === 1,
-    acceptedPolicyVersions: currentPolicyAcceptances(accepted), policies: HF_REGISTRATION_POLICIES,
+    acceptedPolicyVersions: currentPolicyAcceptances(accepted, pins), policies: pinsForClient(pins),
   }, 200, { "cache-control": "private, no-store" });
 }
 
@@ -108,7 +111,7 @@ async function saveProgress(req: Request, env: Env, uid: string): Promise<Respon
       columns = "kyc_choice=?2"; values = [body.kycNow ? 1 : 0];
     } else if (body.step === "policies") {
       if (!draft.username || draft.kyc_choice == null) return err(409, "invalid_step", "Complete the earlier steps first.");
-      const accepted = currentPolicyAcceptances(body.acceptedPolicyVersions);
+      const accepted = currentPolicyAcceptances(body.acceptedPolicyVersions, await getPolicyPins(env));
       columns = "accepted_policies_json=?2"; values = [JSON.stringify(accepted)];
     } else return err(400, "invalid_step", "Choose a registration step.");
     await env.DB_META.prepare(`UPDATE hf_registration_progress SET ${columns},updated_at=?3 WHERE uid=?1`).bind(uid, ...values, Date.now()).run();
@@ -161,7 +164,7 @@ async function register(req: Request, env: Env, uid: string): Promise<Response> 
   const accepted = new Set(Array.isArray(body.acceptedPolicies) ? body.acceptedPolicies.map(String) : []);
   const missing = REQUIRED_POLICIES.filter((x) => !accepted.has(x));
   if (missing.length) return json({ error: "policies_required", message: "Read and accept every agreement to continue.", missing }, 400);
-  const acceptedVersions = currentPolicyAcceptances(body.acceptedPolicyVersions);
+  const acceptedVersions = currentPolicyAcceptances(body.acceptedPolicyVersions, await getPolicyPins(env));
   const stale = REQUIRED_POLICIES.filter((name) => !acceptedVersions[name]);
   if (stale.length) return json({ error: "policy_versions_required", message: "The agreements changed. Read and accept the current versions.", missing: stale }, 409);
 
@@ -210,23 +213,24 @@ async function register(req: Request, env: Env, uid: string): Promise<Response> 
 // [HF-POLICY-WITHDRAW-1] Re-accept flow. A person who registered under an older version of a policy page is asked
 // to accept the current one. Receipts are kept per (uid, policy, version): the registration receipt is never
 // overwritten, so the version someone first accepted stays on record.
-async function pendingPolicies(env: Env, uid: string): Promise<RegistrationPolicy[] | null> {
+async function pendingPolicies(env: Env, uid: string, pins: PolicyPins): Promise<RegistrationPolicy[] | null> {
   const registered = await env.DB_META.prepare("SELECT 1 AS x FROM hf_user_registration WHERE uid=?1").bind(uid).first();
   if (!registered) return null; // not registered yet: the registration flow asks for the current versions
   const rows = await env.DB_META.prepare(
     `SELECT policy,document_version FROM hf_registration_policy_acceptances WHERE uid=?1
      UNION SELECT policy,document_version FROM hf_policy_reacceptances WHERE uid=?1`,
   ).bind(uid).all<{ policy: string; document_version: string }>().catch(() => null);
-  const have = new Set((rows?.results ?? []).map((r) => `${r.policy}:${r.document_version}`));
-  return REQUIRED_POLICIES.filter((name) => !have.has(`${name}:${HF_REGISTRATION_POLICIES[name].version}`));
+  // A receipt holding the old sha256 pin counts as `site:<slug>:1` (receiptSatisfiesPin), so the switch to material versions asks nobody again.
+  return pendingPolicyNames(pins, rows?.results ?? []);
 }
 
 async function policyUpdateStatus(env: Env, uid: string): Promise<Response> {
-  const pending = await pendingPolicies(env, uid);
+  const pins = await getPolicyPins(env);
+  const pending = await pendingPolicies(env, uid, pins);
   const list = pending ?? [];
   return json({
     required: list.length > 0, note: HF_POLICY_CHANGE_NOTE,
-    pending: list.map((name) => ({ policy: name, path: HF_REGISTRATION_POLICIES[name].path, version: HF_REGISTRATION_POLICIES[name].version })),
+    pending: list.map((name) => ({ policy: name, path: pins[name].path, version: pins[name].version })),
   }, 200, { "cache-control": "private, no-store" });
 }
 
@@ -235,9 +239,10 @@ async function acceptPolicyUpdate(req: Request, env: Env, uid: string): Promise<
   if (lim) return lim;
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || typeof body !== "object" || Array.isArray(body)) return err(400, "invalid_body", "Please try again.");
-  const pending = await pendingPolicies(env, uid);
+  const pins = await getPolicyPins(env);
+  const pending = await pendingPolicies(env, uid, pins);
   if (!pending?.length) return json({ ok: true, required: false });
-  const accepted = currentPolicyAcceptances(body.acceptedPolicyVersions);
+  const accepted = currentPolicyAcceptances(body.acceptedPolicyVersions, pins);
   const stale = pending.filter((name) => !accepted[name]);
   if (stale.length) return json({ error: "policy_versions_required", message: "The agreements changed. Read and accept the current versions.", missing: stale }, 409);
   const now = Date.now();
