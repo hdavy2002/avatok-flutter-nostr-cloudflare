@@ -389,7 +389,7 @@ function Row({ api, item, reasons, avgWaitMs, open, onToggle, onDone }: {
 /* ───────────────────────── opened row ───────────────────────── */
 
 type Mode = 'view' | 'confirm' | 'reject' | 'override';
-const BLOCKS_APPROVE: AiStatus[] = ['queued', 'checking', 'failed'];
+const BLOCKS_APPROVE: AiStatus[] = ['queued', 'checking', 'missing', 'failed'];
 const VIDEO_BAD = ['nudity', 'sexual', 'minor'];
 
 function Detail({ api, item, reasons: listReasons, panelId, onDone }: {
