@@ -142,6 +142,37 @@ function inferType(name: string, type: string): string {
   return ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic", pdf: "application/pdf", txt: "text/plain" } as Record<string, string>)[ext] ?? t;
 }
 
+/**
+ * In-Reply-To / References id -> ticket. Matches the id we generated (stored on support_messages), and also the id the
+ * mail provider assigned when it accepted our send (email_outbox.provider_message_id): Cloudflare Email Service does not
+ * let us set Message-ID, so the customer's mail client quotes the provider's id, not ours. The outbox key
+ * (support-reply:<message row id> / support-ack:N / support-reminder:N) tells us which ticket that mail belonged to.
+ */
+export async function ticketForMessageId(env: Env, rawId: string): Promise<number | null> {
+  const bare = rawId.trim().replace(/^<|>$/g, "");
+  if (!bare) return null;
+  const variants = [bare, `<${bare}>`];
+  try {
+    const own = await env.DB_META.prepare("SELECT ticket_number FROM support_messages WHERE message_id_header IN (?1,?2) LIMIT 1")
+      .bind(variants[0], variants[1]).first<{ ticket_number: number }>();
+    if (own?.ticket_number) return own.ticket_number;
+  } catch { /* fall through to the provider-id lookup */ }
+  try {
+    const sent = await env.DB_META.prepare(
+      "SELECT outbox_key FROM email_outbox WHERE provider_message_id IN (?1,?2) AND outbox_key LIKE 'support-%' LIMIT 1",
+    ).bind(variants[0], variants[1]).first<{ outbox_key: string }>();
+    const key = sent?.outbox_key ?? "";
+    const reply = /^support-reply:(.+)$/.exec(key);
+    if (reply) {
+      const m = await env.DB_META.prepare("SELECT ticket_number FROM support_messages WHERE id=?1").bind(reply[1]).first<{ ticket_number: number }>();
+      return m?.ticket_number ?? null;
+    }
+    const num = /^support-(?:ack|reminder):(\d+)$/.exec(key);
+    if (num) return Number(num[1]);
+  } catch { /* outbox columns missing: no provider-id threading */ }
+  return null;
+}
+
 /** Process one stored email. Safe to run twice (Message-ID de-duplication + idempotent follow-up keys). */
 export async function processInbound(env: Env, job: InboundJob, now = Date.now()): Promise<InboundOutcome> {
   const r2Key = job.r2Key;
@@ -181,7 +212,7 @@ export async function processInbound(env: Env, job: InboundJob, now = Date.now()
     ...(mail.headers.get("delivered-to") ?? []), ...(mail.headers.get("x-original-to") ?? [])].map((x) => x.trim().toLowerCase()).filter(Boolean);
   const thread = await resolveThread(
     { recipients, subject: mail.subject, inReplyTo: mail.inReplyTo, references: mail.references },
-    async (id) => (await env.DB_META.prepare("SELECT ticket_number FROM support_messages WHERE message_id_header=?1").bind(id).first<{ ticket_number: number }>().catch(() => null))?.ticket_number ?? null,
+    (id) => ticketForMessageId(env, id),
   );
   let existing: TicketRow | null = null;
   let mismatch = false;

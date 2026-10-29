@@ -290,40 +290,87 @@ export async function recoverEmailOutbox(env: Env, limit = 50): Promise<number> 
       `SELECT outbox_key,payload_json,delivery_status,outbox_id,body_r2_key,lane FROM email_outbox
        WHERE delivery_status IN ('queued','failed') AND attempts<max_attempts
          AND next_attempt_at IS NOT NULL AND next_attempt_at<=?1
-       ORDER BY created_at LIMIT ?2`,
+       ORDER BY next_attempt_at, created_at LIMIT ?2`,
     ).bind(now, Math.max(1, Math.min(100, limit))).all<RecoverRow>();
     rows = (result.results ?? []) as RecoverRow[];
-  } catch {
+  } catch (error) {
+    console.error("[email-outbox-recovery] sweep query failed", String(error).slice(0, 300));
     return 0;
   }
   let queued = 0;
   for (const row of rows) {
-    try {
-      // Failed rows are terminal to ordinary producers. Recovery owns the
-      // explicit transition back to queued, guarded by the retry timestamp.
-      if (row.delivery_status === "failed") {
-        const reopened = await env.DB_META.prepare(
-          `UPDATE email_outbox SET state='pending',delivery_status='queued',lease_expires_at=NULL,
-             updated_at=?2 WHERE outbox_key=?1 AND delivery_status='failed'
-             AND next_attempt_at IS NOT NULL AND next_attempt_at<=?2 AND attempts<max_attempts`,
-        ).bind(row.outbox_key, now).run();
-        if ((reopened.meta?.changes ?? 0) === 0) continue;
-      }
-      const lane: EmailLane = row.lane === "priority" ? "priority" : "bulk";
-      if (row.body_r2_key && row.outbox_id) {
-        // Content already lives in R2: re-send the id only.
-        await sendJob(env, lane, row.outbox_id, row.outbox_key);
-        queued++;
-        continue;
-      }
-      // Legacy row with the full payload inline: upgrade it to R2-backed storage and queue the id.
-      const msg = JSON.parse(row.payload_json) as DurableEmailMessage;
-      if (typeof msg.html !== "string") continue;
-      const result = await enqueueEmail(env, { ...msg, outboxKey: row.outbox_key }, { lane });
-      if (result.queued) queued++;
-    } catch { /* leave row eligible for the next sweep */ }
+    if (await requeueOutboxRow(env, row, now)) queued++;
   }
   return queued;
+}
+
+/** After a recovery push the row sits out this long, so a backlog of rows whose jobs are merely slow cannot crowd newer rows out of every sweep's LIMIT window. */
+const RECOVERY_COOLDOWN_MS = 10 * 60_000;
+
+async function requeueOutboxRow(
+  env: Env,
+  row: { outbox_key: string; payload_json: string; delivery_status: string; outbox_id: string | null; body_r2_key: string | null; lane: string | null },
+  now: number,
+): Promise<boolean> {
+  try {
+    // Failed rows are terminal to ordinary producers. Recovery owns the
+    // explicit transition back to queued, guarded by the retry timestamp.
+    if (row.delivery_status === "failed") {
+      const reopened = await env.DB_META.prepare(
+        `UPDATE email_outbox SET state='pending',delivery_status='queued',lease_expires_at=NULL,
+           updated_at=?2 WHERE outbox_key=?1 AND delivery_status='failed'
+           AND next_attempt_at IS NOT NULL AND next_attempt_at<=?2 AND attempts<max_attempts`,
+      ).bind(row.outbox_key, now).run();
+      if ((reopened.meta?.changes ?? 0) === 0) return false;
+    }
+    const lane: EmailLane = row.lane === "priority" ? "priority" : "bulk";
+    let pushed = false;
+    if (row.body_r2_key && row.outbox_id) {
+      // Content already lives in R2: re-send the id only.
+      await sendJob(env, lane, row.outbox_id, row.outbox_key);
+      pushed = true;
+    } else {
+      // Legacy row with the full payload inline: upgrade it to R2-backed storage and queue the id.
+      const msg = JSON.parse(row.payload_json) as DurableEmailMessage;
+      if (typeof msg.html !== "string") return false;
+      pushed = (await enqueueEmail(env, { ...msg, outboxKey: row.outbox_key }, { lane })).queued;
+    }
+    if (pushed) {
+      try {
+        await env.DB_META.prepare(
+          "UPDATE email_outbox SET next_attempt_at=?2 WHERE outbox_key=?1 AND delivery_status='queued'",
+        ).bind(row.outbox_key, now + RECOVERY_COOLDOWN_MS).run();
+      } catch { /* cooldown is best effort */ }
+    }
+    return pushed;
+  } catch (error) {
+    console.error("[email-outbox-recovery] requeue failed", row.outbox_key, String(error).slice(0, 300));
+    return false; // leave row eligible for the next sweep
+  }
+}
+
+/**
+ * Re-send one specific failed row now (Admin → Queues "Retry"). Does not depend on the global
+ * sweep window. Resets the retry budget, reopens the row and pushes the queue job directly.
+ */
+export async function retryEmailOutboxRow(env: Env, outboxKey: string): Promise<{ requeued: boolean; reason?: string }> {
+  const now = Date.now();
+  try {
+    await env.DB_META.prepare(
+      `UPDATE email_outbox SET state='pending',delivery_status='failed',attempts=0,next_attempt_at=?2,lease_expires_at=NULL,
+         error_message=NULL,updated_at=?2 WHERE outbox_key=?1 AND delivery_status='failed'`,
+    ).bind(outboxKey, now).run();
+    const row = await env.DB_META.prepare(
+      "SELECT outbox_key,payload_json,delivery_status,outbox_id,body_r2_key,lane FROM email_outbox WHERE outbox_key=?1 LIMIT 1",
+    ).bind(outboxKey).first<{ outbox_key: string; payload_json: string; delivery_status: string; outbox_id: string | null; body_r2_key: string | null; lane: string | null }>();
+    if (!row) return { requeued: false, reason: "not_found" };
+    if (row.delivery_status !== "failed" && row.delivery_status !== "queued") return { requeued: false, reason: `status_${row.delivery_status}` };
+    const ok = await requeueOutboxRow(env, row, now);
+    return ok ? { requeued: true } : { requeued: false, reason: "enqueue_failed" };
+  } catch (error) {
+    console.error("[email-outbox-retry] failed", outboxKey, String(error).slice(0, 300));
+    return { requeued: false, reason: "error" };
+  }
 }
 
 export const EMAIL_OUTBOX_CONSTANTS = { MAX_ATTEMPTS, LEASE_MS } as const;

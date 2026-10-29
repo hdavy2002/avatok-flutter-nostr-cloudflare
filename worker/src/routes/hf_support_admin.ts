@@ -10,7 +10,7 @@ import { readConfig } from "./config";
 import { readWalletPaise } from "./hf_me";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { emailFor, primaryVerifiedEmailFor } from "../lib/identity";
-import { enqueueEmail, recoverEmailOutbox } from "../lib/email_outbox";
+import { enqueueEmail, retryEmailOutboxRow } from "../lib/email_outbox";
 import { recoverWhatsAppQueue } from "../lib/whatsapp_queue";
 import { safeQueueSend } from "../lib/queue_guard";
 import { postStaffReply } from "../lib/support_reply";
@@ -763,9 +763,8 @@ async function failedAction(env: Env, id: string, action: "retry" | "discard", s
     if (!row) return err(404, "not_found");
     if (action === "retry") {
       if (row.delivery_status === "bounced") return err(400, "bounced_cannot_retry", { message: "The address bounced. Remove it from suppressions first if it was a mistake." });
-      await env.DB_META.prepare("UPDATE email_outbox SET state='pending',delivery_status='failed',attempts=0,next_attempt_at=?2,lease_expires_at=NULL,error_message=NULL,updated_at=?2 WHERE outbox_key=?1 AND delivery_status='failed'").bind(ref, now).run();
-      const queued = await recoverEmailOutbox(env, 20);
-      return ok({ requeued: queued });
+      const r = await retryEmailOutboxRow(env, ref);
+      return ok({ requeued: r.requeued ? 1 : 0, ...(r.reason ? { reason: r.reason } : {}) });
     }
     await env.DB_META.prepare("UPDATE email_outbox SET next_attempt_at=NULL,error_message=?2,updated_at=?3 WHERE outbox_key=?1 AND delivery_status IN ('failed','bounced')").bind(ref, `discarded by ${staff.uid}`, now).run();
     return ok();
