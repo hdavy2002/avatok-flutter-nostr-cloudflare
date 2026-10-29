@@ -71,6 +71,9 @@ export interface Env {
   // Bind "contacts-chunk" (producer + self-consumer) once created to move the
   // chunk job off the request lifecycle for very large books at 1M-user scale.
   Q_CONTACTS?: Queue;
+  // [HF-MOD-2] AI safety check on uploads (Clef). Self-consumed by this worker; messages are {job_id}.
+  Q_MOD_PHOTO?: Queue;
+  Q_MOD_VIDEO?: Queue;
   // Durable derived-media work. Required when aiMediaJobsEnabled is flipped;
   // unlike short local bookkeeping this must never fall back to waitUntil.
   Q_AI_MEDIA: Queue<{ job_id: string; kind: string }>;

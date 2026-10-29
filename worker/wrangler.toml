@@ -263,6 +263,17 @@ queue = "auto-reply"           # NOTE: create once → `wrangler queues create a
 binding = "LIVENESS_QUEUE"
 queue = "liveness-verify"
 
+# [HF-MOD-2] AI safety check on uploads (Clef). SELF-consumed (see consumers below): two queues so a burst of
+# videos never slows photo checks. Messages are {job_id}; the file stays in R2. Create once:
+#   scripts/cf.sh worker queues create hf-mod-photo (+ hf-mod-video, hf-mod-photo-dlq, hf-mod-video-dlq)
+[[queues.producers]]
+binding = "Q_MOD_PHOTO"
+queue = "hf-mod-photo"
+
+[[queues.producers]]
+binding = "Q_MOD_VIDEO"
+queue = "hf-mod-video"
+
 # Contact-book chunking — SELF-consumed (see [[queues.consumers]] below), same
 # pattern as liveness-verify. On PUT, contacts_backup.ts enqueues {uid} here to
 # rebuild the encrypted R2 page-chunks + D1 manifest off the request lifecycle;
@@ -300,6 +311,26 @@ max_retries = 3
 queue = "liveness-verify"
 max_batch_size = 5
 max_retries = 2
+
+# [HF-MOD-2] Clef checks. Workers AI allows ~300 requests/min per model; these caps keep well under it. The handler
+# retries with 30 s -> 8 min delays and marks the job failed on the 5th try (a failed photo is never shown).
+[[queues.consumers]]
+queue = "hf-mod-photo"
+max_batch_size = 10
+max_batch_timeout = 2
+max_retries = 5
+max_concurrency = 10
+retry_delay = 30
+dead_letter_queue = "hf-mod-photo-dlq"
+
+[[queues.consumers]]
+queue = "hf-mod-video"
+max_batch_size = 2
+max_batch_timeout = 2
+max_retries = 5
+max_concurrency = 5
+retry_delay = 30
+dead_letter_queue = "hf-mod-video-dlq"
 
 # Self-consumed contacts-chunk queue (see producer above). Handled by index.ts
 # queue() → cbook.contactsChunkConsume → buildContactChunks. No DLQ: a failed

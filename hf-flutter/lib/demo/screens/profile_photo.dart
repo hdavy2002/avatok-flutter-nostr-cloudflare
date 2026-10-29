@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image/image.dart' as im;
 
 import '../../data/merch_art_picker.dart';
 import '../../data/repos/channel_repo.dart';
@@ -146,11 +147,14 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
     _paintCrop(canvas, _frame, img, _zoom, _offset);
     final pic = rec.endRecording();
     final out = await pic.toImage(_outW, _outH);
-    final data = await out.toByteData(format: ui.ImageByteFormat.png);
+    final data = await out.toByteData(format: ui.ImageByteFormat.rawRgba);
     out.dispose();
     pic.dispose();
-    if (data == null) throw StateError('png');
-    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    if (data == null) throw StateError('rgba');
+    // [HF-MOD-2] JPEG, not PNG: a 1200 x 1500 photo is ~300-600 KB instead of several MB, well under the 4 MB the
+    // AI photo check accepts, and quicker on mobile data. Encoded off the UI thread.
+    final rgba = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    return compute(_encodeJpeg, (rgba, _outW, _outH));
   }
 
   Future<void> _save() async {
@@ -166,10 +170,10 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
     });
     try {
       final bytes = await _render(img);
-      final url = await _repo.uploadProfilePhoto(bytes, contentType: 'image/png');
-      channelEvent('profile_photo_saved', {'bytes': bytes.length, 'zoom': double.parse(_zoom.toStringAsFixed(2)), 'has_url': url != null});
+      final up = await _repo.uploadProfilePhoto(bytes, contentType: 'image/jpeg');
+      channelEvent('profile_photo_saved', {'bytes': bytes.length, 'zoom': double.parse(_zoom.toStringAsFixed(2)), 'has_url': up.url != null, 'checking': up.checking});
       if (!mounted) return;
-      toast(context, 'Photo saved. It shows on your page now.');
+      toast(context, up.checking ? 'Checking your new photo… It shows on your page in a few seconds if it passes.' : 'Photo saved. It shows on your page now.');
       context.canPop() ? context.pop() : context.go('/inf/home');
     } catch (e) {
       if (mounted) {
@@ -307,4 +311,10 @@ class ProfilePhotoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [HF-MOD-2] RGBA -> JPEG (quality 85). Top level so [compute] can run it in an isolate.
+Uint8List _encodeJpeg((Uint8List, int, int) a) {
+  final img = im.Image.fromBytes(width: a.$2, height: a.$3, bytes: a.$1.buffer, bytesOffset: a.$1.offsetInBytes, numChannels: 4, order: im.ChannelOrder.rgba);
+  return Uint8List.fromList(im.encodeJpg(img, quality: 85));
 }

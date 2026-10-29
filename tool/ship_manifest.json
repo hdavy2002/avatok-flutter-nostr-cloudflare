@@ -12611,5 +12611,22 @@
         "note": "Server telemetry: every accepted intro upload says whether its length came from the file (expected 'file' for app MP4s) or the phone."
       }
     ]
+  },
+  "HF-MOD-2": {
+    "description": "Clef-flash photo check through Cloudflare Queues for every user's profile / cover / influencer photo: stored privately, checked, passed -> public, refused -> deleted with a reason. Dark behind hfPhotoModerationEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotoModerationEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_photo_check",
+        "property": "verdict",
+        "exists": true,
+        "min_events": 1,
+        "note": "Server telemetry per checked photo: verdict passed / refused / failed, ms_in_queue, ms_model. Success = mostly 'passed' with few 'failed'."
+      }
+    ]
   }
 }

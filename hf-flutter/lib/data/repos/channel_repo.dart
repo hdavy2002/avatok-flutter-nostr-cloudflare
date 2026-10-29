@@ -177,11 +177,12 @@ class ChannelRepo {
     return BagGroupStatus.fromJson(j);
   }
 
-  /// Sends the cropped picture (4:5, about 1200 x 1500). Returns the new public picture address, or null when the answer has none.
-  Future<String?> uploadProfilePhoto(Uint8List bytes, {String contentType = 'image/png'}) async {
+  /// Sends the cropped picture (4:5, about 1200 x 1500). [HF-MOD-2] With the AI photo check on, the server answers
+  /// 202 + status 'checking': the CURRENT picture stays until Clef-flash passes the new one (a few seconds).
+  Future<ProfilePhotoUpload> uploadProfilePhoto(Uint8List bytes, {String contentType = 'image/jpeg'}) async {
     final j = await _api.putBytes('/api/hosts/me/photo', bytes, contentType: contentType);
     final u = j['avatarUrl'];
-    return u is String && u.isNotEmpty ? u : null;
+    return ProfilePhotoUpload(url: u is String && u.isNotEmpty ? u : null, checking: j['status'] == 'checking');
   }
 
   /// A friendly sentence for a photo upload that was refused.
@@ -191,7 +192,7 @@ class ChannelRepo {
         case 'bad_type':
           return 'That picture type is not allowed. Please choose a normal photo.';
         case 'too_big':
-          return 'That picture is too large. Please choose a smaller one.';
+          return 'That picture is too large (over 4 MB). Please choose a smaller one.';
         case 'too_small':
           return 'That picture is too small. Please choose a bigger one.';
         case 'not_host':
@@ -201,4 +202,15 @@ class ChannelRepo {
     }
     return ApiException.genericText;
   }
+}
+
+/// [HF-MOD-2] What the server said about a new profile photo.
+class ProfilePhotoUpload {
+  const ProfilePhotoUpload({required this.url, required this.checking});
+
+  /// The picture showing on the page now (the old one while [checking]).
+  final String? url;
+
+  /// The new picture is being checked by the AI and goes live only if it passes.
+  final bool checking;
 }

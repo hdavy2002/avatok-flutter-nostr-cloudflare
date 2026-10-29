@@ -23,6 +23,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2     # Clerk client token
   shared_preferences: ^2.3.0         # caches, 18+ ack, pending call id
   cached_network_image: ^3.4.0       # avatars and gallery
+  image: ^4.2.0                      # [HF-MOD-2] JPEG-encode the cropped profile photo (stays under the 4 MB AI check limit)
   posthog_flutter: ^5.30.0           # analytics (EU project 139917)
   firebase_core: ^4.1.1              # push (HF-NATIVE-7)
   firebase_messaging: ^16.0.2        # push (HF-NATIVE-7)

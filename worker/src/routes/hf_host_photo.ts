@@ -10,6 +10,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { getHost, mediaUrl } from "../lib/hf_host_store";
 import { HOST_PHOTO_MAX_BYTES, validateHostPhoto } from "../lib/hf_host_photo";
+import { photoModerationOn, acceptCheckedPhoto } from "./hf_user_photos";
 
 const APP = BRAND.slug;
 const ROUTE = "/api/hosts/me/photo";
@@ -32,6 +33,12 @@ export async function putHostPhoto(req: Request, env: Env, ctx?: ExecutionContex
   };
   const host = await getHost(env, uid);
   if (!host) return err(404, "not_host", { message: "Create your host profile first." });
+  // [HF-MOD-2] With the AI check on, the new photo is stored privately and Clef-flash checks it first (hf-mod-photo
+  // queue); the current photo stays until it passes. 202 + the current avatarUrl so older app builds keep showing it.
+  if (await photoModerationOn(env)) {
+    const cur = await env.DB_META.prepare("SELECT r2_key FROM hf_host_media WHERE uid=?1 AND kind='profile' AND status='active' ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ r2_key: string }>();
+    return acceptCheckedPhoto(req, env, ctx, uid, "host", { avatarUrl: cur ? mediaUrl(env, cur.r2_key) : null, imageProvenance: "uploaded" });
+  }
   const limited = await rateLimit(env, `hf_photo:${uid}`, 20, 3600);
   if (limited) return limited;
   const mime = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();

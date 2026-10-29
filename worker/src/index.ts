@@ -375,7 +375,10 @@ import {
   aiMediaJobsCreate, aiMediaJobsGet, aiMediaJobsCancel, aiMediaJobsList,
   aiMediaJobSongShare, aiMediaSongSharePage, aiMediaSongShareAsset, aiMediaJobVideoShare, aiMediaVideoSharePage, aiMediaVideoShareAsset,
 } from "./routes/ai_media_jobs"; // [AVA-MEDIA-JOB-1] durable AI media job state machine
-import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media"; // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
+import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media";
+import { hfUserPhotosRoute } from "./routes/hf_user_photos"; // [HF-MOD-2]
+import { handleModerationQueue } from "./lib/hf_user_photos"; // [HF-MOD-2] importing it registers the photo outcomes
+import { sweepModerationJobs } from "./lib/hf_moderation"; // [HF-MOD-2] // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { avaGroupModeGet, avaGroupModePost, avaGroupPolicyGet, avaGroupDraftApprove, avaGroupDraftReject, avaGroupDraftsGet } from "./routes/ava_group"; // [AVABRAIN-COMPANION-2]/[AVABRAIN-COMPANION-UI-1] group Companion mode + effective policy + draft approval + pending-draft list
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
@@ -483,6 +486,8 @@ export default {
     await hydrateKvSecrets(env); // [HF-MERCH-PT-LOGIN-1] queue consumers may reach Printrove (orders / catalogue)
     // [SUPPORT-QUEUE-1] whatsapp-priority / whatsapp-normal (+ -dlq): id-only jobs, paced sends.
     if (batch.queue.startsWith("whatsapp-")) { await handleWhatsAppQueue(batch, env); return; }
+    // [HF-MOD-2] hf-mod-photo / hf-mod-video: Clef safety checks, {job_id} messages, own retry delays.
+    if (batch.queue.startsWith("hf-mod-")) { await handleModerationQueue(batch, env); return; }
     for (const msg of batch.messages) {
       try {
         if (batch.queue.startsWith("money-dlq")) {
@@ -537,6 +542,7 @@ export default {
     ctx.waitUntil(
       Promise.all([
         gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
+        sweepModerationJobs(env).catch((e) => console.error("[hf-mod-sweep]", String(e))), // [HF-MOD-2] re-send stuck queued jobs, fail stuck checking
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfMoneyMonitor(env).then((r) => { if (r.fixed || r.flagged) console.log("[hf-money-monitor]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-money-monitor] failed:", String(e)); }), // [HF-WIRE-13]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
@@ -1201,6 +1207,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
+      if (p === "/api/hf/me/photo" || p === "/api/hf/me/cover" || p === "/api/hf/me/photos" || p.startsWith("/api/admin/hf/moderation/")) { const r = await hfUserPhotosRoute(req, env, p, ctx); if (r) return r; } // [HF-MOD-2]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
       if (p.startsWith("/api/hf/channels/facebook/")) { const r = await hfFacebookRoute(req, env, p, ctx); if (r) return r; } // [HF-FB-LOGIN-1] callback has no bearer
       if (p.startsWith("/api/hf/channels/instagram/")) { const r = await hfInstagramRoute(req, env, p, ctx); if (r) return r; } // [HF-IG-LOGIN-1] callback has no bearer: before anything that needs one
