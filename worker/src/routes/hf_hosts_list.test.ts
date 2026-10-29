@@ -27,6 +27,7 @@ let prepares = 0;
 function makeEnv() {
   const db = new DatabaseSync(":memory:");
   for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql", "2026-10-12-hf-creator-price-alters.sql", "2026-10-19-hf-channels.sql", "hf_creator_spaces.sql", "hf_creator_badges.sql"]) db.exec(mig(f)); // [HF-CREATOR-BADGES-1] channelVerified + callerLevel
+  db.exec("ALTER TABLE hf_hosts ADD COLUMN intro_approved_at INTEGER DEFAULT 1"); // [HF-INFLUENCER-GATE-1] G5: public lists need an approved intro
   db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER, age_ok INTEGER);
     CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT, r2_key TEXT, mime TEXT, code TEXT);
     CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT);
@@ -362,13 +363,13 @@ describe("public identity evidence [HF-SEC-PROFILE-1] [HF-IDV-WHATSAPP-1]", () =
   const detail = () => hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/ana-aaaa"), E.env);
   const verify = () => E.db.exec(`INSERT INTO contact_verification (uid, phone_verified, phone_hash) VALUES ('u1',1,'ph-secret');
     INSERT INTO phone_otp (uid, phone_hash, status) VALUES ('u1','ph-secret','verified');`);
-  it("PROFILE-01/04: channel-only approved detail remains flag-gated and excluded from list", async () => {
+  it("PROFILE-01/04: [HF-INFLUENCER-GATE-1] an 'approved' (retired) host, or a live one without an approved intro, is never public", async () => {
     E.db.exec("UPDATE hf_hosts SET status='approved' WHERE uid='u1'");
     expect((await detail())!.status).toBe(404);
     cfg.hfReelsEnabled = true;
-    const response = (await detail())!;
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ identityVerified: false, callEligible: false, status: "online" });
+    expect((await detail())!.status).toBe(404);
+    E.db.exec("UPDATE hf_hosts SET status='live', intro_approved_at=NULL WHERE uid='u1'");
+    expect((await detail())!.status).toBe(404);
     const list = await (await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public"), E.env))!.json();
     expect(list.some((h: any) => h.slug === "ana-aaaa")).toBe(false);
   });

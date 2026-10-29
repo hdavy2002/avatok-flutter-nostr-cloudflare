@@ -13,6 +13,7 @@ import type { PublicCallState } from "./hf_call_contracts";
 import { readConfig } from "../routes/config";
 import { lineFieldsForUids } from "./hf_host_line_view";
 import { INTRO_VIDEO_ID_RE } from "./hf_intro_video";
+import { isInfluencer } from "./hf_influencer"; // [HF-INFLUENCER-GATE-1]
 
 export const introReelsOn = (cfg: Record<string, unknown>): boolean => cfg.hfIntroReelsEnabled === true;
 export const isIntroReelId = (id: string): boolean => INTRO_VIDEO_ID_RE.test(id);
@@ -44,7 +45,7 @@ export async function introReelItems(env: Env, q: IntroReelQuery = {}): Promise<
   const cur = q.cursor ? q.cursor.match(/^(\d{1,15})_(hfin_[a-f0-9]{20})$/) : null;
   const binds: unknown[] = [];
   const bind = (v: unknown) => { binds.push(v); return `?${binds.length}`; };
-  let where = `v.status='approved' AND h.intro_approved_at IS NOT NULL AND h.status IN ('approved','live') AND h.slug IS NOT NULL AND h.call_option IN ('A','B')`;
+  let where = `v.status='approved' AND h.intro_approved_at IS NOT NULL AND h.status='live' AND h.slug IS NOT NULL AND h.call_option IN ('A','B')`;
   if (!q.ignoreVisibility) where += ` AND ${VISIBLE_SQL}`;
   if (q.hostUid) where += ` AND h.uid=${bind(q.hostUid)}`;
   if (q.ids) where += ` AND v.id IN (${q.ids.map((i) => bind(i)).join(",") || "''"})`;
@@ -118,7 +119,7 @@ export async function introSelfState(env: Env, uid: string, hostStatus: string |
     const h = await env.DB_META.prepare("SELECT call_option, intro_approved_at FROM hf_hosts WHERE uid=?1").bind(uid).first<{ call_option: string | null; intro_approved_at: number | null }>();
     const app = await env.DB_META.prepare("SELECT status, reject_reasons_json, reject_note FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1")
       .bind(uid).first<{ status: string; reject_reasons_json: string | null; reject_note: string | null }>();
-    const live = hostStatus === "approved" || hostStatus === "live";
+    const live = isInfluencer(hostStatus); // [HF-INFLUENCER-GATE-1]
     const approved = !!h?.intro_approved_at;
     return {
       needsIntroVideo: live && !approved && app?.status !== "submitted",

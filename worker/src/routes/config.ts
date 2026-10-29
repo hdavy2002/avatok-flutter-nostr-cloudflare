@@ -3049,7 +3049,7 @@ const DEFAULTS: PlatformConfig = {
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
   hfIntroOnboardingEnabled: false, // [HF-INTRO-W1] dark until the owner reads the summary and migrations 2026-10-28-hf-intro-video-*.sql are applied
   hfIntroReelsEnabled: false, // [HF-INTRO-W1] dark; turn on only after the first intro videos are approved
-  hfPhotosRequiredEnabled: false, // [HF-PHOTO-GATE-API] dark until the app + site show the add-photos prompt
+  hfPhotosRequiredEnabled: true, // [HF-INFLUENCER-GATE-1] G4: on by default (kill switch = set false)
   hfPhotoModerationEnabled: false, // [HF-MOD-2] off until migration 2026-10-29-hf-moderation.sql is applied and the hf-mod-* queues exist
   hfIntroModerationEnabled: false, // [HF-MOD-2] Phase 3 (intro video check) not wired yet
   hfReelEngageEnabled: false, // [HF-REEL-ENGAGE-API-1] stays off until migration 2026-10-24-hf-reel-engage.sql is applied

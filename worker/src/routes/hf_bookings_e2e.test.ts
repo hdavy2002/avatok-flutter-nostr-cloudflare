@@ -93,7 +93,7 @@ function seed(approval = false) {
   }
 }
 const flags = (over = {}) => vi.mocked(config.readConfig).mockResolvedValue({
-  hfBookingsEnabled: true, hfCallsEnabled: true, hfTokensEnabled: true, hfBookingApprovalEnabled: false, ...over,
+  hfPhotosRequiredEnabled: false, hfBookingsEnabled: true, hfCallsEnabled: true, hfTokensEnabled: true, hfBookingApprovalEnabled: false, ...over,
 } as never);
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); env = makeEnv(); flags(); });

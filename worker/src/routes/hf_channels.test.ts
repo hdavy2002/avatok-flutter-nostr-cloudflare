@@ -140,7 +140,7 @@ describe("hf channels: connecting", () => {
     expect((await (await add("instagram", "ghost")).json()).error).toBe("channel_not_found");
   });
 
-  it("creates a pending channel with a one-time code and a pending_check host", async () => {
+  it("creates a pending channel with a one-time code and NO host row [HF-INFLUENCER-GATE-1]", async () => {
     const r = await add("youtube", "https://www.youtube.com/@maya");
     expect(r.status).toBe(200);
     const b = await r.json();
@@ -149,7 +149,7 @@ describe("hf channels: connecting", () => {
     expect(b.channel.state).toBe("checking");
     expect(b.channel.needsCode).toBe(true);
     expect(b.minFollowers).toBe(10);
-    expect(hostStatus()).toBe("pending_check");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
     const row = db.prepare("SELECT * FROM hf_channels").get();
     expect(row.consent_version).toBe("ch-1");
     expect(row.consent_at).toBeGreaterThan(0);
@@ -183,7 +183,7 @@ describe("hf channels: checking ownership and followers", () => {
     expect(b.result).toBe("code_missing");
     expect(b.channel.state).toBe("checking");
     expect(b.qualified).toBe(false);
-    expect(hostStatus()).toBe("pending_check");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
     expect(db.prepare("SELECT verified_at FROM hf_channels").get().verified_at).toBeNull();
     const again = await call("POST", `/api/hf/channels/${channel.id}/check`);
     expect((await again.json()).result).toBe("code_missing");
@@ -197,7 +197,7 @@ describe("hf channels: checking ownership and followers", () => {
     expect(b.channel.state).toBe("needs_followers");
     expect(b.channel.verified).toBe(true);
     expect(b.qualified).toBe(false);
-    expect(hostStatus()).toBe("pending_check");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
   });
 
   it("YouTube: code present and 10 subscribers -> approved and the host is approved", async () => {
@@ -208,10 +208,8 @@ describe("hf channels: checking ownership and followers", () => {
     expect(b.channel.state).toBe("approved");
     expect(b.channel.verifyCode).toBeUndefined();
     expect(b.qualified).toBe(true);
-    expect(b.hostStatus).toBe("approved");
-    expect(hostStatus()).toBe("approved");
-    // [HF-WIRE-18] HF-REEL-37: a new influencer starts at Rs 5/min, not the table default of 20
-    expect(db.prepare("SELECT price_per_min AS p FROM hf_hosts WHERE uid='u1'").get().p).toBe(5);
+    expect(b.hostStatus).toBeNull();
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] approved channel != influencer
     const list = await (await call("GET")).json();
     expect(list.qualified).toBe(true);
     expect(list.channels[0].followers).toBe(10);
@@ -237,7 +235,7 @@ describe("hf channels: checking ownership and followers", () => {
     ig = { status: 200, body: igBody("1783", 42, `Reels | ${verifyCode}`) };
     const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
     expect(b.result).toBe("approved");
-    expect(hostStatus()).toBe("approved");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] approved channel != influencer
     expect(JSON.stringify(b)).not.toContain("trg_live_secret");
   });
 
@@ -286,7 +284,7 @@ describe("hf channels: one channel, one person; own data only", () => {
     const r = await call("POST", `/api/hf/channels/${c2.channel.id}/check`, undefined, "u2");
     expect(r.status).toBe(409);
     expect((await r.json()).error).toBe("channel_claimed");
-    expect(hostStatus("u2")).toBe("pending_check");
+    expect(hostStatus("u2")).toBeNull();
   });
 
   it("the same person cannot connect a verified channel twice", async () => {
@@ -309,12 +307,12 @@ describe("hf channels: one channel, one person; own data only", () => {
     expect(JSON.stringify(mine)).not.toContain("host_uid");
   });
 
-  it("removing the only approved channel disconnects it, drops the host to pending_check and frees the channel", async () => {
+  it("removing the only approved channel disconnects it and frees the channel (no host row either way)", async () => {
     const id = await approve("u1");
-    expect(hostStatus()).toBe("approved");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] approved channel != influencer
     const r = await call("DELETE", `/api/hf/channels/${id}`);
     expect((await r.json()).channel.state).toBe("disconnected");
-    expect(hostStatus()).toBe("pending_check");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
     expect((await call("DELETE", `/api/hf/channels/${id}`)).status).toBe(200); // idempotent
     expect((await call("POST", `/api/hf/channels/${id}/check`)).status).toBe(409);
     // now someone else may connect it
@@ -330,7 +328,8 @@ describe("hf channels: one channel, one person; own data only", () => {
 
   // [HF-WIRE-10] approval must leave a slug or the feed and profile skip the influencer.
   const slugOf = (uid: string) => db.prepare("SELECT slug FROM hf_hosts WHERE uid=?").get(uid)?.slug ?? null;
-  it("approval assigns a unique slug from the channel handle and keeps it on re-check", async () => {
+  it("an existing influencer without a slug gets one from the channel handle on approval and keeps it on re-check", async () => {
+    db.prepare("INSERT INTO hf_hosts (uid,status,created_at,updated_at) VALUES ('u1','live',1,1)").run();
     await approve("u1");
     const s1 = slugOf("u1");
     expect(s1).toMatch(/^[a-z0-9]{1,16}-[a-z0-9]{4}$/);
@@ -355,13 +354,13 @@ describe("hf channels: resync and the daily re-check", () => {
     const { channel, verifyCode } = await (await add()).json();
     yt = { status: 200, items: [ytChannel("UC1234567890123456789012", 50, verifyCode)] };
     await call("POST", `/api/hf/channels/${channel.id}/check`);
-    expect(hostStatus()).toBe("approved");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] approved channel != influencer
     yt = { status: 200, items: [ytChannel("UC1234567890123456789012", 4, "code removed from bio")] };
     const b = await (await call("POST", `/api/hf/channels/${channel.id}/resync`)).json();
     expect(b.result).toBe("needs_followers");
     expect(b.channel.followers).toBe(4);
     expect(b.qualified).toBe(false);
-    expect(hostStatus()).toBe("pending_check");
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
   });
 
   it("recheckAllChannels only touches stale verified channels, demotes a host with none left, and is a no-op when the flag is off", async () => {
@@ -376,8 +375,8 @@ describe("hf channels: resync and the daily re-check", () => {
     expect((await recheckAllChannels(env)).scanned).toBe(0);
     cfg = { hfChannelsEnabled: true, hfInfluencerMinFollowers: 10, hfInfluencerMinViews: 0 };
     const out = await recheckAllChannels(env);
-    expect(out).toEqual({ scanned: 1, updated: 1, failed: 0, demoted: 1 });
-    expect(hostStatus()).toBe("pending_check");
+    expect(out).toEqual({ scanned: 1, updated: 1, failed: 0, demoted: 0 });
+    expect(hostStatus()).toBeNull(); // [HF-INFLUENCER-GATE-1] a channel never creates or promotes a host
     expect(db.prepare("SELECT status, followers FROM hf_channels").get()).toEqual({ status: "rejected", followers: 2 });
   });
 });
@@ -410,7 +409,7 @@ describe("hf channels: views threshold [HF-CREATOR-SPACES-1]", () => {
     const { channel, verifyCode } = await (await add()).json();
     yt = { status: 200, items: [ytChannel(UC, 500, verifyCode, { viewCount: "999" })] };
     const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
-    expect(b).toMatchObject({ ok: true, result: "needs_views", minFollowers: 20, minViews: 1000, qualified: false, hostStatus: "pending_check" });
+    expect(b).toMatchObject({ ok: true, result: "needs_views", minFollowers: 20, minViews: 1000, qualified: false, hostStatus: null });
     expect(b.message).toBe("We need at least 1,000 total views on your YouTube channel.");
     expect(b.channel).toMatchObject({ views: 999, followers: 500, state: "needs_followers" });
     expect(db.prepare("SELECT views FROM hf_channels").get().views).toBe(999);
@@ -420,7 +419,7 @@ describe("hf channels: views threshold [HF-CREATOR-SPACES-1]", () => {
     const { channel, verifyCode } = await (await add()).json();
     yt = { status: 200, items: [ytChannel(UC, 20, verifyCode, { viewCount: "1000" })] };
     const ok = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
-    expect(ok).toMatchObject({ result: "approved", qualified: true, hostStatus: "approved" });
+    expect(ok).toMatchObject({ result: "approved", qualified: true, hostStatus: null });
     expect(ok.channel.views).toBe(1000);
     yt = { status: 200, items: [ytChannel(UC, 19, "", { viewCount: "5000" })] };
     const low = await (await call("POST", `/api/hf/channels/${channel.id}/resync`)).json();
@@ -444,16 +443,16 @@ describe("hf channels: views threshold [HF-CREATOR-SPACES-1]", () => {
 
   it("a Women-only / LGBTQ+ space creator is never approved or demoted by channel sync", async () => {
     const { channel, verifyCode } = await (await add()).json();
-    db.prepare("UPDATE hf_hosts SET creator_kind='women' WHERE uid='u1'").run();
+    db.prepare("INSERT INTO hf_hosts (uid,status,creator_kind,created_at,updated_at) VALUES ('u1','draft','women',1,1)").run();
     yt = { status: 200, items: [ytChannel(UC, 500, verifyCode, { viewCount: "5000" })] };
     const b = await (await call("POST", `/api/hf/channels/${channel.id}/check`)).json();
     expect(b.result).toBe("approved");
-    expect(hostStatus()).toBe("pending_check"); // not approved by channel logic
+    expect(hostStatus()).toBe("draft"); // not promoted by channel logic
     db.prepare("UPDATE hf_hosts SET status='live' WHERE uid='u1'").run();
     await call("DELETE", `/api/hf/channels/${channel.id}`);
     expect(hostStatus()).toBe("live");
-    db.prepare("UPDATE hf_hosts SET status='approved' WHERE uid='u1'").run();
+    db.prepare("UPDATE hf_hosts SET status='paused' WHERE uid='u1'").run();
     await call("DELETE", `/api/hf/channels/${channel.id}`);
-    expect(hostStatus()).toBe("approved"); // no channel, still not demoted
+    expect(hostStatus()).toBe("paused"); // no channel, still not changed
   });
 });

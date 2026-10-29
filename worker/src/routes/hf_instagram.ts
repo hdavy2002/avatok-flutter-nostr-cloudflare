@@ -26,7 +26,7 @@ import {
   IG_PROVIDER_REF, IG_SCOPES, IG_STATE_TTL_S, appScheme, channelsForIgUser, exchangeCode, fetchProfile, igAppIdOf, igRedirectUri, isProfessional,
   parseSignedRequest, saveToken, signState, verifyState, webReturnOf, webReturnPath, wipeInstagramChannel, type IgProfile, type WebReturn,
 } from "../lib/hf_instagram";
-import { COLS, MAX_CHANNELS, ensureHostRow, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
+import { COLS, MAX_CHANNELS, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -208,8 +208,7 @@ export async function hfInstagramRoute(req: Request, env: Env, p: string, ctx?: 
       return fail("provider_error");
     }
 
-    await ensureHostRow(env, uid, now);
-    const st = await syncHostState(env, uid);
+    const st = await syncHostState(env, uid); // [HF-INFLUENCER-GATE-1] saves nothing on hf_hosts; a login never makes anyone an influencer
     if (th.status === "approved" && cfg.hfReelsEnabled === true) {
       const job = importChannelReels(env, row, importCountOf(cfg as unknown as Record<string, unknown>)).catch(async (e) => {
         if (!(e instanceof ProviderError)) await trackException(env, e, { route: "hf_reels_import", method: "JOB", handled: true, app_name: APP, extra: { area: "hf_reels", platform: "instagram" } }).catch(() => {});

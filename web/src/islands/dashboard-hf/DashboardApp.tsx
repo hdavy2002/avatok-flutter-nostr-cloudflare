@@ -5,7 +5,7 @@
  * Identity: GET /api/hf/me once, shared by every screen; reloaded on site:active-session-changed. */
 import { Component, useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import SessionBridge from '../calls/SessionBridge';
-import type { DashboardAccount } from '../../components/account/DashboardNav';
+import { isInfluencer, type DashboardAccount } from '../../components/account/DashboardNav';
 import { DashboardEmbed } from '../../components/account/dashboardEmbed';
 import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
@@ -115,7 +115,7 @@ function Shell({ initial }: { initial: DashSection }) {
   }, []);
 
   const route = DASH_ROUTES.find(r => r.section === section)!;
-  const role = account?.host?.status === 'live' ? 'host' : 'customer';
+  const role = isInfluencer(account) && account?.host?.status === 'live' ? 'host' : 'customer';
   useEffect(() => {
     document.title = `${route.title} | ${BRAND.name}`;
     if (phase === 'ready') capture('hf_dash_view', { section, role });
@@ -140,13 +140,16 @@ function Shell({ initial }: { initial: DashSection }) {
   if (phase === 'signedout') return <main className="hfc-page"><h1>Dashboard</h1><p>Please sign in to see your dashboard.</p><a className="hfc-btn hfc-primary" href={signInUrl(location.pathname + location.search)}>Sign in</a></main>;
   if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
 
-  const hostReady = account.host?.status === 'live' && !account.closing;
-  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn) || (route.needsMerch && !merchOn) || (route.needsPhotos && !photoOn);
+  const hostReady = isInfluencer(account) && account.host?.status === 'live' && !account.closing;
+  // [HF-INFLUENCER-GATE-1] Influencer pages are for approved influencers only; everyone else goes back to the Overview.
+  const hostArea = route.group === 'host' && route.section !== 'verifications' && route.section !== 'safety';
+  const effSection: DashSection = hostArea && !isInfluencer(account) ? 'overview' : section; // non-influencers see the Overview instead
+  const blocked = effSection === section && ((route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn) || (route.needsMerch && !merchOn) || (route.needsPhotos && !photoOn));
   const key = `${section}:${nav}:${account.uid}`;
   let body;
   if (blocked) {
     body = <div className="hfd-section"><header className="hfd-section-head"><h1>{route.title}</h1></header><section className="hfc-card"><p>{route.hostOnly && !hostReady ? 'This opens once your influencer profile is live.' : 'This opens soon. We’ll let you know on WhatsApp.'}</p><div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/dashboard">Back to overview</a></div></section></div>;
-  } else switch (section) {
+  } else switch (effSection) {
     // [HF-DASH-V3-1] Customer screens are the new dashboard; influencer screens keep their existing components inside the new shell.
     case 'overview': body = <OverviewV3 key={key} account={account} bookingOn={bookingOn} />; break;
     case 'profile': body = <ProfileV3 key={key} account={account} />; break;

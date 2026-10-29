@@ -95,9 +95,9 @@ beforeEach(() => {
 });
 
 
-// Influencer from Channels: status 'approved', no bank, no KYC, maybe a UPI.
+// Influencer approved by the team: status 'live', no bank, no KYC, maybe a UPI.
 function seedInfluencer(opts: { kyc?: boolean; upi?: boolean; status?: string } = {}) {
-  h.db.exec(`INSERT INTO hf_hosts VALUES ('host1','${opts.status ?? "approved"}','Asha','asha-abcd');`);
+  h.db.exec(`INSERT INTO hf_hosts VALUES ('host1','${opts.status ?? "live"}','Asha','asha-abcd');`);
   if (opts.kyc) h.db.exec("INSERT INTO hf_kyc VALUES ('host1', 1)");
   if (opts.upi) h.db.exec("INSERT INTO hf_payout (uid, upi_enc) VALUES ('host1','enc:asha@okhdfc')");
 }
@@ -169,7 +169,7 @@ describe("GET /api/hf/payouts/summary", () => {
     expect(f).toMatchObject({ status: 200, readyPaise: 0, minPaise: 0, isInfluencer: false });
     seedInfluencer({ upi: true, kyc: true }); wallet.balance = 1000; call("old", 20, 1000);
     await post(50000);
-    currentUid = "other"; h.db.exec("INSERT INTO hf_hosts VALUES ('other','approved','Ben','ben-abcd')");
+    currentUid = "other"; h.db.exec("INSERT INTO hf_hosts VALUES ('other','live','Ben','ben-abcd')");
     expect((await jsonOf(await hit("GET", "/api/hf/payouts/summary"))).history).toEqual([]);
     cfgOn = false;
     expect((await jsonOf(await hit("GET", "/api/hf/payouts/summary"))).status).toBe(404);

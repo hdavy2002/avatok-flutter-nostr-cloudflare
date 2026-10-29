@@ -48,6 +48,19 @@ import 'theme.dart';
 
 final rootKey = GlobalKey<NavigatorState>();
 
+/// [HF-INFLUENCER-GATE-1] The influencer dashboard (`/inf/home`, `/inf/bookings`, `/inf/status`, `/inf/availability`) is only for a real
+/// influencer (the server's `isHost`: live or paused). Anyone else goes to the influencer onboarding. The onboarding helper pages
+/// (`/inf/channels`, `/inf/verifications`, `/inf/photo`) stay open. While `/me` is not loaded yet the person is let through (fail open).
+String? _influencerGateRedirect(String path) {
+  if (DemoMode.on) return null;
+  const guarded = <String>{'/inf/home', '/inf/bookings', '/inf/status', '/inf/availability'};
+  if (!guarded.contains(path)) return null;
+  final s = Services.instance;
+  if (!s.isSignedIn || s.me == null) return null;
+  if (s.viewerIsInfluencer) return null;
+  return '/influencer/join';
+}
+
 /// Every screen of the demo app and where each tap goes. Screens only, dummy data.
 final router = GoRouter(
   navigatorKey: rootKey,
@@ -56,7 +69,7 @@ final router = GoRouter(
   // [HF-PHOTO-CROP-APP] While the photos-required gate is blocking (signed in, hfPhotosRequiredEnabled on, no approved profile photo
   // and cover) every route except the exempt ones opens the photo setup screen. Reads a cached answer: no network per navigation.
   refreshListenable: PhotosGate.instance,
-  redirect: (_, s) => photosGateRedirect(PhotosGate.instance, s.uri.path),
+  redirect: (_, s) => photosGateRedirect(PhotosGate.instance, s.uri.path) ?? _influencerGateRedirect(s.uri.path),
   errorBuilder: hfErrorPage, // [HF-REELS-FAV-1] never the raw GoException
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),

@@ -157,7 +157,7 @@ describe("callback", () => {
     expect(ch).toMatchObject({ platform: "facebook", handle: "mayareels", url: "https://www.facebook.com/mayareels", platform_user_id: "1000000000001", followers: 500, status: "approved", provider_ref: "facebook-oauth" });
     expect(ch.verified_at).toBeGreaterThan(0);
     expect(row("SELECT fb_user_id FROM hf_fb_logins WHERE channel_id=?", ch.id).fb_user_id).toBe("7000000000001");
-    expect(row("SELECT status FROM hf_hosts WHERE uid='u1'").status).toBe("approved");
+    expect(row("SELECT COUNT(*) AS n FROM hf_hosts WHERE uid='u1'").n).toBe(0); // [HF-INFLUENCER-GATE-1] a login never creates a host row
     await flush();
     expect(events.map((e) => e.event)).toEqual(expect.arrayContaining(["hf_channel_oauth_start", "hf_channel_oauth_done", "hf_channel_added"]));
     expect(events.find((e) => e.event === "hf_channel_oauth_done").props.platform).toBe("facebook");

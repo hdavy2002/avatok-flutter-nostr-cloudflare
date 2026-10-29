@@ -43,6 +43,10 @@ function makeEnv() {
     CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
+    CREATE TABLE hf_user_photos (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, kind TEXT, status TEXT);
+    CREATE TABLE hf_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, host_uid TEXT, status TEXT);
+    CREATE TABLE hf_intro_videos (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, status TEXT, deleted_at INTEGER);
+    CREATE TABLE hf_influencer_applications (id TEXT PRIMARY KEY, uid TEXT, status TEXT, categories_json TEXT, reject_reasons_json TEXT, reject_note TEXT, submitted_at INTEGER);
   `);
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
@@ -85,6 +89,7 @@ describe("GET /api/hf/me", () => {
     expect(await r.json()).toEqual({
       uid: "u1", displayName: null, username: null, firstName: null, lastName: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
+      influencerApplication: { status: "none", rejectReason: null, missing: ["profile_photo", "cover_photo", "whatsapp", "social_or_aadhaar", "intro_video"] }, photosReady: { profile: false, cover: false },
       name: null, email: null, whatsapp: null, role: "fan", hostStatus: null, presence: null, walletPaise: 0,
       prefs: { notifyWhatsapp: true, apptReminders: true, reelAlerts: true },
     });
@@ -113,18 +118,65 @@ describe("GET /api/hf/me", () => {
     expect(b).toEqual({
       uid: "u1", displayName: "Meena", username: "meena", firstName: null, lastName: null, registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
+      influencerApplication: { status: "approved", rejectReason: null, missing: [] }, photosReady: { profile: false, cover: false },
       name: "Meena", email: "meena@example.com", whatsapp: "******3210", role: "host", hostStatus: "live", presence: "online", walletPaise: 4250,
       prefs: { notifyWhatsapp: false, apptReminders: true, reelAlerts: true },
     });
     expect(JSON.stringify(b)).not.toContain("98765");
   });
 
-  it("a draft host has host.status but a null slug; a missing hf_user_ack table does not break the answer", async () => {
+  it("[HF-INFLUENCER-GATE-1] a draft host row is NOT a host: isHost false, host null; a missing hf_user_ack table does not break the answer", async () => {
     db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
     db.prepare("INSERT INTO hf_hosts (uid, status) VALUES ('u1','draft')").run();
     db.exec("DROP TABLE hf_user_ack");
     const b = await (await call(req("GET"))).json();
-    expect(b).toMatchObject({ displayName: "Ravi", isHost: true, host: { status: "draft", slug: null }, ackVersion: null });
+    expect(b).toMatchObject({ displayName: "Ravi", isHost: false, host: null, ackVersion: null, influencerApplication: { status: "draft" } });
+  });
+  it.each(["pending_check", "approved", "pending_review", "rejected", "archived"])("[HF-INFLUENCER-GATE-1] hf_hosts.status '%s' is never a host", async (st) => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
+    db.prepare("INSERT INTO hf_hosts (uid, status, slug) VALUES ('u1', ?, 's')").run(st);
+    expect(await (await call(req("GET"))).json()).toMatchObject({ isHost: false, host: null, role: "fan", hostStatus: null });
+  });
+  it("[HF-INFLUENCER-GATE-1] a paused (safety) influencer keeps the dashboard: isHost true", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
+    db.prepare("INSERT INTO hf_hosts (uid, status, slug) VALUES ('u1','paused','s')").run();
+    expect(await (await call(req("GET"))).json()).toMatchObject({ isHost: true, host: { status: "paused" }, role: "host" });
+  });
+  it("[HF-INFLUENCER-GATE-1] influencerApplication.missing lists exactly what is not met, and photosReady follows the active photos", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
+    db.prepare("INSERT INTO contact_verification VALUES ('u1',1,'h1')").run();
+    db.prepare("INSERT INTO phone_otp (uid, phone_hash, e164, status, verified_at) VALUES ('u1','h1','+919876543210','verified',5)").run();
+    db.prepare("INSERT INTO hf_user_photos (uid, kind, status) VALUES ('u1','profile','active'), ('u1','cover','checking')").run();
+    let b = await (await call(req("GET"))).json();
+    expect(b.photosReady).toEqual({ profile: true, cover: false });
+    expect(b.influencerApplication).toEqual({ status: "none", rejectReason: null, missing: ["cover_photo", "social_or_aadhaar", "intro_video"] });
+    db.prepare("UPDATE hf_user_photos SET status='active' WHERE kind='cover'").run();
+    db.prepare("INSERT INTO hf_channels (host_uid, status) VALUES ('u1','rejected')").run(); // connected but below the minimum: does not count
+    db.prepare("INSERT INTO hf_intro_videos (uid, status) VALUES ('u1','draft')").run();
+    b = await (await call(req("GET"))).json();
+    expect(b.influencerApplication.missing).toEqual(["social_or_aadhaar"]);
+    db.prepare("INSERT INTO hf_kyc VALUES ('u1','F',9)").run();
+    b = await (await call(req("GET"))).json();
+    expect(b.influencerApplication.missing).toEqual([]);
+    expect(b.isHost).toBe(false);
+  });
+  it("[HF-INFLUENCER-GATE-1] an approved channel + Aadhaar + approved selfie (every old auto-promotion trigger) never makes isHost true", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
+    db.prepare("INSERT INTO hf_channels (host_uid, status) VALUES ('u1','approved')").run();
+    db.prepare("INSERT INTO hf_kyc VALUES ('u1','F',9)").run();
+    db.prepare("INSERT INTO hf_selfie VALUES ('s1','u1',50,'approved',NULL)").run();
+    expect(await (await call(req("GET"))).json()).toMatchObject({ isHost: false, host: null, role: "fan" });
+  });
+  it("[HF-INFLUENCER-GATE-1] a sensitive category needs Aadhaar even with a verified social; a rejected application shows its reason", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Ravi')").run();
+    db.prepare("INSERT INTO hf_channels (host_uid, status) VALUES ('u1','approved')").run();
+    db.prepare("INSERT INTO hf_influencer_applications VALUES ('a1','u1','rejected','[\"listener\"]','[\"video_dark\"]','Try again',5)").run();
+    const b = await (await call(req("GET"))).json();
+    expect(b.influencerApplication.status).toBe("rejected");
+    expect(b.influencerApplication.rejectReason).toContain("too dark");
+    expect(b.influencerApplication.rejectReason).toContain("Try again");
+    expect(b.influencerApplication.missing).toContain("aadhaar");
+    expect(b.influencerApplication.missing).not.toContain("social_or_aadhaar");
   });
 
   it("is private (no-store) and only answers for the signed-in user", async () => {
@@ -155,10 +207,10 @@ describe("GET /api/hf/me reels-app fields [HF-WIRE-1B]", () => {
     expect(r.status).toBe(200);
     expect((await r.json()).walletPaise).toBeNull();
   });
-  it("a draft host is still role fan, with hostStatus draft and presence offline", async () => {
+  it("a draft host is still role fan, with hostStatus and presence hidden [HF-INFLUENCER-GATE-1]", async () => {
     db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','A')").run();
     db.prepare("INSERT INTO hf_hosts (uid, status) VALUES ('u1','draft')").run();
-    expect(await (await call(req("GET"))).json()).toMatchObject({ role: "fan", hostStatus: "draft", presence: "offline" });
+    expect(await (await call(req("GET"))).json()).toMatchObject({ role: "fan", hostStatus: null, presence: null });
   });
   it("never returns another user's data (email, wallet, prefs, host, phone)", async () => {
     db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Mine'), ('u2','Other')").run();

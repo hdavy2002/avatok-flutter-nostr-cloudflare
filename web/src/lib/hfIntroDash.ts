@@ -38,9 +38,9 @@ export const reasonText = (r: { code?: string; text?: string } | string): string
 /** [HF-VERIFY-WEB-FLOW] Which dashboard page a web login comes back to. The worker allow-lists the same two values (default become). */
 export type WebReturn = 'verifications' | 'become';
 /** GET /api/hf/channels/facebook/start?client=web&return=... -> { url }. */
-export const facebookStart = (ret: WebReturn = 'become'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/facebook/start?client=web&return=${ret}`);
+export const facebookStart = (ret: WebReturn = 'verifications'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/facebook/start?client=web&return=${ret}`);
 /** GET /api/hf/channels/instagram/start?client=web&return=... -> { url } (HF-IG-LOGIN-1). */
-export const instagramStart = (ret: WebReturn = 'become'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/instagram/start?client=web&return=${ret}`);
+export const instagramStart = (ret: WebReturn = 'verifications'): Promise<HfResult<{ ok: true; url: string }>> => hfCall('GET', `/api/hf/channels/instagram/start?client=web&return=${ret}`);
 
 /** Facebook adds "#_=_" to the address after its login. Remove it so the bar stays clean (and a later share/copy has no junk). */
 export function stripFacebookHash(): void {

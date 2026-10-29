@@ -61,7 +61,7 @@ export async function upsertDemoInfluencer(env: Env, input: DemoInput, f: typeof
       .bind(uid, input.name, rupeesOf(input.ratePaise), now).run();
   } else {
     uid = "demo_" + crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-    await env.DB_META.prepare("INSERT INTO hf_hosts (uid, status, display_name, price_per_min, presence, created_at, updated_at) VALUES (?1,'approved',?2,?3,'online',?4,?4)")
+    await env.DB_META.prepare("INSERT INTO hf_hosts (uid, status, display_name, price_per_min, presence, created_at, updated_at) VALUES (?1,'draft',?2,?3,'online',?4,?4)")
       .bind(uid, input.name, rupeesOf(input.ratePaise), now).run();
   }
   const slug = await ensureSlug(env, uid, input.name);

@@ -110,7 +110,7 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
   const demoVisible = cfg.hfDemoInfluencersVisible !== false;
   const binds: unknown[] = [];
   const where: string[] = [
-    "h.status IN ('approved','live')", "h.slug IS NOT NULL", // [HF-CREATOR-SPACES-1] space channels are no longer excluded: they are visible to everyone (only calling is locked)
+    "h.status='live'", "h.intro_approved_at IS NOT NULL", "h.slug IS NOT NULL", // [HF-INFLUENCER-GATE-1] G5 // [HF-CREATOR-SPACES-1] space channels are no longer excluded: they are visible to everyone (only calling is locked)
   ];
   if (!demoVisible) where.push("NOT EXISTS (SELECT 1 FROM hf_demo_hosts d WHERE d.host_uid=h.uid)");
   const needle = q.trim().replace(/^@/, "").toLowerCase();
@@ -271,7 +271,7 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
       const creator: Record<string, unknown> = { platform: gPlatform, handle: at(gHandle), name: crow.display_name ?? "", avatar: crow.avatar_url ?? null, followers: Number(crow.followers ?? 0), votes };
       if (await hasJoined(env, gPlatform, gHandle, crow.platform_user_id)) {
         const hs = await env.DB_META.prepare(
-          "SELECT h.slug AS slug FROM hf_channels c JOIN hf_hosts h ON h.uid=c.host_uid WHERE c.platform=?1 AND c.status='approved' AND LOWER(REPLACE(c.handle,'@',''))=?2 AND h.status IN ('approved','live') AND h.slug IS NOT NULL LIMIT 1",
+          "SELECT h.slug AS slug FROM hf_channels c JOIN hf_hosts h ON h.uid=c.host_uid WHERE c.platform=?1 AND c.status='approved' AND LOWER(REPLACE(c.handle,'@',''))=?2 AND h.status='live' AND h.intro_approved_at IS NOT NULL AND h.slug IS NOT NULL LIMIT 1",
         ).bind(gPlatform, gHandle).first<{ slug: string }>().catch(() => null);
         if (hs?.slug) creator.joinedSlug = hs.slug;
         return json({ ok: true, creator, reels: [] }, 200, pub);

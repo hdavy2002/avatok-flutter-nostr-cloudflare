@@ -10,7 +10,7 @@ import {
   CALL_RULES_HREF, REASON_TITLE, SAFETY_EVENTS, acceptCallRules, appealStrike, getSafetyMe, rupees, safetyDay,
   type SafetyMe, type SafetyStrike,
 } from '../../../lib/hfSafetyApi';
-import type { DashboardAccount } from '../../../components/account/DashboardNav';
+import { isInfluencer, type DashboardAccount } from '../../../components/account/DashboardNav';
 import { Dialog, Failed, Hibiscus, Marigold, Skel, useToast } from './ui';
 import '../../../styles/hf-safety.css';
 
@@ -249,7 +249,7 @@ export default function Safety({ account, deps }: { account: DashboardAccount; d
   const [me, setMe] = useState<SafetyMe | null>(deps?.me ?? null);
   const [failed, setFailed] = useState(false);
   const [appealing, setAppealing] = useState<SafetyStrike | null>(null);
-  const isHost = !!account.host && !account.closing;
+  const isHost = isInfluencer(account) && !account.closing;
 
   const load = useCallback(async () => {
     setFailed(false);

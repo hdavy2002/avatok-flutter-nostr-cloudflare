@@ -62,7 +62,7 @@ async function get() { const r = await hfHostModeRoute(req("GET", "/api/hosts/me
 beforeEach(() => {
   st.cfg = { ...ON }; st.closed = []; st.notified = [];
   env = makeEnv();
-  raw().prepare("INSERT INTO hf_hosts(uid,slug,display_name,status,category,price_per_min,presence,created_at,updated_at) VALUES(?1,'tara-sharma','Tara Sharma','live','influencer',20,'online',1,1)").run(H);
+  raw().prepare("INSERT INTO hf_hosts(uid,slug,display_name,status,category,price_per_min,presence,created_at,updated_at,intro_approved_at) VALUES(?1,'tara-sharma','Tara Sharma','live','influencer',20,'online',1,1,1)").run(H);
 });
 
 describe("PUT /api/hosts/me/presence (flag ON)", () => {

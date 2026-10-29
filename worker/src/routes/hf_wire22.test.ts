@@ -21,7 +21,7 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 
 function makeEnv() {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', intro_approved_at INTEGER DEFAULT 1, display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
     category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, topics_json TEXT NOT NULL DEFAULT '[]', phone TEXT,
     women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0, lgbtq_public INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
@@ -65,7 +65,7 @@ function fakeFetch(calls: string[] = [], opts: { igReels?: any[] } = {}) {
 }
 
 const host = (uid: string, o: any = {}) => {
-  db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, presence) VALUES (?,?,?,?,?)").run(uid, "slug-" + uid, "approved", o.name ?? "Name " + uid, o.presence ?? "online");
+  db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, presence) VALUES (?,?,?,?,?)").run(uid, "slug-" + uid, "live", o.name ?? "Name " + uid, o.presence ?? "online");
   if (o.handle) db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, platform_user_id) VALUES (?,?,?,?,?,?,?,?,?)")
     .run("hfch_" + uid, uid, o.platform ?? "instagram", o.handle, 500, "approved", 1, 1, o.pid ?? null);
 };
@@ -252,7 +252,7 @@ describe("search platform filter", () => {
     host("i1", { name: "Ig Maya", handle: "@maya_ig", platform: "instagram" });
     host("b1", { name: "Both Maya", handle: "@maya_b", platform: "youtube" });
     db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at) VALUES ('hfch_b1i','b1','instagram','@maya_b',10,'approved',1,1)").run();
-    db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, presence) VALUES ('d1','slug-d1','approved','Demo Maya','online')").run();
+    db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, presence) VALUES ('d1','slug-d1','live','Demo Maya','online')").run();
     db.prepare("INSERT INTO hf_demo_hosts (host_uid, handle, followers, created_at) VALUES ('d1','@demo',1,1)").run();
   });
   const names = (j: any) => [...j.online, ...j.offline].map((h: any) => h.name).sort();

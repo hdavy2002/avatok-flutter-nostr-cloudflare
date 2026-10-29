@@ -11,6 +11,7 @@
 //   [HF-WIRE-10] Reels app adapter (paise): GET /api/hf/payouts/summary, PUT /api/hf/payouts/upi, POST /api/hf/payouts - see the block above the router.
 // Error codes (POST): not_enabled 404, not_live 403, kyc_required 409, bank_required 409, invalid_amount 400, below_minimum 400,
 //   weekly_limit 429, insufficient_withdrawable 402, wallet_error 502.
+import { isInfluencer } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import type { Env } from "../types";
 import { modBlock } from "../lib/hf_safety_store"; // [HF-CALL-SAFETY-BE]
 import { json, sha256Hex } from "../util";
@@ -398,7 +399,7 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
 // [HF-WIRE-13] HF-REEL-36: ANYONE withdraws (fans too). readyPaise = the person's own wallet money (purchase lots; test credits never) + matured
 // influencer earnings; minPaise is the fan minimum (hfFanPayoutMinRupees) unless earnings are the only money, then hfPayoutMinRupees.
 const UPI_RE = /^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,32}$/;
-const isInfluencerStatus = (s: string | null | undefined) => s === "live" || s === "approved";
+const isInfluencerStatus = isInfluencer; // [HF-INFLUENCER-GATE-1] one shared definition (lib/hf_influencer.ts)
 const kycNextStep = () => ({ type: "kyc", title: "We check your ID once, before your first withdrawal.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fwallet") }); // [HF-CLOSE-UPI-1] the ID check for everyone (fans too); /hosts/kyc is an info page
 const maskVpa = (v: string) => { const [n, h] = v.split("@"); return `${n.length <= 2 ? n[0] : n.slice(0, 2)}${"*".repeat(Math.max(2, n.length - 2))}@${h}`; };
 

@@ -619,7 +619,7 @@ async function listRoute(req: Request, env: Env): Promise<Response> {
   const toAt = to == null ? null : parseUtcIso(to);
   if ((from != null && fromAt == null) || (to != null && toAt == null) || (fromAt != null && toAt != null && toAt <= fromAt)) return err(400, "invalid_date_range");
   if (role === "host") {
-    const host = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(auth.uid).first();
+    const host = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(auth.uid).first();
     if (!host) return err(404, "host_not_found");
   }
   const userColumn = role === "host" ? "host_uid" : "customer_uid";
@@ -850,7 +850,7 @@ export async function hostExpectedNetPaise(env: Env, hostUid: string): Promise<n
 async function hostSummaryRoute(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
-  const host = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(auth.uid).first();
+  const host = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(auth.uid).first();
   if (!host) return err(404, "host_not_found");
   const now = Date.now();
   const summary = await env.DB_META.prepare(

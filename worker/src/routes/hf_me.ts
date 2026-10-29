@@ -25,6 +25,7 @@ import { emailFor } from "../lib/identity";
 import { resolveHfHandle } from "../lib/hf_handle";
 import { walletOp } from "./wallet";
 import { balanceSummary } from "../lib/hf_token_ledger";
+import { isInfluencer, influencerApplicationState, photosReady } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) =>
@@ -112,10 +113,15 @@ async function getMe(env: Env, uid: string): Promise<Response> {
   // [HF-FIX-HANDLE-1] Everyone has a handle; assign lazily when no registered username exists.
   const handle = await resolveHfHandle(env, uid, registration?.username);
   const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
-  const hostLine = row?.host_status ? (await lineFieldsForUids(env, [uid]).catch(() => null))?.get(uid) : undefined; // [HF-CALL-MODES-A] mode / callState / queue (flag on only)
+  const infl = isInfluencer(row?.host_status); // [HF-INFLUENCER-GATE-1] only an admin-approved influencer is a host; a draft row, a channel login or KYC is not
+  const [influencerApplication, photos] = await Promise.all([
+    influencerApplicationState(env, uid, row?.host_status ?? null).catch(() => ({ status: "none" as const, rejectReason: null, missing: [] as string[] })),
+    photosReady(env, uid),
+  ]);
+  const hostLine = infl ? (await lineFieldsForUids(env, [uid]).catch(() => null))?.get(uid) : undefined; // [HF-CALL-MODES-A] mode / callState / queue (flag on only)
   const email = clerkEmail ?? typedEmail;
   const intro = cfg?.hfIntroOnboardingEnabled === true ? await introSelfState(env, uid, row?.host_status ?? null) : null; // [HF-INTRO-W1]
-  const host = row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
+  const host = infl && row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
   const displayName = row?.display_name?.trim() ? row.display_name : null;
   const phoneMasked = maskPhoneLast4(row?.e164);
   const body = {
@@ -130,8 +136,10 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     whatsappVerified: Number(row?.phone_verified) === 1,
     ackVersion: ack?.version ?? null,
     age18ConfirmedAt: row?.age_at ?? null,
-    isHost: !!host,
+    isHost: infl,
     host,
+    influencerApplication, // [HF-INFLUENCER-GATE-1] { status, rejectReason, missing[] }
+    photosReady: photos, // [HF-INFLUENCER-GATE-1] G4 { profile, cover }
     lanes,
     closing,
     tokensMode: cfg?.hfTokensEnabled === true,
@@ -139,9 +147,9 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     name: displayName,
     email: email ?? null,
     whatsapp: phoneMasked,
-    role: row?.host_status === "live" || row?.host_status === "approved" ? "host" : "fan", // [HF-WIRE-3] Channels-approved influencers are hosts too
-    hostStatus: row?.host_status ?? null,
-    presence: row?.host_status ? (row.host_presence ?? "offline") : null,
+    role: infl ? "host" : "fan",
+    hostStatus: infl ? row?.host_status ?? null : null,
+    presence: infl && row?.host_status ? (row.host_presence ?? "offline") : null,
     ...(hostLine ? { mode: hostLine.mode, callState: hostLine.callState, queue: hostLine.queue } : {}),
     ...(intro ?? {}), // [HF-INTRO-W1] needsIntroVideo, introStatus, callOption, introApprovedAt (flag hfIntroOnboardingEnabled only)
     ...(hostLine?.mainAction ? { callOption: hostLine.callOption ?? null, mainAction: hostLine.mainAction } : {}), // [HF-INTRO-W2] only while hfCallOptionEnabled is on

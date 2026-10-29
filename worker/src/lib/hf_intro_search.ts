@@ -79,7 +79,7 @@ export function buildIntroWhere(f: IntroSearchQuery): { where: string; binds: un
   const binds: unknown[] = [];
   const seen = new Map<unknown, string>(); // D1 allows 100 bound values: an equal value is bound once
   const bind = (v: unknown) => { const k = seen.get(v); if (k) return k; binds.push(v); const n = `?${binds.length}`; seen.set(v, n); return n; };
-  const w: string[] = [`v.status='approved'`, `h.intro_approved_at IS NOT NULL`, `h.status IN ('approved','live')`, `h.slug IS NOT NULL`, `h.call_option IN ('A','B')`];
+  const w: string[] = [`v.status='approved'`, `h.intro_approved_at IS NOT NULL`, `h.status='live'`, `h.slug IS NOT NULL`, `h.call_option IN ('A','B')`];
   for (const word of f.words) {
     const like = bind(`%${likeEsc(word)}%`);
     const or: string[] = [

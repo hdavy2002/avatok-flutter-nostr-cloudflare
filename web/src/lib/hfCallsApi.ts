@@ -56,7 +56,7 @@ export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PAT
         ? await recoverAgeConfirmation()
         : typeof b.message === 'string' ? b.message : '';
       // [HF-PHOTO-CROP-WEB] 403 photos_required from call / queue / booking: send the member to add their photos (never on the support desk).
-      if (e.status === 403 && e.error === 'photos_required') redirectToPhotoOnboarding('api_403', message || undefined);
+      if (e.status === 403 && e.error === 'photos_required') redirectToPhotoOnboarding('api_403', message || 'Add your photo and cover photo first.');
       return { ok: false, status: e.status, code: e.error, message, body: b };
     }
     return { ok: false, status: 0, code: 'network', message: 'We could not reach the server. Check your internet and try again.', body: {} };

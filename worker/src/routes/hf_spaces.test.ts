@@ -156,7 +156,7 @@ describe("GET /api/hf/spaces/me", () => {
     await post({ kind: "women" });
     selfie("rejected");
     let b = await (await get())!.json();
-    expect(b).toMatchObject({ kind: "women", whatsappVerified: true, aadhaarVerified: true, gender: "F", selfie: { status: "rejected", reason: "face does not match" }, videoKycVerified: false, qualified: false, hostStatus: "pending_check" });
+    expect(b).toMatchObject({ kind: "women", whatsappVerified: true, aadhaarVerified: true, gender: "F", selfie: { status: "rejected", reason: "face does not match" }, videoKycVerified: false, qualified: false, hostStatus: "draft" });
     selfie("approved", "u1", 5);
     b = await (await get())!.json();
     expect(b).toMatchObject({ selfie: { status: "approved", reason: null }, videoKycVerified: true, qualified: true });
@@ -170,14 +170,14 @@ describe("POST /api/hf/spaces/creator", () => {
     cfg = { hfCreatorSpacesEnabled: false };
     expect((await post({ kind: "women" }))!.status).toBe(404);
   });
-  it("channel: creates the pending_check host with creator_kind channel", async () => {
+  it("channel: creates a DRAFT host row (never an influencer) with creator_kind channel", async () => {
     expect(await (await post({ kind: "channel" }))!.json()).toEqual({ ok: true, kind: "channel" });
-    expect(kindOf()).toMatchObject({ creator_kind: "channel", status: "pending_check", women_lane: 0 });
+    expect(kindOf()).toMatchObject({ creator_kind: "channel", status: "draft", women_lane: 0 });
     expect(events.map((e) => e.event)).toContain("hf_space_creator_chosen");
   });
   it("women: before Aadhaar it is accepted and sets women_lane; telemetry has the kind only", async () => {
     expect(await (await post({ kind: "women" }))!.json()).toEqual({ ok: true, kind: "women" });
-    expect(kindOf()).toMatchObject({ creator_kind: "women", women_lane: 1, lgbtq_lane: 0, lgbtq_public: 0, status: "pending_check" });
+    expect(kindOf()).toMatchObject({ creator_kind: "women", women_lane: 1, lgbtq_lane: 0, lgbtq_public: 0, status: "draft" });
     const ev = events.find((e) => e.event === "hf_space_creator_chosen");
     expect(ev!.props).toEqual({ area: "hf_spaces", kind: "women" });
   });

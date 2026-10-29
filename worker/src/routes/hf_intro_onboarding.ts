@@ -19,6 +19,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { deleteIntroVideoFiles, type IntroFileRow } from "../lib/hf_intro_cleanup";
+import { applicationMissing, MISSING_TEXT } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import { getHost, mediaUrl } from "../lib/hf_host_store";
 import { validCreatorRate } from "../lib/hf_creator_pricing";
 import { isPhoneVerified } from "../lib/hf_public_verification";
@@ -259,16 +260,19 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
   if ((video.status !== "draft" && video.status !== "rejected") || video.deleted_at) return err(409, "video_not_available", { message: "This video was already used. Please record a new one." });
   if (open) return err(409, "already_submitted", { message: "You already sent your profile. A person from our team will check it." });
 
-  const hasPhoto = host ? !!(host.avatar_id || (await env.DB_META.prepare("SELECT 1 AS x FROM hf_host_media WHERE uid=?1 AND kind='profile' AND status='active' LIMIT 1").bind(uid).first())) : false;
   const missing: string[] = [];
   if (!host?.display_name) missing.push("name");
   if (!host?.about || !host.about.trim()) missing.push("description");
-  if (!hasPhoto) missing.push("photo");
   if (!validCreatorRate(host?.price_per_min)) missing.push("rate");
-  if (!facts.whatsappVerified) missing.push("whatsapp");
   if (missing.length) {
     emit("hf_onb_submit_refused", { reason: "incomplete", missing: missing.join(",") });
     return err(422, "incomplete", { missing, message: "A few steps are still missing." });
+  }
+  // [HF-INFLUENCER-GATE-1] G2: profile + cover photo, WhatsApp, a verified social account OR Aadhaar (Aadhaar for sensitive categories), intro video.
+  const gateMissing = await applicationMissing(env, uid, { categories: cats, hasVideo: true });
+  if (gateMissing.length) {
+    emit("hf_onb_submit_refused", { reason: "application_incomplete", missing: gateMissing.join(",") });
+    return err(400, "application_incomplete", { missing: gateMissing, message: `Please finish: ${gateMissing.map((m) => MISSING_TEXT[m]).join(", ")}.` });
   }
   const gate = submissionGate({ categories: cats, hasVerifiedSocial: facts.socials.length > 0, aadhaarDone: facts.aadhaarDone, aadhaarGender: facts.aadhaarGender });
   if (gate) {

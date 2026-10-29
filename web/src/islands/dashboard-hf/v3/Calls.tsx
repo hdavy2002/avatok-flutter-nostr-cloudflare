@@ -6,7 +6,7 @@ import { hfCall, type CallInfo } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
 import { rateCardLines } from '../../../lib/hfStdPlan';
 import { capture, captureException } from '../../../lib/analytics';
-import type { DashboardAccount } from '../../../components/account/DashboardNav';
+import { isInfluencer, type DashboardAccount } from '../../../components/account/DashboardNav';
 import { blockFromCall, reviewCall, useDash } from './data';
 import PostCallReport from '../../../components/safety/PostCallReport'; // [HF-CALL-SAFETY-WEB]
 import { recordingEnabled } from '../../../lib/hfSafetyApi';
@@ -33,7 +33,7 @@ function outcome(i: { status: string }, role: Role): { text: string; cls: string
 export default function Calls({ account }: { account: DashboardAccount }) {
   const { insights, wallet, reload } = useDash();
   const toast = useToast();
-  const isHost = !!account.host && !account.closing;
+  const isHost = isInfluencer(account) && !account.closing;
   const qs = new URLSearchParams(location.search);
   const [role, setRole] = useState<Role>(qs.get('role') === 'host' && isHost ? 'host' : 'caller');
   const [tab, setTab] = useState<Tab>(qs.get('tab') === 'rate' ? 'rate' : 'all');

@@ -135,26 +135,27 @@ describe("badge matrix (DB)", () => {
   });
 });
 
-describe("syncHostState and the selfie review", () => {
-  it("does not demote a host who lost her channel but has video KYC; demotes one with neither", async () => {
-    host("u1"); db.exec("UPDATE hf_hosts SET status='approved'"); aadhaar("F"); selfie("approved");
-    expect((await syncHostState(env, "u1")).hostStatus).toBe("approved");
+describe("syncHostState and the selfie review [HF-INFLUENCER-GATE-1: read-only, nobody is promoted or demoted]", () => {
+  it("never changes a host's status: not a promotion, not a demotion", async () => {
+    host("u1"); db.exec("UPDATE hf_hosts SET status='draft'"); aadhaar("F"); selfie("approved");
+    expect((await syncHostState(env, "u1")).hostStatus).toBe("draft");
     db.exec("DELETE FROM hf_selfie");
-    expect((await syncHostState(env, "u1")).hostStatus).toBe("pending_check");
+    expect((await syncHostState(env, "u1")).hostStatus).toBe("draft");
+    db.exec("UPDATE hf_hosts SET status='live'");
+    expect((await syncHostState(env, "u1")).hostStatus).toBe("live");
   });
-  it("a video-KYC-only creator is approved by the admin's selfie approval, and demoted again by a later rejection", async () => {
-    host("u1"); aadhaar("F"); whatsapp();
+  it("a video-KYC selfie approval does NOT make her an influencer; a later rejection changes nothing", async () => {
+    host("u1"); db.exec("UPDATE hf_hosts SET status='draft'"); aadhaar("F"); whatsapp();
     const id = "sv1";
     db.prepare("INSERT INTO hf_selfie (id, uid, created_at, review_status) VALUES (?,?,?,'pending')").run(id, "u1", 5);
-    expect(status()).toBe("pending_check");
     const ok = await hfHostKycRoute(req("POST", "/api/admin/hf/kyc/u1/selfie", "admin", { decision: "approve" }), env, "/api/admin/hf/kyc/u1/selfie");
     expect(ok.status).toBe(200);
-    expect(status()).toBe("approved");
+    expect(status()).toBe("draft");
     expect(events.some((e) => e.event === "hf_verify_badge_added" && e.props.badge === "video_kyc")).toBe(true);
     db.prepare("INSERT INTO hf_selfie (id, uid, created_at, review_status) VALUES ('sv2','u1',9,'pending')").run();
     const no = await hfHostKycRoute(req("POST", "/api/admin/hf/kyc/u1/selfie", "admin", { decision: "reject", reason: "blurry" }), env, "/api/admin/hf/kyc/u1/selfie");
     expect(no.status).toBe(200);
-    expect(status()).toBe("pending_check");
+    expect(status()).toBe("draft");
   });
   it("a customer with no host row is untouched by the sync (no host row is created)", async () => {
     aadhaar("F", "cust"); db.prepare("INSERT INTO hf_selfie (id, uid, created_at, review_status) VALUES ('c1','cust',1,'pending')").run();
@@ -162,11 +163,11 @@ describe("syncHostState and the selfie review", () => {
     expect(r.status).toBe(200);
     expect(db.prepare("SELECT COUNT(*) AS n FROM hf_hosts").get().n).toBe(0);
   });
-  it("a space creator with a channel but no space qualification is not approved", async () => {
-    host("u1", "women_lane|1"); channel();
-    expect((await syncHostState(env, "u1")).hostStatus).toBe("pending_check");
+  it("a space creator with a channel but no space qualification still reports qualified:false, and never changes status", async () => {
+    host("u1", "women_lane|1"); db.exec("UPDATE hf_hosts SET status='draft'"); channel();
+    expect(await syncHostState(env, "u1")).toMatchObject({ hostStatus: "draft", qualified: false });
     aadhaar("F"); whatsapp(); selfie("approved");
-    expect((await syncHostState(env, "u1")).hostStatus).toBe("approved");
+    expect(await syncHostState(env, "u1")).toMatchObject({ hostStatus: "draft", qualified: true });
   });
 });
 

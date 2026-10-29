@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../authz", () => ({ requireUser: async () => ({ uid: "caller1" }), isFail: (u: any) => !!u?.error }));
 vi.mock("../money", () => ({ rateLimit: async () => null }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackUser: async () => {}, trackException: async () => {} }));
-vi.mock("./config", () => ({ readConfig: async () => ({ hfCallsEnabled: true, hfBookingsEnabled: true }) }));
+vi.mock("./config", () => ({ readConfig: async () => ({ hfPhotosRequiredEnabled: false, hfCallsEnabled: true, hfBookingsEnabled: true }) }));
 vi.mock("../lib/hf_exit", () => ({ isClosing: async () => false, forceHostOffline: async () => {}, CLOSING_MESSAGE: "closing" }));
 vi.mock("../lib/whatsapp_notify", () => ({ verifiedWhatsAppNumber: async () => "+910000000000" }));
 vi.mock("../lib/hf_calls_store", async (orig) => ({ ...(await orig() as object), callsConfigured: () => true }));

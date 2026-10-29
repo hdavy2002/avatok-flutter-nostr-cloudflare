@@ -190,7 +190,7 @@ export function bookingError(error: unknown): { status: number; code: string; me
       account_paused: 'Your account is paused while a person checks it, so you can’t book right now.', // [HF-CALL-SAFETY-WEB]
     };
     if (error.status === 403 && error.error === 'photos_required') { // [HF-PHOTO-CROP-WEB]
-      const m = typeof body.message === 'string' ? body.message : 'Please add your photo and cover before booking.';
+      const m = typeof body.message === 'string' ? body.message : 'Add your photo and cover photo first.';
       redirectToPhotoOnboarding('api_403_booking', m);
       return { status: error.status, code: error.error, message: m };
     }

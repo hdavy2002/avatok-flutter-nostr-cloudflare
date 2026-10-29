@@ -74,7 +74,7 @@ export function unplayableWhere(col: string, hideAt: number): string {
 /** SQL fragment: the reel is allowed to be public (host approved/live, channel still connected, demo rules). */
 function publicWhere(demoVisible: boolean, hideAt = 0): string {
   const demo = demoVisible ? "" : " AND r.is_demo=0 AND NOT EXISTS (SELECT 1 FROM hf_demo_hosts d WHERE d.host_uid=h.uid)";
-  return `r.visible=1 AND h.status IN ('approved','live') AND h.slug IS NOT NULL
+  return `r.visible=1 AND h.status='live' AND h.intro_approved_at IS NOT NULL AND h.slug IS NOT NULL
     AND (r.is_demo=1 OR EXISTS (SELECT 1 FROM hf_channels c WHERE c.id=r.channel_id AND c.status='approved'))${demo}${unplayableWhere("r.id", hideAt)}`;
 }
 

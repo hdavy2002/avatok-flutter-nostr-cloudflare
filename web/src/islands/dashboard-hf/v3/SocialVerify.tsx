@@ -48,13 +48,13 @@ function OAuthButton({ platform, label, busyLabel, style, start, surface }: {
 }
 
 /** connected = she already has a Facebook Page here, so the button reads "Log in with Facebook again". */
-export function FacebookLoginButton({ surface, ret = 'become', connected = false }: { surface: string; ret?: WebReturn; connected?: boolean }) {
+export function FacebookLoginButton({ surface, ret = 'verifications', connected = false }: { surface: string; ret?: WebReturn; connected?: boolean }) {
   const on = useFacebookOn();
   if (!on) return null;
   return <OAuthButton platform="facebook" surface={surface} style={FB_STYLE} label={connected ? 'Log in with Facebook again' : 'Log in with Facebook'} busyLabel="Opening Facebook…" start={() => facebookStart(ret)} />;
 }
 
-export function InstagramLoginButton({ surface, ret = 'become', connected = false }: { surface: string; ret?: WebReturn; connected?: boolean }) {
+export function InstagramLoginButton({ surface, ret = 'verifications', connected = false }: { surface: string; ret?: WebReturn; connected?: boolean }) {
   const f = useIntroFlags();
   if (!f?.instagram) return null;
   return <OAuthButton platform="instagram" surface={surface} style={IG_STYLE} label={connected ? 'Log in with Instagram again' : 'Log in with Instagram'} busyLabel="Opening Instagram…" start={() => instagramStart(ret)} />;

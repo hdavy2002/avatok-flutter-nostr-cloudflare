@@ -195,7 +195,7 @@ describe("GET /callback", () => {
     expect(l.searchParams.get("result")).toBe("approved");
     expect(ch).toMatchObject({ handle: "maya.reels", platform_user_id: "17841400000000099", followers: 500, status: "approved", provider_ref: "instagram-oauth" });
     expect(ch.verified_at).toBeGreaterThan(0);
-    expect(row("SELECT status FROM hf_hosts WHERE uid='u1'").status).toBe("approved");
+    expect(row("SELECT COUNT(*) AS n FROM hf_hosts WHERE uid='u1'").n).toBe(0); // [HF-INFLUENCER-GATE-1] a login never creates a host row
     const t = row("SELECT * FROM hf_channel_tokens WHERE channel_id=?", ch.id);
     expect(t.enc_token.startsWith("v1.")).toBe(true);
     expect(t.enc_token).not.toContain("LONGTOKEN");
@@ -362,7 +362,7 @@ describe("token refresh", () => {
     expect(out.scanned).toBe(1);
     expect(seen.slice(before).some((s) => s.includes("graph.instagram.com"))).toBe(false);
     expect(row("SELECT last_sync_at FROM hf_channels WHERE id=?", ch.id).last_sync_at).toBeGreaterThan(1000);
-    expect(row("SELECT status FROM hf_hosts WHERE uid='u1'").status).toBe("approved");
+    expect(row("SELECT COUNT(*) AS n FROM hf_hosts WHERE uid='u1'").n).toBe(0); // [HF-INFLUENCER-GATE-1] a login never creates a host row
   });
 
   it("the daily sync refreshes follower counts of a logged-in channel through /me (not treg)", async () => {
@@ -414,7 +414,7 @@ describe("deauthorize, data deletion and Remove", () => {
     expect(r.status).toBe(200);
     expect(row("SELECT status FROM hf_channels WHERE id=?", ch.id).status).toBe("disconnected");
     expectWiped(ch, r1, ext);
-    expect(row("SELECT status FROM hf_hosts WHERE uid='u1'").status).toBe("pending_check");
+    expect(row("SELECT COUNT(*) AS n FROM hf_hosts WHERE uid='u1'").n).toBe(0); // [HF-INFLUENCER-GATE-1] never a host row from a login
   });
 
   it("data-deletion (professional account id) answers { url, confirmation_code } and the status page says complete", async () => {

@@ -432,7 +432,7 @@ export async function walletGetFor(env: Env, uid: string): Promise<Response> {
   const paidBalance = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.balance ?? 0))) : 0;
   const held = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.held ?? 0))) : 0;
   const test = await getTestBalance(env, u.uid);
-  const isHost = !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(u.uid).first().catch(() => null));
+  const isHost = !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(u.uid).first().catch(() => null));
 
   type H = { at: number; kind: string; rupees: number; label: string; callId?: string };
   const hist: H[] = [];
@@ -480,7 +480,7 @@ function stdTariffOf(snapshot: string | null | undefined): Tariff | null {
 async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>): Promise<Response> {
   const [sum, isHostRow, allLots] = await Promise.all([
     balanceSummary(env, uid),
-    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first().catch(() => null),
+    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(uid).first().catch(() => null),
     getLots(env, uid),
   ]);
   const testMicro = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + l.leftMicro, 0);
@@ -576,7 +576,7 @@ async function otherSpends(env: Env, uid: string): Promise<Array<{ at: number; k
 async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>, cfgAll: Record<string, unknown>): Promise<Response> {
   const [sum, isHostRow, allLots] = await Promise.all([
     balanceSummary(env, uid),
-    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first().catch(() => null),
+    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(uid).first().catch(() => null),
     getLots(env, uid),
   ]);
   // [HF-STD-PLAN-1] Every amount below is RUPEES in paise (amountPaise, signed) with a ready "+₹101.69" string. `tokens` stays only as a legacy
@@ -778,7 +778,7 @@ async function listCalls(req: Request, env: Env): Promise<Response> {
   const noStore = { "cache-control": "private, no-store" };
   try {
     if (role === "host") {
-      const h = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(u.uid).first();
+      const h = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(u.uid).first();
       if (!h) return json({ ok: true, items: [], nextCursor: null }, 200, noStore);
     }
     const mine = role === "host" ? "c.host_uid" : "c.caller_uid";

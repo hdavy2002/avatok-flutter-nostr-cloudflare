@@ -75,8 +75,12 @@ abstract final class IntroOnbEntry {
   /// the flow (not the dashboard) until a person on our team approves her.
   static bool get pending {
     if (DemoMode.on || !CallFlags.introOnboarding) return false;
-    final s = Services.instance.me?.hostStatus;
-    return s == 'draft' || s == 'pending_host' || s == 'pending_review' || s == 'rejected';
+    // [HF-INFLUENCER-GATE-1] Keyed off the server's application status: anyone who is not an approved influencer goes (back) into the flow.
+    // 'submitted' opens the flow too: it shows "Sent for approval".
+    final me = Services.instance.me;
+    if (me == null || me.isHost) return false;
+    final s = me.applicationStatus;
+    return s == 'none' || s == 'draft' || s == 'rejected' || s == 'submitted';
   }
 
   /// The route of the flow.

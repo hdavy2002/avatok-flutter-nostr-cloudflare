@@ -36,8 +36,8 @@ export default function OnboardingGate() {
     void introAppOnlyEnabled().then(async (on) => {
       if (!on) { if (live) setMode('flow'); return; }
       if (isAadhaarLink(search)) { window.location.replace('/verify/id?next=%2Fdashboard%2Fverifications'); return; }
-      const r = await hfCall<{ host?: unknown }>('GET', '/api/hosts/me').catch(() => null);
-      const isHost = !!(r && r.ok && r.data?.host);
+      const r = await hfCall<{ isHost?: boolean }>('GET', '/api/hf/me').catch(() => null); // [HF-INFLUENCER-GATE-1] a draft row is not an influencer; the server's isHost decides
+      const isHost = !!(r && r.ok && r.data?.isHost === true);
       if (!live) return;
       if (isHost && isPayoutLink(search)) { window.location.replace(PAYOUT_DETAILS_PATH); return; } // stays on the loading state while it navigates
       setMode(isHost ? 'host' : 'panel');

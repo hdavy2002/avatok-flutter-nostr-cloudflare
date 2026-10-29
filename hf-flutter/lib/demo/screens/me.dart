@@ -103,7 +103,7 @@ class _Dashboard extends StatelessWidget {
     // [HF-WIRE-12] The counts below are dummy numbers: a live build shows none (the screens behind them have the real ones).
     const live = !DemoMode.on;
     final name = live ? (Services.instance.me?.name ?? 'Friend') : demo.name;
-    final isInfluencer = live ? Services.instance.me?.hostStatus != null : demo.influencerJoined;
+    final isInfluencer = live ? Services.instance.me?.isHost == true : demo.influencerJoined;
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
       (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
@@ -512,7 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (SettingsBridge.real) return const RealSettingsScreen(); // [HF-WIRE-11]
-    final host = demo.influencerJoined || Services.instance.me?.hostStatus != null;
+    final host = demo.influencerJoined || Services.instance.me?.isHost == true;
     // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(
       backgroundColor: C.page,

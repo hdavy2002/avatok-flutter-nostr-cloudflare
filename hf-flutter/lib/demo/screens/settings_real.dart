@@ -147,7 +147,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     final me = _me;
     final email = me?.email;
     final whatsapp = me?.phoneMasked;
-    final host = me?.hostStatus != null;
+    final host = me?.isHost == true;
     final slug = (me?.hostSlug ?? '').isEmpty ? null : me!.hostSlug; // [HF-SHARE-APP-1]
     // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(

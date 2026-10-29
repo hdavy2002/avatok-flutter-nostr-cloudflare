@@ -24,6 +24,11 @@ class Me {
     this.lastName,
     this.handle,
     this.avatarUrl,
+    this.applicationStatus = 'none',
+    this.applicationRejectReason,
+    this.applicationMissing = const <String>[],
+    this.photoProfileReady = true,
+    this.photoCoverReady = true,
   });
 
   final String uid;
@@ -59,17 +64,43 @@ class Me {
   /// so screens read the approved photo from `GET /api/hf/me/photos` (MyProfilePhoto).
   final String? avatarUrl;
 
+  /// [HF-INFLUENCER-GATE-1] `none | draft | submitted | rejected | approved` (server `influencerApplication.status`).
+  final String applicationStatus;
+  final String? applicationRejectReason;
+
+  /// Codes still missing before the application can be sent: profile_photo, cover_photo, whatsapp,
+  /// social_or_aadhaar, aadhaar, intro_video.
+  final List<String> applicationMissing;
+
+  /// [HF-INFLUENCER-GATE-1] Server `photosReady`; true when an older server does not send it.
+  final bool photoProfileReady;
+  final bool photoCoverReady;
+  bool get photosReady => photoProfileReady && photoCoverReady;
+
   bool get isHost => role == UserRole.host;
 
   factory Me.fromJson(Map<String, dynamic> j) {
     final hostRaw = j['host'];
     final host = hostRaw is Map ? Map<String, dynamic>.from(hostRaw) : null;
+    final appRaw = j['influencerApplication'];
+    final app = appRaw is Map ? Map<String, dynamic>.from(appRaw) : null;
+    final missingRaw = app == null ? null : app['missing'];
+    final photosRaw = j['photosReady'];
+    final photos = photosRaw is Map ? Map<String, dynamic>.from(photosRaw) : null;
+    final isInfluencer = j['isHost'] == true;
     return Me(
+      applicationStatus: (app == null ? null : _s(app['status'])) ?? 'none',
+      applicationRejectReason: app == null ? null : _s(app['rejectReason']),
+      applicationMissing: missingRaw is List
+          ? missingRaw.map((e) => e.toString()).toList()
+          : const <String>[],
+      photoProfileReady: photos == null ? true : photos['profile'] != false,
+      photoCoverReady: photos == null ? true : photos['cover'] != false,
       uid: (j['uid'] ?? '').toString(),
       name: _s(j['displayName']) ?? _s(j['name']),
-      role: (j['isHost'] == true || host != null) ? UserRole.host : UserRole.fan,
-      hostStatus: host == null ? null : _s(host['status']),
-      hostSlug: host == null ? null : _s(host['slug']),
+      role: isInfluencer ? UserRole.host : UserRole.fan,
+      hostStatus: (!isInfluencer || host == null) ? null : _s(host['status']),
+      hostSlug: (!isInfluencer || host == null) ? null : _s(host['slug']),
       phoneMasked: _s(j['phoneMasked']),
       whatsappVerified: j['whatsappVerified'] == true,
       ackVersion: _s(j['ackVersion']),

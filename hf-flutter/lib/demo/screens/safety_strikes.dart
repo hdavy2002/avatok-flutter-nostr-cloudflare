@@ -307,7 +307,7 @@ class _AccountPausedScreenState extends State<AccountPausedScreen> {
   AsyncState<SafetyMe> _state = const AsyncLoading<SafetyMe>();
 
   CallSafetyRepo get _repo => widget.repo ?? Services.instance.callSafetyRepo;
-  bool get _influencer => Services.instance.me?.hostStatus != null;
+  bool get _influencer => Services.instance.me?.isHost == true;
 
   @override
   void initState() {

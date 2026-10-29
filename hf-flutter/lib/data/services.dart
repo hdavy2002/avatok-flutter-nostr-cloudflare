@@ -108,7 +108,7 @@ class Services {
   bool get isSignedIn => user != null;
 
   /// Influencer earnings and fans' wallet money both leave through Withdraw (HF-REEL-36); refunds only ever land in the wallet (HF-REEL-35).
-  bool get viewerIsInfluencer => demo.influencerJoined || me?.hostStatus != null;
+  bool get viewerIsInfluencer => demo.influencerJoined || me?.isHost == true;
 
   Future<void> _sessionLost() async {
     _forgetCached();
@@ -184,7 +184,7 @@ class Services {
     final id = user?.id;
     if (id == null || id.isEmpty || _prefetchedFor == id) return;
     _prefetchedFor = id;
-    final host = me?.hostStatus != null;
+    final host = me?.isHost == true;
     Future<void> quiet(Future<Object?> Function() run) async {
       try {
         await run();

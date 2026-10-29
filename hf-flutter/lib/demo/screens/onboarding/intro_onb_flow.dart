@@ -457,6 +457,17 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
       _goto(_V.prep, notice: 'Please record your intro video first.');
       return;
     }
+    // [HF-INFLUENCER-GATE-1] Ask the server what is still missing first; the list is shown instead of sending a half-ready application.
+    await Services.instance.refreshMe();
+    if (!mounted) return;
+    final stillMissing = <String>[
+      for (final m in (Services.instance.me?.applicationMissing ?? const <String>[]))
+        if (m != 'intro_video') m, // the video was just checked above (_video != null)
+    ];
+    if (stillMissing.isNotEmpty) {
+      _showMissing(stillMissing);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -499,8 +510,55 @@ class _IntroOnboardingFlowState extends State<IntroOnboardingFlow> {
     }
   }
 
+  /// [HF-INFLUENCER-GATE-1] Plain words for the server's `missing` codes.
+  static String _gateText(String code) {
+    switch (code) {
+      case 'profile_photo':
+        return 'Add your photo';
+      case 'cover_photo':
+        return 'Add a cover photo';
+      case 'whatsapp':
+        return 'Verify your WhatsApp';
+      case 'social_or_aadhaar':
+        return 'Verify a social media account with enough followers, or verify Aadhaar';
+      case 'aadhaar':
+        return 'Verify Aadhaar';
+      case 'intro_video':
+        return 'Record your intro video';
+      default:
+        return code;
+    }
+  }
+
+  /// Shows the missing items and opens the step that fixes the first one (photos and WhatsApp: the profile step; Aadhaar / social:
+  /// the Aadhaar step; video: the get-ready step).
+  void _showMissing(List<String> missing) {
+    final text = 'Please finish these first:\n${missing.map((m) => '- ${_gateText(m)}').join('\n')}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 6)));
+    if (missing.any((m) => m == 'social_or_aadhaar' || m == 'aadhaar')) {
+      _goto(_V.aadhaar, notice: text);
+    } else if (missing.contains('intro_video')) {
+      _video = null;
+      _goto(_V.prep, notice: text);
+    } else {
+      _goto(_V.profile);
+      setState(() {
+        _busy = false;
+        _error = text;
+      });
+    }
+  }
+
   void _mapSubmitError(ApiException e) {
     switch (e.code) {
+      case 'application_incomplete':
+        final raw = e.extra['missing'];
+        final missing = raw is List ? [for (final m in raw) m.toString()] : <String>[];
+        if (missing.isEmpty) {
+          setState(() => _error = e.userMessage);
+        } else {
+          _showMissing(missing);
+        }
       case 'aadhaar_required':
         _goto(_V.aadhaar, notice: 'We need your Aadhaar check before we can send this.');
       case 'women_to_women_requires_female':

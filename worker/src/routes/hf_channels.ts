@@ -25,6 +25,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { goLiveFacts, canGoLive } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES-1]
+import { isInfluencer } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
@@ -130,38 +131,22 @@ async function defaultRateRupees(env: Env): Promise<number> {
   return readInfluencerRate((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).defaultRupees;
 }
 
-/** Keep hf_hosts.status in step with the badges. Returns the host status afterwards (null = no row) and whether she qualifies.
- *  [HF-CREATOR-BADGES-1] Qualifies = (approved channel OR video KYC) AND, for a space creator, her space qualification (lib/hf_spaces canGoLive).
- *  A host who lost her channel but keeps her video KYC is NOT demoted. A host row is only created from a channel (video KYC alone never creates one). */
-export async function syncHostState(env: Env, uid: string, now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
+/** [HF-INFLUENCER-GATE-1 2026-10-29] READ-ONLY since the gate: this used to insert a host row and auto-promote to 'approved' when a channel or video KYC qualified,
+ *  which made anyone who logged in with Facebook an influencer. Now it never writes hf_hosts status (only an admin approving an intro application does, hf_intro_admin).
+ *  Returns the current host status (null = no row) and whether she meets the channel/KYC/space badges (shown as a hint; it grants nothing).
+ *  It still fills a missing slug for an existing influencer (heals old rows). Nobody is demoted here either. */
+export async function syncHostState(env: Env, uid: string, _now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
   const f = await goLiveFacts(env, uid);
   const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
   const cur = host?.status ?? null;
   const ok = canGoLive(f).ok;
-  if (ok) {
-    if (cur === null) {
-      if (!f.channel) return { hostStatus: null, qualified: true }; // video KYC alone never creates a host row
-      await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'approved', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
-      await ensureInfluencerSlug(env, uid);
-      return { hostStatus: "approved", qualified: true };
-    }
-    if (cur === "pending_check") {
-      await env.DB_META.prepare("UPDATE hf_hosts SET status='approved', updated_at=?2 WHERE uid=?1 AND status='pending_check'").bind(uid, now).run();
-      await ensureInfluencerSlug(env, uid);
-      return { hostStatus: "approved", qualified: true };
-    }
-    await ensureInfluencerSlug(env, uid); // [HF-WIRE-10] heals hosts approved before this fix
-    return { hostStatus: cur, qualified: true };
-  }
-  if (cur === "approved" && !f.kycUnknown) {
-    await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_check', updated_at=?2 WHERE uid=?1 AND status='approved'").bind(uid, now).run();
-    return { hostStatus: "pending_check", qualified: false };
-  }
-  return { hostStatus: cur, qualified: false };
+  if (isInfluencer(cur)) await ensureInfluencerSlug(env, uid); // [HF-WIRE-10] heals hosts approved before the slug fix
+  return { hostStatus: cur, qualified: ok };
 }
 
+/** A person who picks a space/category needs an hf_hosts row to hold it; it is created as 'draft' (never an influencer). */
 export async function ensureHostRow(env: Env, uid: string, now: number): Promise<void> {
-  await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'pending_check', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
+  await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'draft', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
 }
 
 export type CheckResult = "approved" | "needs_followers" | "needs_views" | "code_missing" | "not_found" | "private" | "hidden_count" | "claimed";
@@ -326,8 +311,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
         if (/UNIQUE|constraint/i.test(String((e as Error)?.message ?? e))) return err(409, "channel_claimed", RESULT_TEXT(min).claimed);
         throw e;
       }
-      await ensureHostRow(env, uid, now);
-      const st = await syncHostState(env, uid);
+      const st = await syncHostState(env, uid); // [HF-INFLUENCER-GATE-1] read-only: a connected channel never makes anyone an influencer
       let imported: { fetched: number; inserted: number } | null = null;
       if (status === "approved" && cfg.hfReelsEnabled === true) {
         const r = await importForChannel(env, row, importCountOf(cfg as unknown as Record<string, unknown>), { bearer: token.trim() });
@@ -401,7 +385,6 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
           .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.views, row.verify_code, row.verified_at, row.status,
             row.consent_version, row.consent_at, row.provider_ref, row.last_sync_at, row.created_at).run();
       }
-      await ensureHostRow(env, uid, now);
       const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
       emit("hf_channel_added", { platform, ok: true, followers: row.followers, consent_version: version });
       return json({ ok: true, channel: { ...channelJson(row), verifyCode: row.verify_code }, verifyCode: row.verify_code, instructions: instructionsFor(platform, row.verify_code ?? ""), minFollowers: min, minViews, hostStatus: host?.status ?? null }, 200, NO_STORE);

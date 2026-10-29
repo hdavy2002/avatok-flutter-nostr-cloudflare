@@ -24,7 +24,7 @@ import {
   FB_GRAPH_VERSION, FB_PROVIDER_REF, FB_SCOPES, FB_STATE_TTL_S, channelsForFbUser, fbAppIdOf, fbConfigIdOf, fbExchangeCode, fbFetchProfile, fbRedirectUri, parseFbSignedRequest, saveFbLogin,
   signFbState, verifyFbState, wipeFbChannel, type FbProfile,
 } from "../lib/hf_facebook";
-import { COLS, MAX_CHANNELS, ensureHostRow, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
+import { COLS, MAX_CHANNELS, minFollowersOf, minViewsOf, syncHostState, thresholdResult, type ChRow } from "./hf_channels";
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -197,8 +197,7 @@ export async function hfFacebookRoute(req: Request, env: Env, p: string, ctx?: E
       return fail("provider_error");
     }
 
-    await ensureHostRow(env, uid, now);
-    const st = await syncHostState(env, uid);
+    const st = await syncHostState(env, uid); // [HF-INFLUENCER-GATE-1] saves nothing on hf_hosts; a login never makes anyone an influencer
     emit("hf_channel_added", { ok: true, via: "facebook_login", result: th.result, followers: row.followers, qualified: st.qualified });
     emit("hf_channel_threshold", { result: th.result, followers: row.followers, views: 0 });
     emit("hf_channel_oauth_done", { client, result: th.result, followers: row.followers, qualified: st.qualified });

@@ -82,7 +82,7 @@ async function safetyMe(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error);
   const [cfg, mod, rows, host, accept] = await Promise.all([
     loadSafetyCfg(env), hfModStatus(env, u.uid), loadStrikes(env, u.uid),
-    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(u.uid).first().catch(() => null),
+    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(u.uid).first().catch(() => null),
     env.DB_META.prepare("SELECT version FROM hf_call_rules_accept WHERE uid=?1").bind(u.uid).first<{ version: number }>().catch(() => null),
   ]);
   const now = Date.now();

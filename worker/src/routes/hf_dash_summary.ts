@@ -4,6 +4,7 @@
 //       fraands: {saved, newThisWeek}, recentMade: [{ id, otherHandle, status, at, seconds, amountPaise }] | null }
 // Every part is read on its own; a part that fails becomes null (and is reported) while the answer stays 200.
 // Never returns a phone number, email or another person's uid: the other side of a call is the host's public display name.
+import { isInfluencer } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -34,7 +35,7 @@ export async function hfDashSummaryRoute(req: Request, env: Env): Promise<Respon
 
   const host = await part(env, uid, "role", async () =>
     (await db.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>()) ?? { status: "" });
-  const isHost = host?.status === "live";
+  const isHost = isInfluencer(host?.status); // [HF-INFLUENCER-GATE-1]
 
   const [made, received, appointments, expected, saved, newThisWeek, recent, hearts, waiting] = await Promise.all([
     part(env, uid, "calls_made", async () => Number((await db.prepare(

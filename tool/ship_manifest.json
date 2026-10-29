@@ -12723,5 +12723,22 @@
       "hfPhotoModerationEnabled"
     ],
     "no_telemetry": "Page removal + redirect; photo results already reported by hf_photo_check."
+  },
+  "HF-INFLUENCER-GATE-1": {
+    "description": "Nobody is an influencer until an admin approves an intro application: social logins and video KYC no longer create or promote hf_hosts rows (status 'live' only, 'approved'/'pending_check' retired), /api/hf/me isHost = live|paused plus influencerApplication{status,rejectReason,missing[]} and photosReady, submit/approve share one checklist (application_incomplete), public surfaces need live + intro_approved_at, photos_required on call/queue/booking is on by default.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfPhotosRequiredEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_onb_submit_refused",
+        "property": "reason",
+        "exists": true,
+        "min_events": 1,
+        "note": "Submit refused with reason application_incomplete and the missing codes; nobody reaches the influencer dashboard without hf_hosts.status live."
+      }
+    ]
   }
 }

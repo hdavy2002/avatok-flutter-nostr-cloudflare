@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { BRAND } from '../../../lib/brand';
 import { formatPaise } from '../../../lib/money';
 import { capture } from '../../../lib/analytics';
-import type { DashboardAccount } from '../../../components/account/DashboardNav';
+import { isInfluencer, type DashboardAccount } from '../../../components/account/DashboardNav';
 import type { DashSection } from '../../../lib/dashboardRoutes';
 import { useDash, spendablePaise } from './data';
 import { Avatar, Dialog, Ic, Marigold, Mogra, Sticker, istDay, istTime } from './ui';
@@ -18,7 +18,8 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
   const [drawer, setDrawer] = useState(false);
   const [bye, setBye] = useState(false);
   const [bell, setBell] = useState(false);
-  const hostReady = account.host?.status === 'live' && !account.closing;
+  const isInf = isInfluencer(account); // [HF-INFLUENCER-GATE-1]
+  const hostReady = isInf && account.host?.status === 'live' && !account.closing;
   const toRate = insights.data?.pendingReviews.length ?? null;
   const apptsToday = summary.data?.appointmentsToday ?? null;
   const online = favs.data ? favs.data.filter(f => f.presence === 'online').length : null;
@@ -28,7 +29,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
   const safety = useSafetyMe().me; // [HF-CALL-SAFETY-WEB] strike count on the Safety item; null until the worker answers (or while the flag is off)
   const strikes = safety ? activeOf(safety).length : 0;
   const safetyItem: Item = { key: 'safety', href: '/dashboard/host/safety', label: 'Safety', icon: 'shield', badge: strikes || null };
-  const showSafety = !!account.host || (!!safety && (strikes > 0 || safety.status !== 'active'));
+  const showSafety = isInf || (!!safety && (strikes > 0 || safety.status !== 'active'));
 
   const groups: { title: string; items: Item[] }[] = [
     { title: 'Mera space', items: [
@@ -41,7 +42,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       ...(merchOn ? [{ key: 'orders' as const, href: '/dashboard/orders', label: 'My orders', icon: 'bag' }] : []), // [HF-MERCH-FAN-WEB-1]
       ...(favouritesOn ? [{ key: 'fraands' as const, href: '/dashboard/fraands', label: 'My Fraands', icon: 'heart', badge: online }] : []),
     ] },
-    { title: 'Influencer', items: account.host ? [
+    { title: 'Influencer', items: isInf ? [
       { key: 'host', href: '/dashboard/host', label: 'Influencer profile', icon: 'star' },
       { key: 'verifications', href: '/dashboard/verifications', label: 'My verifications', icon: 'shield' }, // [HF-CREATOR-BADGES-1]
       safetyItem, // [HF-CALL-SAFETY-WEB]
@@ -55,7 +56,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
     ] },
     // [HF-ONE-PHOTO-PAGE] the old 'My public page > Profile photo' item is gone: My photo & cover sets the influencer photo too.
     { title: 'Account', items: [
-      ...(!account.host && showSafety ? [safetyItem] : []), // [HF-CALL-SAFETY-WEB] paused or struck fans
+      ...(!isInf && showSafety ? [safetyItem] : []), // [HF-CALL-SAFETY-WEB] paused or struck fans
       { key: 'support', href: '/dashboard/support', label: 'Support', icon: 'help' },
       { key: 'close', href: '/dashboard/close', label: 'Close my account', icon: 'trash' },
       { key: 'signout', href: '/sign-out', label: 'Sign out', icon: 'out' },
@@ -82,7 +83,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
         </a>;
       })}
     </div>)}
-    {!account.host && !account.closing && <div className="h3-sidecard">
+    {!isInf && !account.closing && <div className="h3-sidecard">
       <b style={{ fontFamily: 'var(--head)', fontSize: 16 }}>Got followers?</b><br />
       <span>Apni baatein, apni kamaai. Verify once and take paid calls.</span><br />
       <a className="h3-btn sm gold" style={{ marginTop: 10 }} href="/dashboard/become">Shuru karo →</a>

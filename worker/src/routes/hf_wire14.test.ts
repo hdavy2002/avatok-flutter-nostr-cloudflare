@@ -49,7 +49,7 @@ const vid = (id: string, title = "T " + id, views = "100") => ({ id, snippet: { 
 
 function makeEnv() {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT UNIQUE, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT UNIQUE, status TEXT NOT NULL DEFAULT 'draft', intro_approved_at INTEGER, display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
     category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, women_lane INTEGER NOT NULL DEFAULT 0, lgbtq_lane INTEGER NOT NULL DEFAULT 0, lgbtq_public INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER); CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT); /* [HF-CREATOR-BADGES-1] go-live sync reads video KYC */
     CREATE TABLE hf_avatars (id TEXT PRIMARY KEY, image_key TEXT);
@@ -86,7 +86,7 @@ describe("YouTube sign-in connect", () => {
     const r = await connect({ accessToken: TOKEN });
     const j = await r.json();
     expect(r.status).toBe(200);
-    expect(j).toMatchObject({ ok: true, result: "approved", qualified: true, hostStatus: "approved", imported: { fetched: 2, inserted: 2 } });
+    expect(j).toMatchObject({ ok: true, result: "approved", qualified: true, hostStatus: null, imported: { fetched: 2, inserted: 2 } });
     expect(j.channel).toMatchObject({ platform: "youtube", state: "approved", verified: true, needsCode: false, followers: 500, handle: "@maya" });
     expect(j.channel.verifyCode).toBeUndefined();
     const own = calls.find((c) => c.url.includes("mine=true"));
@@ -94,7 +94,7 @@ describe("YouTube sign-in connect", () => {
     expect(db.prepare("SELECT COUNT(*) c FROM hf_reels WHERE visible=1 AND video_url IS NULL AND host_uid='u1'").get().c).toBe(2);
     expect(db.prepare("SELECT description FROM hf_reel_details LIMIT 1").get().description).toMatch(/^D /);
     expect(JSON.stringify(db.prepare("SELECT * FROM hf_channels").all())).not.toContain("ya29");
-    expect(db.prepare("SELECT slug FROM hf_hosts WHERE uid='u1'").get().slug).toBeTruthy();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_hosts WHERE uid='u1'").get().n).toBe(0); // [HF-INFLUENCER-GATE-1] a YouTube sign-in never creates a host row
   });
   it("below the follower minimum is verified but not approved, and imports nothing", async () => {
     ytMine.statistics.subscriberCount = "3";
@@ -187,7 +187,7 @@ describe("admin demo influencers", () => {
     expect(j.result).toMatchObject({ name: "Priya", added: 2, skipped: 0, missing: ["ccccccccccc"], bad: ["nope"] });
     const uid = j.result.uid;
     expect(uid).toMatch(/^demo_/);
-    expect(db.prepare("SELECT status, presence, price_per_min FROM hf_hosts WHERE uid=?").get(uid)).toMatchObject({ status: "approved", presence: "online", price_per_min: 12 });
+    expect(db.prepare("SELECT status, presence, price_per_min FROM hf_hosts WHERE uid=?").get(uid)).toMatchObject({ status: "draft", presence: "online", price_per_min: 12 });
     expect(db.prepare("SELECT COUNT(*) c FROM hf_reels WHERE host_uid=? AND is_demo=1 AND visible=1 AND channel_id IS NULL AND video_url IS NULL").get(uid).c).toBe(2);
     expect(await isDemoHost(env, uid)).toBe(true);
     const list = await (await admin("GET")).json();
@@ -197,6 +197,10 @@ describe("admin demo influencers", () => {
     const j2 = await (await admin("POST", undefined, { uid, name: "", ratePaise: 1500, youtubeUrls: ["aaaaaaaaaaa", "ddddddddddd"] })).json();
     expect(j2.result).toMatchObject({ added: 1, skipped: 1 });
     expect(db.prepare("SELECT price_per_min, display_name FROM hf_hosts WHERE uid=?").get(uid)).toMatchObject({ price_per_min: 15, display_name: "Priya" });
+    // [HF-INFLUENCER-GATE-1] a demo host is a 'draft' like anyone else: invisible until it has an approved intro (live + intro_approved_at)
+    const hidden = await (await hfReelsRoute(new Request("https://x/api/hf/reels"), env, "/api/hf/reels")).json();
+    expect(hidden.items.length).toBe(0);
+    db.prepare("UPDATE hf_hosts SET status='live', intro_approved_at=1 WHERE uid=?").run(uid);
     // shows on the public feed
     const feed = await (await hfReelsRoute(new Request("https://x/api/hf/reels"), env, "/api/hf/reels")).json();
     expect(feed.items.length).toBe(3);

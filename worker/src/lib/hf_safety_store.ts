@@ -139,15 +139,15 @@ export async function giveStrike(env: Env, a: GiveStrike, cfg?: SafetyCfg): Prom
 
 // ── pause / ban / restore ───────────────────────────────────────────────────────────────────────────────────────
 async function isHostRow(env: Env, uid: string): Promise<boolean> {
-  try { return !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first()); } catch { return false; }
+  try { return !!(await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1 AND status IN ('live','paused')").bind(uid).first()); } catch { return false; }
 }
 /** Hide the profile (reels, search and listings only show approved / live), take the line offline and close the queue. */
 async function hideHost(env: Env, uid: string): Promise<string | null> {
   const before = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>().catch(() => null);
   if (!before) return null;
   await forceHostOffline(env, uid).catch(() => undefined);
-  if (before.status === "live" || before.status === "approved") {
-    await env.DB_META.prepare("UPDATE hf_hosts SET status='paused', presence='offline', presence_at=?2, updated_at=?2 WHERE uid=?1 AND status IN ('live','approved')").bind(uid, Date.now()).run();
+  if (before.status === "live") { // [HF-INFLUENCER-GATE-1] 'approved' is retired
+    await env.DB_META.prepare("UPDATE hf_hosts SET status='paused', presence='offline', presence_at=?2, updated_at=?2 WHERE uid=?1 AND status='live'").bind(uid, Date.now()).run();
     return before.status;
   }
   return null;

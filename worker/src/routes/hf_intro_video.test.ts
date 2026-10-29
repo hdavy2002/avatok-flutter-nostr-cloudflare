@@ -63,6 +63,7 @@ function makeEnv() {
   db.exec(mig("2026-10-28-hf-intro-video-alters.sql"));
   db.exec(mig("2026-10-28-hf-intro-video-tables.sql"));
   db.exec(mig("2026-10-28-hf-intro-video-deleted-alters.sql")); // [HF-INTRO-DELETE-1]
+  db.exec(mig("2026-10-29-hf-moderation.sql")); // [HF-INFLUENCER-GATE-1] hf_user_photos: G2 needs an active profile + cover photo
   uploadedAt.clear(); kv.clear();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
@@ -116,6 +117,11 @@ const vid = (n: number) => "hfin_" + n.toString(16).padStart(20, "0");
 function host(uid: string, o: any = {}) {
   db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, about, price_per_min, presence, call_mode, avatar_id, women_lane) VALUES (?,?,?,?,?,?,?,?,?,?)")
     .run(uid, o.slug === undefined ? "slug-" + uid : o.slug, o.status ?? "draft", o.name === undefined ? "Name " + uid : o.name, o.about === undefined ? "I talk about travel and food." : o.about, o.rate ?? 20, o.presence ?? "offline", o.mode ?? "online", o.avatar === undefined ? "av1" : o.avatar, o.women ?? 0);
+  if (o.photos !== false) photos(uid);
+}
+/** [HF-INFLUENCER-GATE-1] an active profile + cover photo (G2 a/b). */
+function photos(uid: string, kinds: string[] = ["profile", "cover"]) {
+  for (const k of kinds) db.prepare("INSERT INTO hf_user_photos (id, uid, kind, public_key, mime, status, created_at, updated_at) VALUES (?,?,?,?,?,'active',1,1)").run(`p_${uid}_${k}`, uid, k, `photo/${uid}/${k}.jpg`, "image/jpeg");
 }
 const kyc = (uid: string, gender: string, done = 1) => db.prepare("INSERT INTO hf_kyc (uid, gender, verified_at) VALUES (?,?,?)").run(uid, gender, done ? 1 : null);
 const social = (uid: string, platform = "youtube") => db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at, platform_user_id, provider_ref, url) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run("ch_" + uid + platform, uid, platform, "@" + uid, 500, "approved", 1, 1, "pu_" + uid + platform, platform + "-oauth", "https://example.com/" + uid); // [HF-INTRO-INT] verified by login
@@ -232,7 +238,34 @@ describe("submit rules", () => {
     host("u1", { about: "", avatar: null, rate: 0 });
     const j = await body(await submit(base(id)));
     expect(j.status).toBe(422);
-    expect(j.missing).toEqual(expect.arrayContaining(["description", "photo", "rate"]));
+    expect(j.missing).toEqual(expect.arrayContaining(["description", "rate"]));
+  });
+  // [HF-INFLUENCER-GATE-1] G2: every missing piece is refused with 400 application_incomplete and its code.
+  it.each([
+    ["profile_photo", (u: string) => { host(u, { photos: false }); photos(u, ["cover"]); social(u); }],
+    ["cover_photo", (u: string) => { host(u, { photos: false }); photos(u, ["profile"]); social(u); }],
+    ["whatsapp", (u: string) => { host(u); social(u); phoneVerified = false; }],
+    ["social_or_aadhaar", (u: string) => { host(u); }],
+  ])("submit refuses with application_incomplete and missing %s", async (code, setup) => {
+    const id = await recordedDraft(); setup("u1");
+    const j = await body(await submit(base(id)));
+    expect(j).toMatchObject({ status: 400, error: "application_incomplete" });
+    expect(j.missing).toContain(code);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_influencer_applications").get().n).toBe(0);
+  });
+  it("[HF-INFLUENCER-GATE-1] a sensitive category without Aadhaar reports the code 'aadhaar'; Aadhaar alone replaces a social account", async () => {
+    const id = await recordedDraft(); host("u1"); social("u1");
+    expect(await body(await submit(base(id, { categories: ["listener"] })))).toMatchObject({ status: 400, error: "application_incomplete", missing: ["aadhaar"] });
+    kyc("u1", "M");
+    expect((await body(await submit(base(id, { categories: ["listener"] })))).status).toBe(200);
+  });
+  it("[HF-INFLUENCER-GATE-1] Aadhaar without any social account is enough for a normal category", async () => {
+    const id = await recordedDraft(); host("u1"); kyc("u1", "F");
+    expect((await body(await submit(base(id)))).status).toBe(200);
+  });
+  it("[HF-INFLUENCER-GATE-1] the video is required: an unknown video id is refused before any rule", async () => {
+    host("u1"); social("u1");
+    expect((await body(await submit(base(vid(7))))).error).toBe("video_not_found");
   });
   it("[HF-SOCIAL-STATES] a login-proven Facebook Page below the minimum shows in me.social but does not count (socials empty, Aadhaar still needed)", async () => {
     const id = await recordedDraft(); host("u1");
@@ -242,12 +275,12 @@ describe("submit rules", () => {
     expect(me.socials).toEqual([]);
     expect(me.requirements.hasVerifiedSocial).toBe(false);
     expect(me.social).toMatchObject({ state: "below_minimum", minFollowers: 20, accounts: [{ platform: "facebook", displayHandle: null, followers: 0, state: "below_minimum", need: "followers" }] });
-    expect(await body(await submit(base(id)))).toMatchObject({ status: 409, error: "aadhaar_required" });
+    expect(await body(await submit(base(id)))).toMatchObject({ status: 400, error: "application_incomplete", missing: ["social_or_aadhaar"] });
   });
-  it("no verified social and no Aadhaar -> aadhaar_required", async () => {
+  it("no verified social and no Aadhaar -> application_incomplete (social_or_aadhaar)", async () => {
     const id = await recordedDraft(); host("u1");
     const j = await body(await submit(base(id)));
-    expect(j).toMatchObject({ status: 409, error: "aadhaar_required" });
+    expect(j).toMatchObject({ status: 400, error: "application_incomplete", missing: ["social_or_aadhaar"] });
   });
   it("verified social + normal category needs no Aadhaar and creates a 'submitted' application; account is NOT live", async () => {
     const id = await recordedDraft(); host("u1"); social("u1");
@@ -260,7 +293,7 @@ describe("submit rules", () => {
   });
   it("sensitive category needs Aadhaar even with a verified social", async () => {
     const id = await recordedDraft(); host("u1"); social("u1");
-    expect((await body(await submit(base(id, { categories: ["listener"] })))).error).toBe("aadhaar_required");
+    expect((await body(await submit(base(id, { categories: ["listener"] })))).error).toBe("application_incomplete");
     kyc("u1", "M");
     expect((await body(await submit(base(id, { categories: ["prayer"] })))).status).toBe(200);
   });
@@ -344,8 +377,27 @@ describe("admin review", () => {
   it("approve re-checks the rules: Aadhaar removed after submit blocks it", async () => {
     const s = await submitted("u1", { cats: ["listener"], gender: "M" });
     db.prepare("UPDATE hf_kyc SET verified_at=NULL WHERE uid='u1'").run();
-    expect((await body(await approve(s.appId))).error).toBe("aadhaar_required");
+    const j = await body(await approve(s.appId));
+    expect(j).toMatchObject({ status: 409, error: "application_incomplete", missing: ["aadhaar"] }); // [HF-INFLUENCER-GATE-1] G3: approve re-checks the checklist
     expect(sent).toHaveLength(0);
+    expect(db.prepare("SELECT status FROM hf_hosts WHERE uid='u1'").get().status).toBe("draft");
+  });
+  it("[HF-INFLUENCER-GATE-1] approve refuses when a photo was removed after submit, and lists it", async () => {
+    const s = await submitted("u1");
+    db.prepare("DELETE FROM hf_user_photos WHERE uid='u1' AND kind='cover'").run();
+    expect(await body(await approve(s.appId))).toMatchObject({ status: 409, error: "application_incomplete", missing: ["cover_photo"] });
+  });
+  it("[HF-INFLUENCER-GATE-1] the admin detail carries the checklist of what still blocks approval", async () => {
+    const s = await submitted("u1");
+    expect((await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`))).checklist).toEqual([]);
+    db.prepare("DELETE FROM hf_user_photos WHERE uid='u1' AND kind='profile'").run();
+    expect((await body(await adm(`/api/admin/hf/intro-applications/${s.appId}`))).checklist).toEqual(["profile_photo"]);
+  });
+  it("[HF-INFLUENCER-GATE-1] approve ALWAYS sets 'live' (never 'approved') and stamps intro_approved_at, even from a legacy 'approved' row", async () => {
+    const s = await submitted("u1", { hostStatus: "approved" });
+    expect((await body(await approve(s.appId))).ok).toBe(true);
+    expect(db.prepare("SELECT status, intro_approved_at FROM hf_hosts WHERE uid='u1'").get()).toMatchObject({ status: "live" });
+    expect(db.prepare("SELECT intro_approved_at AS a FROM hf_hosts WHERE uid='u1'").get().a).toBeGreaterThan(0);
   });
 
   it("reject needs reasons; WhatsApp lists the reasons and the note; person can fix and resubmit", async () => {
@@ -435,7 +487,7 @@ describe("reels feed (hfIntroReelsEnabled)", () => {
 
   it("flag off keeps the old embed feed untouched", async () => {
     await liveInfluencer("a1", { option: "A" });
-    host("old", { status: "approved", slug: "old", presence: "online" }); social("old");
+    host("old", { status: "live", slug: "old", presence: "online" }); social("old"); db.prepare("UPDATE hf_hosts SET intro_approved_at=1 WHERE uid='old'").run();
     db.prepare("INSERT INTO hf_reels (id, host_uid, channel_id, platform, platform_video_id, embed_url, caption, visible, is_demo, published_at, imported_at) VALUES ('hfrl_oldoldold1','old','ch_oldyoutube','youtube','v1','https://e/1','c',1,0,5,1)").run();
     cfg = { hfIntroOnboardingEnabled: true, hfIntroReelsEnabled: false, hfReelsEnabled: true };
     const j = await feed();

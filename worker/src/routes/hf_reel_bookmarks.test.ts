@@ -23,7 +23,7 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 
 function makeEnv() {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', intro_approved_at INTEGER DEFAULT 1, display_name TEXT, price_per_min INTEGER NOT NULL DEFAULT 20,
     category TEXT, presence TEXT NOT NULL DEFAULT 'offline', avatar_id TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0,
     women_lane INTEGER, lgbtq_lane INTEGER, lgbtq_public INTEGER);
     CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
@@ -53,7 +53,7 @@ function makeEnv() {
 let n = 0;
 function host(uid: string, o: any = {}) {
   db.prepare("INSERT INTO hf_hosts (uid, slug, status, display_name, price_per_min, presence) VALUES (?,?,?,?,?,?)")
-    .run(uid, o.slug === undefined ? "slug-" + uid : o.slug, o.status ?? "approved", o.name ?? "Name " + uid, o.rate ?? 12, o.presence ?? "online");
+    .run(uid, o.slug === undefined ? "slug-" + uid : o.slug, o.status ?? "live", o.name ?? "Name " + uid, o.rate ?? 12, o.presence ?? "online");
   if (o.channel !== false) db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at) VALUES (?,?,?,?,?,?,?,?)")
     .run("hfch_" + uid, uid, "instagram", "@" + uid, o.followers ?? 100, o.chStatus ?? "approved", 1, 1);
 }

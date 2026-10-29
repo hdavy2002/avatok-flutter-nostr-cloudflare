@@ -10,11 +10,13 @@ import { callModeFlags, NO_FLAGS, type CallModeFlags, type HostMode } from '../.
 import HostModes from './HostModes';
 import { CallOptionCard, IntroBanner, useCallOption } from './CallOption'; // [HF-INTRO-B4]
 import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
-import type { DashboardAccount } from '../../../components/account/DashboardNav';
+import { isInfluencer, type DashboardAccount, type InfluencerApplication } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
 import { RulesGate, SafetyHomeCard, rulesNeeded, useSafetyMe } from './Safety'; // [HF-CALL-SAFETY-WEB]
 import SafetyBlockNote from '../../../components/safety/SafetyBlockNote';
+import { HF_PLAY_URL } from '../../../lib/hfApp';
+import { BRAND } from '../../../lib/brand';
 import { Avatar, Card, Empty, Failed, FlowerCluster, Ic, Marigold, Pill, Skel, Sticker, durationText, fmtInt, istDay, istTime, minutes } from './ui';
 
 /* [HF-FIX-TICKER-1] Evergreen lines make NO live claim; they only follow the real headlines built from the person's own data. */
@@ -67,6 +69,30 @@ function buildHeadlines(i: TickerIn): Headline[] {
   return [...out, ...EVERGREEN.map(text => ({ kind: 'evergreen', text }))];
 }
 
+/** [HF-INFLUENCER-GATE-1] What is still missing, in plain words (codes come from GET /api/hf/me influencerApplication.missing). */
+const MISSING_TEXT: Record<string, string> = {
+  profile_photo: 'Add your photo', cover_photo: 'Add a cover photo', whatsapp: 'Verify your WhatsApp',
+  social_or_aadhaar: 'Verify a social media account (enough followers) or verify Aadhaar', aadhaar: 'Verify Aadhaar', intro_video: 'Record your intro video in the app',
+};
+/** [HF-INFLUENCER-GATE-1] Everyone who is not an approved influencer sees this one card instead of any influencer area. Onboarding is app-only (HF-INTRO-22). */
+function ApplicationCard({ app }: { app?: InfluencerApplication }) {
+  const status = app?.status ?? 'none';
+  const missing = (app?.missing ?? []).map(c => MISSING_TEXT[c]).filter(Boolean);
+  if (status === 'submitted') return <section className="h3-card"><h2><Marigold size={20} />Your influencer application</h2><p className="muted" style={{ marginTop: 6 }}>Sent for approval. We’ll message you on WhatsApp.</p></section>;
+  const rejected = status === 'rejected';
+  return <section className="h3-card"><h2><Marigold size={20} />{rejected ? 'Your application needs changes' : 'Become an influencer'}</h2>
+    {rejected && app?.rejectReason && <p className="muted" style={{ marginTop: 6 }}>{app.rejectReason}</p>}
+    <p className="muted" style={{ marginTop: 6 }}>{rejected ? `Please fix these and send it again in the ${BRAND.name} app.` : `Onboarding is in the ${BRAND.name} app.`}</p>
+    {missing.length > 0 && <ul className="muted" style={{ marginTop: 8, paddingLeft: 20 }}>{missing.map(t => <li key={t}>{t}</li>)}</ul>}
+    <a className="h3-btn" style={{ marginTop: 12 }} href={HF_PLAY_URL} rel="noopener" onClick={() => capture('hf_dash3_cta', { cta: 'become_app' })}>Open the app</a>
+    <a className="h3-btn ghost" style={{ marginTop: 12, marginLeft: 8 }} href="/dashboard/verifications">My verifications</a></section>;
+}
+/** [HF-INFLUENCER-GATE-1] G4: every account needs a photo and a cover photo before calling, queueing or booking. */
+function PhotosPrompt({ ready }: { ready: { profile: boolean; cover: boolean } }) {
+  const what = !ready.profile && !ready.cover ? 'your photo and a cover photo' : !ready.profile ? 'your photo' : 'a cover photo';
+  return <aside className="h3-safe"><div><h3>Add your photo and cover photo first.</h3><p className="small">You need {what} before you can call or book. <a href="/dashboard/my-photo">Open My photo &amp; cover</a></p></div></aside>;
+}
+
 export default function Overview({ account, bookingOn }: { account: DashboardAccount; bookingOn: boolean }) {
   const { insights, summary, wallet, favs, profile, reload } = useDash();
   const ins = insights.data;
@@ -74,7 +100,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
   const name = profile.data?.firstName || account.displayName || 'dost';
   const online = favs.data?.filter(f => f.presence === 'online') ?? null;
   const delta = ins && ins.lastMonth.seconds > 0 ? (ins.month.seconds - ins.lastMonth.seconds) / ins.lastMonth.seconds : null;
-  const hostLive = account.host?.status === 'live' && !account.closing;
+  const hostLive = isInfluencer(account) && account.host?.status === 'live' && !account.closing;
   const [next, setNext] = useState<HfBooking | null>(null);
   const [myPending, setMyPending] = useState<HfBooking[]>([]);
   // [HF-BOOKING-UNIFY-1] The influencer's booking numbers are loaded once here so the ticker and the status card agree.
@@ -112,9 +138,10 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
         ? <a href={h.href} tabIndex={k === 1 ? -1 : undefined} onClick={() => capture('hf_dash3_ticker_click', { kind: h.kind, href: h.href })}>{h.text}</a> : h.text}</span>))}</div></div>
     </div>
 
+    {!account.closing && account.photosReady && (!account.photosReady.profile || !account.photosReady.cover) && <PhotosPrompt ready={account.photosReady} />}
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
     {hostLive && <IntroBanner />}
-    {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : isInfluencer(account) && account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : !isInfluencer(account) && !account.closing ? <ApplicationCard app={account.influencerApplication} /> : null}
     {hostLive && <ShareMyPage slug={account.host?.slug} />}
     {hostLive && <HomeSafety />}
 

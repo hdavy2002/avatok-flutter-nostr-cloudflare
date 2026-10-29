@@ -97,7 +97,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       laneWhere += lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
     }
     if (one) {
-      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND (h.status='live' OR (h.status='approved' AND ?2=1))`).bind(one[1], cfgAll.hfReelsEnabled === true ? 1 : 0).first<LiveRow>();
+      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND h.status='live' AND h.intro_approved_at IS NOT NULL`).bind(one[1]).first<LiveRow>();
       if (!r) return err(404, "not_found");
       if (await isHiddenDemoHost(env, r.uid, cfgAll as unknown as Record<string, unknown>)) return err(404, "not_found"); // [HF-WIRE-4]
       const pr = await profileReels(env, r.uid, cfgAll as unknown as Record<string, unknown>); // [HF-WIRE-4] visible reels + followers (null while the flag is off)
@@ -119,7 +119,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
     const limit = Math.min(48, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 24)) || 24));
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)) || 0);
     // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
-    const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
+    const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.intro_approved_at IS NOT NULL AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
     const aggs = await hostAggregates(env, rows.map((r) => r.uid)); // [HF-CALLS-1]
     const lines = await lineFieldsForUids(env, rows.map((r) => r.uid)); // [HF-CALL-MODES-A]
     return json(rows.map((r) => card(env, r, aggs.get(r.uid), std, lines?.get(r.uid))), 200, lane ? { "cache-control": "private, no-store" } : CACHE);

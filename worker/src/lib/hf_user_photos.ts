@@ -127,7 +127,7 @@ export const userPhotoKindOf = (k: ModKind) => KIND_OF[k] ?? null;
 
 // ── [HF-PHOTO-GATE-API] no call, booking or queue join without an approved profile photo AND cover photo ─────────────────────────────────────
 export type MissingPhoto = "profile" | "cover";
-export const PHOTOS_REQUIRED_MESSAGE = "Please add your profile photo and cover photo before you call or book.";
+export const PHOTOS_REQUIRED_MESSAGE = "Add your photo and cover photo first.";
 
 /** Pure. An active profile photo (or an active influencer photo, which counts as the profile) plus an active cover. */
 export function missingPhotos(active: ReadonlySet<string>): MissingPhoto[] {
@@ -149,7 +149,7 @@ export async function hasRequiredPhotos(env: Env, uid: string): Promise<boolean>
 /** null = allowed. With hfPhotosRequiredEnabled on and a photo missing: 403 photos_required. Fails open on a read error (never locks everyone out). */
 export async function photosRequiredBlock(env: Env, uid: string, action: "call" | "booking" | "queue"): Promise<Response | null> {
   try {
-    if ((await readConfig(env)).hfPhotosRequiredEnabled !== true) return null;
+    if ((await readConfig(env)).hfPhotosRequiredEnabled === false) return null; // [HF-INFLUENCER-GATE-1] G4: on unless the kill switch is explicitly false
     const missing = await missingPhotosFor(env, uid);
     if (!missing.length) return null;
     void track(env, uid, "hf_photo_gate_block", BRAND.slug, { area: "hf_photo_gate", action, missing: missing.join(",") }).catch(() => undefined);

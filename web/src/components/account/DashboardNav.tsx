@@ -8,7 +8,15 @@ export interface DashboardAccount {
   displayName: string | null;
   closing: boolean;
   host: { status: string; slug: string | null } | null;
+  /** [HF-INFLUENCER-GATE-1] The server decides: true only for a real, approved influencer (live or paused). */
+  isHost?: boolean;
+  influencerApplication?: InfluencerApplication;
+  photosReady?: { profile: boolean; cover: boolean };
 }
+/** [HF-INFLUENCER-GATE-1] GET /api/hf/me influencerApplication. `missing` codes: profile_photo, cover_photo, whatsapp, social_or_aadhaar, aadhaar, intro_video. */
+export interface InfluencerApplication { status: 'none' | 'draft' | 'submitted' | 'rejected' | 'approved'; rejectReason?: string | null; missing?: string[] }
+/** [HF-INFLUENCER-GATE-1] The one test for "is this person an influencer". Never look at account.host for this. */
+export const isInfluencer = (a: { isHost?: boolean } | null | undefined): boolean => a?.isHost === true;
 export const retiredDashboardNotices: Record<string, string> = {
   billing: 'The previous billing screen has been retired. Previous receipts have not been moved into this wallet.',
   orders: 'The previous shop orders screen has been retired. Shop orders are not listed in this account.',
@@ -33,7 +41,7 @@ export interface NavState { account: DashboardAccount; bookingOn: boolean; favou
 /** [HF-DASH-SHELL-2] Sidebar built from DASH_ROUTES. Hosts see a host group; everyone else sees "Become a host".
  * Links are real URLs (deep links and new tabs work); the dashboard router turns a plain click into an in-place switch. */
 export default function DashboardNav({ account, bookingOn, favouritesOn = false, active }: NavState) {
-  const hostReady = account.host?.status === 'live' && !account.closing;
+  const hostReady = isInfluencer(account) && account.host?.status === 'live' && !account.closing;
   const [open, setOpen] = useState(false);
   const route = (s: DashSection) => DASH_ROUTES.find(r => r.section === s)!;
   type Item = { href: string; label: string; icon: string; key?: DashSection; divider?: boolean; disabled?: boolean; note?: string; heading?: string };
@@ -41,7 +49,7 @@ export default function DashboardNav({ account, bookingOn, favouritesOn = false,
     href: r.path, label: r.label, icon: r.icon, key: r.section,
     disabled: !!r.needsBookings && !bookingOn, note: 'Opens soon',
   }));
-  const host: Item[] = account.host
+  const host: Item[] = isInfluencer(account)
     ? DASH_ROUTES.filter(r => r.group === 'host' && !r.needsMerch).map((r, i) => ({
       href: r.path, label: r.label, icon: r.icon, key: r.section, divider: i === 0, heading: i === 0 ? 'Hosting' : undefined,
       disabled: (r.hostOnly && !hostReady) || (!!r.needsBookings && !bookingOn), note: r.hostOnly && !hostReady ? 'When your profile is live' : 'Opens soon',

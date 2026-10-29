@@ -1003,7 +1003,14 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
       await Services.instance.refreshMe();
     } catch (_) {}
     if (!mounted) return;
-    context.go(_join ? '/influencer/join?step=2' : '/inf/home');
+    // [HF-INFLUENCER-GATE-1] Connecting an account never makes anyone an influencer: go back to where she came from.
+    if (_join) {
+      context.go('/influencer/join?step=2');
+    } else if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/inf/channels');
+    }
   }
 
   @override

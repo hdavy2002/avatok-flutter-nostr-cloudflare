@@ -23,6 +23,7 @@ import { deleteIntroVideoFiles, type IntroFileRow } from "../lib/hf_intro_cleanu
 import { readConfig } from "./config";
 import { introModerationOn, introAiFor, introApproveGate, ensureIntroCheck, publishIntroVideo } from "../lib/hf_intro_moderation"; // [HF-MOD-3]
 import { videoOut } from "./hf_intro_onboarding";
+import { applicationMissing, MISSING_TEXT } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import { onboardingFacts, applicationJson, videoJson, parseJsonArray, type AppRow, type VideoRow } from "./hf_intro_onboarding";
 
 const APP = BRAND.slug;
@@ -158,6 +159,7 @@ async function detail(req: Request, env: Env, id: string): Promise<Response> {
     socials: facts.socials.map((s) => ({ platform: s.platform, handle: s.handle, url: s.url, followers: s.followers })),
     aadhaar: { done: facts.aadhaarDone, female: facts.aadhaarGender === "F", gender: facts.aadhaarGender },
     whatsappVerified: facts.whatsappVerified,
+    checklist: await applicationMissing(env, app.uid, { categories: categoriesFromJson(app.categories_json).map((c) => c.id), hasVideo: !!video }).catch(() => []), // [HF-INFLUENCER-GATE-1] what the reviewer still cannot approve on
     womenToWomen: categoriesFromJson(app.categories_json).some((c) => c.id === WOMEN_TO_WOMEN),
     calendar,
     history: (history.results ?? []).map(applicationJson),
@@ -194,9 +196,11 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
   const missing: string[] = [];
   if (!host.display_name) missing.push("name");
   if (!validCreatorRate(host.price_per_min)) missing.push("rate");
-  if (!facts.whatsappVerified) missing.push("whatsapp");
   if (missing.length) return err(409, "not_ready", { missing });
   const cats = categoriesFromJson(app.categories_json).map((c) => c.id);
+  // [HF-INFLUENCER-GATE-1] G3: the same checklist as submit (photos, WhatsApp, social-or-Aadhaar, Aadhaar for sensitive categories, intro video).
+  const gateMissing = await applicationMissing(env, uid, { categories: cats, hasVideo: true });
+  if (gateMissing.length) return err(409, "application_incomplete", { missing: gateMissing, message: `Cannot approve yet. Missing: ${gateMissing.map((m) => MISSING_TEXT[m]).join(", ")}.` });
   const gate = submissionGate({ categories: cats, hasVerifiedSocial: facts.socials.length > 0, aadhaarDone: facts.aadhaarDone, aadhaarGender: facts.aadhaarGender });
   if (gate) return err(409, gate, { message: GATE_MESSAGES[gate] });
   const slug = host.slug || (await ensureSlug(env, uid, host.display_name!));
@@ -217,8 +221,8 @@ async function approve(req: Request, env: Env, id: string): Promise<Response> {
     env.DB_META.prepare(`UPDATE hf_intro_videos SET status='replaced', updated_at=?2 WHERE uid=?4 AND status='approved' AND id<>?5 AND ${guard}`).bind(id, now, a.uid, uid, app.intro_video_id),
     env.DB_META.prepare(`UPDATE hf_intro_videos SET status='approved', updated_at=?2 WHERE id=?4 AND ${guard}`).bind(id, now, a.uid, app.intro_video_id),
     env.DB_META.prepare(
-      `UPDATE hf_hosts SET status=CASE WHEN status IN ('approved','live') THEN status ELSE 'live' END,
-         presence=CASE WHEN status IN ('approved','live') THEN presence ELSE 'online' END, presence_at=CASE WHEN status IN ('approved','live') THEN presence_at ELSE ?2 END,
+      `UPDATE hf_hosts SET status='live', /* [HF-INFLUENCER-GATE-1] approving always sets 'live' ('approved' is retired) */
+         presence=CASE WHEN status='live' THEN presence ELSE 'online' END, presence_at=CASE WHEN status='live' THEN presence_at ELSE ?2 END,
          live_at=COALESCE(live_at, ?2), categories_json=?4, call_option=?5, intro_video_id=?6, intro_approved_at=?2, women_lane=CASE WHEN ?7=1 THEN 1 ELSE women_lane END,
          review_note=NULL, reviewed_by=?3, reviewed_at=?2, updated_at=?2, listing_revision=listing_revision+1
        WHERE uid=?8 AND ${guard}`,

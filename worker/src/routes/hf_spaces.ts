@@ -21,6 +21,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { isInfluencer } from "../lib/hf_influencer"; // [HF-INFLUENCER-GATE-1]
 import { ensureHostRow, minFollowersOf, minViewsOf, socialSummary, socialSummaryFor, syncHostState } from "./hf_channels";
 import { spaceFacts, qualifiedFor, parseCreatorKind, parseSpace, parseCallerLevel, creatorBadges, type SpaceName } from "../lib/hf_spaces";
 
@@ -85,7 +86,7 @@ async function applySpace(env: Env, uid: string, space: SpaceName | null, b: Rec
     if (!aadhaarSaysT && !declaredNow) return err(400, "declare_required", { message: "Please tick the box to say this space is right for you and accept the LGBTQ+ space terms." });
     lanes = { women: 0, lgbtq: 1, pub: 1 };
   }
-  if (!prev && (cur?.status === "live" || cur?.status === "approved")) {
+  if (!prev && (isInfluencer(cur?.status))) {
     // A host who is already visible cannot join a space before her video KYC is approved.
     if (!qualifiedFor(space, { ...f, lgbtqDeclared: f.lgbtqDeclared || declaredNow })) return err(409, "video_kyc_required", { message: "Finish your video KYC before starting this channel." });
   }
