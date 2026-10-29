@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminApi, errMessage } from './api';
 import { fullDate, plural } from './format';
+import { Corner, PageHero, type CornerKind } from './desi';
 import { SubHeader, useStaff } from './staff';
 import type { FailedJob, QueueStat, Suppression } from './types';
 import { Empty, ErrorBox, Modal, Spinner, useInterval, usePageVisible, useToast } from './ui';
 import { BRAND } from '../../lib/brand';
+
+/** Each queue card gets its own colour and flower, so the page reads as six different things. */
+const QUEUE_TONES = ['lav', 'gold', 'tea', 'rani', 'lav', 'gold'] as const;
+const QUEUE_CORNERS: CornerKind[] = ['genda', 'hibiscus', 'yellow', 'jasmine', 'genda', 'hibiscus'];
 
 const WHAT: Record<string, string> = {
   'support-inbound': 'Incoming emails becoming tickets',
@@ -93,15 +98,18 @@ export default function AdminQueues() {
       <SubHeader back="Support desk" backTo="/desk" title="Queues">
         {qs && <span className={`hfs-pillstat ${healthy ? 'is-ok' : 'is-warn'}`} role="status">{healthy ? 'All queues healthy' : 'Some queues are busy'} · updated {age} s ago</span>}
       </SubHeader>
-      <div className="hfs-wrap">
+      <div className="hfs-wrap hfs-in">
+        <PageHero tone="tea" eyebrow="Support desk" title="Queues" ghost="Line" sticker="auto" rot={-5}
+          sub={qs ? (healthy ? 'Line mein sab theek chal raha hai' : 'Kuch line mein bheed hai, ek nazar dalo') : 'Line mein sab theek?'} />
         {err && <ErrorBox message={err} onRetry={() => void load()} />}
         {!qs && !err && <div className="hfs-center"><Spinner /></div>}
         {qs && (
           <div className="hfs-qgrid">
-            {qs.map((q) => {
+            {qs.map((q, i) => {
               const s = queueState(q);
               return (
-                <section key={q.name} className="hfs-card hfs-qcard">
+                <section key={q.name} className={`hfs-card hfs-qcard hfs-t-${QUEUE_TONES[i % QUEUE_TONES.length]} has-corner`}>
+                  <Corner kind={QUEUE_CORNERS[i % QUEUE_CORNERS.length]} size={54} />
                   <div className="hfs-qcard__head">
                     <h2>{q.name}</h2>
                     <span className={`hfs-chip hfs-chip--${s}`}>{s === 'ok' ? 'Healthy' : s === 'busy' ? 'Busy' : 'Needs a look'}</span>
@@ -120,9 +128,10 @@ export default function AdminQueues() {
         )}
 
         <div className="hfs-qrow">
-          <section className="hfs-card hfs-qfailed">
+          <section className="hfs-card hfs-qfailed hfs-t-rani has-corner">
+            <Corner kind="hibiscus" size={60} />
             <h2>Failed after every retry</h2>
-            {failed.length === 0 ? <Empty title="Nothing has failed">Every message went through.</Empty> : (
+            {failed.length === 0 ? <Empty sticker="kyabaat" hi="Sab bhej diya" title="Nothing has failed">Every message went through.</Empty> : (
               <>
                 <table className="hfs-table">
                   <thead><tr><th>Queue</th><th>What</th><th>Why it failed</th><th>When</th><th /></tr></thead>
@@ -145,7 +154,8 @@ export default function AdminQueues() {
             )}
           </section>
 
-          <section className="hfs-card hfs-qside">
+          <section className="hfs-card hfs-qside hfs-t-gold has-corner">
+            <Corner kind="genda" size={56} />
             <h2>WhatsApp speed</h2>
             <div>
               <label htmlFor="hfs-wa" className="hfs-label">{BRAND.name} number · 1 message every</label>

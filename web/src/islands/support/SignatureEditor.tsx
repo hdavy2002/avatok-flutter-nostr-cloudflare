@@ -3,6 +3,7 @@
 // No editor library: document.execCommand is old but is supported by every browser and gives bold/italic/colour/links for free.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminApi, errMessage, uploadAttachment } from './api';
+import { Corner } from './desi';
 import { esc } from './format';
 import { sanitizeHtml } from './sanitize';
 import { FILL_INS, FONT_SIZES, FONT_STACKS, SOCIALS, defaultSignature, dividerHtml, fillSample, logoImgHtml, socialHtml, toEmailSafe, BASE_FONT } from './signature';
@@ -116,7 +117,8 @@ export default function SignatureEditor({ embedded = false }: { embedded?: boole
       {!loaded && !err && <div className="hfs-center"><Spinner /></div>}
       {loaded && (
         <div className="hfs-sig">
-          <section className="hfs-card hfs-sig__edit">
+          <section className="hfs-card hfs-sig__edit hfs-t-lav has-corner">
+            <Corner kind="genda" size={58} />
             <h2>{scope === 'team' ? 'Team signature' : 'My signature'}</h2>
             <p className="hfs-fineprint">
               {scope === 'team' ? 'Added under every reply unless someone uses their own. ' : 'Used under your replies when the switch below is on. '}
@@ -177,7 +179,8 @@ export default function SignatureEditor({ embedded = false }: { embedded?: boole
             </div>
           </section>
 
-          <section className="hfs-card hfs-sig__preview">
+          <section className="hfs-card hfs-sig__preview hfs-t-gold has-corner">
+            <Corner kind="hibiscus" size={60} />
             <div className="hfs-sig__previewhead">
               <h2>Preview</h2>
               <div className="hfs-seg" role="group" aria-label="Preview size">
@@ -203,7 +206,7 @@ export default function SignatureEditor({ embedded = false }: { embedded?: boole
   return (
     <div className="hfs hfs-admin">
       <SubHeader back="Settings" backTo="/desk/settings" title="Email signature" />
-      <div className="hfs-wrap">{inner}</div>
+      <div className="hfs-wrap hfs-in">{inner}</div>
     </div>
   );
 }

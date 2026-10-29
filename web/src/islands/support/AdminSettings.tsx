@@ -3,20 +3,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminApi, errMessage } from './api';
 import { fullDate } from './format';
+import { Corner, IconTile, PageHero, type CornerKind, type IconName, type Tone } from './desi';
 import SignatureEditor from './SignatureEditor';
 import { Link } from './router';
 import { SubHeader, useStaff } from './staff';
 import { CATEGORIES, PRIORITIES, categoryLabel, type AutomationRule, type BlockedSender, type BusinessHours, type CannedReply, type CategorySlug, type Holiday, type StaffMember, type StaffRole, type SupportSettings } from './types';
 import { Empty, ErrorBox, Modal, PRIORITY_LABEL, Spinner, useToast } from './ui';
 
-const SECTIONS: { key: string; label: string; hint: string }[] = [
-  { key: 'signature', label: 'Email signature', hint: 'What goes under every reply' },
-  { key: 'canned', label: 'Saved replies', hint: 'Ready-made answers' },
-  { key: 'team', label: 'Team', hint: 'Who can use the desk' },
-  { key: 'automations', label: 'Automations', hint: 'Who gets which tickets' },
-  { key: 'hours', label: 'Business hours', hint: 'Working days and holidays' },
-  { key: 'alerts', label: 'Alerts', hint: 'WhatsApp number for new tickets' },
-  { key: 'blocked', label: 'Blocked senders', hint: 'Emails we ignore' },
+const SECTIONS: { key: string; label: string; hint: string; icon: IconName; tone: Tone }[] = [
+  { key: 'signature', label: 'Email signature', hint: 'What goes under every reply', icon: 'pen', tone: 'lav' },
+  { key: 'canned', label: 'Saved replies', hint: 'Ready-made answers', icon: 'chat', tone: 'rani' },
+  { key: 'team', label: 'Team', hint: 'Who can use the desk', icon: 'users', tone: 'tea' },
+  { key: 'automations', label: 'Automations', hint: 'Who gets which tickets', icon: 'bolt', tone: 'gold' },
+  { key: 'hours', label: 'Business hours', hint: 'Working days and holidays', icon: 'clock', tone: 'lav' },
+  { key: 'alerts', label: 'Alerts', hint: 'WhatsApp number for new tickets', icon: 'bell', tone: 'rani' },
+  { key: 'blocked', label: 'Blocked senders', hint: 'Emails we ignore', icon: 'spam', tone: 'grey' },
 ];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DEFAULT_HOURS: BusinessHours = { days: [1, 2, 3, 4, 5, 6], from: '10:00', to: '19:00', tz: 'Asia/Kolkata' };
@@ -27,23 +28,27 @@ export default function AdminSettings({ section }: { section?: string }) {
   return (
     <div className="hfs hfs-admin">
       <SubHeader back="Support desk" backTo="/desk" title="Settings" />
-      <div className="hfs-wrap hfs-settings">
-        <nav className="hfs-snav" aria-label="Settings sections">
-          {SECTIONS.map((s) => (
-            <Link key={s.key} to={`/desk/settings/${s.key}`} className={sec === s.key ? 'is-on' : ''} aria-current={sec === s.key ? 'page' : undefined}>
-              <strong>{s.label}</strong><span>{s.hint}</span>
-            </Link>
-          ))}
-          <Link to="/desk/queues"><strong>WhatsApp speed</strong><span>On the Queues page</span></Link>
-        </nav>
-        <div className="hfs-spanel">
-          {sec === 'signature' && <SignatureEditor embedded />}
-          {sec === 'canned' && <Canned />}
-          {sec === 'team' && <Team />}
-          {sec === 'automations' && <Automations />}
-          {sec === 'hours' && <Hours />}
-          {sec === 'alerts' && <Alerts />}
-          {sec === 'blocked' && <Blocked />}
+      <div className="hfs-wrap hfs-in">
+        <PageHero tone="lav" eyebrow="Support desk" title="Settings" ghost="Niyam" sticker="swag" rot={5} sub="Apna desk, apne niyam" />
+        <div className="hfs-settings">
+          <nav className="hfs-snav" aria-label="Settings sections">
+            {SECTIONS.map((s) => (
+              <Link key={s.key} to={`/desk/settings/${s.key}`} className={sec === s.key ? 'is-on' : ''} aria-current={sec === s.key ? 'page' : undefined}>
+                <IconTile name={s.icon} tone={s.tone} size={18} />
+                <span className="hfs-snav__t"><strong>{s.label}</strong><span>{s.hint}</span></span>
+              </Link>
+            ))}
+            <Link to="/desk/queues"><IconTile name="speed" tone="tea" size={18} /><span className="hfs-snav__t"><strong>WhatsApp speed</strong><span>On the Queues page</span></span></Link>
+          </nav>
+          <div className="hfs-spanel">
+            {sec === 'signature' && <SignatureEditor embedded />}
+            {sec === 'canned' && <Canned />}
+            {sec === 'team' && <Team />}
+            {sec === 'automations' && <Automations />}
+            {sec === 'hours' && <Hours />}
+            {sec === 'alerts' && <Alerts />}
+            {sec === 'blocked' && <Blocked />}
+          </div>
         </div>
       </div>
     </div>
@@ -70,9 +75,10 @@ function Gate({ s, err, load, children }: { s: SupportSettings | null; err: stri
   return <>{children}</>;
 }
 
-function Card({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
+function Card({ title, intro, children, tone = 'lav', corner = 'genda' }: { title: string; intro?: string; children: React.ReactNode; tone?: 'rani' | 'lav' | 'gold' | 'tea'; corner?: CornerKind }) {
   return (
-    <section className="hfs-card hfs-scard">
+    <section className={`hfs-card hfs-scard hfs-t-${tone} has-corner`}>
+      <Corner kind={corner} size={58} />
       <h2>{title}</h2>
       {intro && <p className="hfs-fineprint">{intro}</p>}
       {children}
@@ -93,13 +99,13 @@ function Canned() {
     try { await adminApi.deleteCanned(c.id); setList((l) => (l ?? []).filter((x) => x.id !== c.id)); toast('Deleted'); } catch (e) { toast(errMessage(e), 'error'); }
   };
   return (
-    <Card title="Saved replies" intro="Ready-made answers you can drop into a reply. Use {customer_name}, {ticket_number} and {agent_name} and they fill in on their own.">
+    <Card tone="rani" corner="hibiscus" title="Saved replies" intro="Ready-made answers you can drop into a reply. Use {customer_name}, {ticket_number} and {agent_name} and they fill in on their own.">
       {err && <ErrorBox message={err} onRetry={load} />}
       {!list && !err && <div className="hfs-center"><Spinner /></div>}
       {list && (
         <>
           <button type="button" className="hfs-btn hfs-btn--primary" disabled={!me.canWrite} onClick={() => setEdit({ id: '', title: '', body: '' })}>New saved reply</button>
-          {list.length === 0 ? <Empty title="No saved replies yet">Add the answers you type most often.</Empty> : (
+          {list.length === 0 ? <Empty sticker="chugli" hi="Baat-cheet ke liye taiyaar" title="No saved replies yet">Add the answers you type most often.</Empty> : (
             <ul className="hfs-simplelist">
               {list.map((c) => (
                 <li key={c.id}>
@@ -165,7 +171,7 @@ function Team() {
     try { await adminApi.removeStaff(m.id); setList((l) => (l ?? []).filter((x) => x.id !== m.id)); toast('Removed'); } catch (x) { toast(errMessage(x), 'error'); }
   };
   return (
-    <Card title="Team" intro="Admins can change everything. Agents answer tickets. Viewers can read but not change anything. People must sign in with the email address you add here.">
+    <Card tone="tea" corner="yellow" title="Team" intro="Admins can change everything. Agents answer tickets. Viewers can read but not change anything. People must sign in with the email address you add here.">
       {err && <ErrorBox message={err} onRetry={load} />}
       {!list && !err && <div className="hfs-center"><Spinner /></div>}
       {list && (
@@ -205,9 +211,9 @@ function Automations() {
   const used = new Set((rules ?? []).map((r) => r.category));
   const free = CATEGORIES.filter((c) => !used.has(c.slug));
   return (
-    <Card title="Automations" intro="When a new ticket arrives in a category, give it to a person and set its priority. Tickets with no rule stay in Unassigned.">
+    <Card tone="gold" corner="genda" title="Automations" intro="When a new ticket arrives in a category, give it to a person and set its priority. Tickets with no rule stay in Unassigned.">
       <Gate s={s} err={err} load={load}>
-        {(rules ?? []).length === 0 && <Empty title="No rules yet">Add one below.</Empty>}
+        {(rules ?? []).length === 0 && <Empty sticker="auto" hi="Sab haath se chal raha hai" title="No rules yet">Add one below.</Empty>}
         <ul className="hfs-rules">
           {(rules ?? []).map((r) => (
             <li key={r.id}>
@@ -254,7 +260,7 @@ function Hours() {
   const canEdit = me.role === 'admin';
   const toggle = (d: number) => { setH({ ...hh, days: hh.days.includes(d) ? hh.days.filter((x) => x !== d) : [...hh.days, d].sort() }); setDirty(true); };
   return (
-    <Card title="Business hours" intro="Used for the 24-hour reply target, the 2-hour urgent target, and the out-of-hours line in the automatic first reply.">
+    <Card tone="lav" corner="hibiscus" title="Business hours" intro="Used for the 24-hour reply target, the 2-hour urgent target, and the out-of-hours line in the automatic first reply.">
       <Gate s={s} err={err} load={load}>
         <fieldset className="hfs-days" disabled={!canEdit}>
           <legend className="hfs-label">Working days</legend>
@@ -302,7 +308,7 @@ function Alerts() {
     void save({ alert_whatsapp: v }, v ? 'Alert number saved' : 'Alerts switched off');
   };
   return (
-    <Card title="Alerts" intro="This WhatsApp number is told about every new ticket and every customer reply. Above 10 tickets a minute you get one summary a minute instead. Urgent tickets always alert on their own.">
+    <Card tone="rani" corner="jasmine" title="Alerts" intro="This WhatsApp number is told about every new ticket and every customer reply. Above 10 tickets a minute you get one summary a minute instead. Urgent tickets always alert on their own.">
       <Gate s={s} err={err} load={load}>
         <label className="hfs-label" htmlFor="hfs-al">Alert WhatsApp number</label>
         <div className="hfs-inline">
@@ -335,10 +341,10 @@ function Blocked() {
     try { await adminApi.unblock(b.email ? { email: b.email } : { domain: b.domain }); setList((l) => (l ?? []).filter((x) => x !== b)); toast('Unblocked'); } catch (e) { toast(errMessage(e), 'error'); }
   };
   return (
-    <Card title="Blocked senders" intro="Emails from these people or domains do not become tickets and get no reply.">
+    <Card tone="gold" corner="yellow" title="Blocked senders" intro="Emails from these people or domains do not become tickets and get no reply.">
       {err && <ErrorBox message={err} onRetry={load} />}
       {!list && !err && <div className="hfs-center"><Spinner /></div>}
-      {list && (list.length === 0 ? <p className="hfs-fineprint">Nobody is blocked.</p> : (
+      {list && (list.length === 0 ? <Empty sticker="peace" hi="Sab dost hain" title="Nobody is blocked">Emails you block will be listed here.</Empty> : (
         <ul className="hfs-simplelist">
           {list.map((b, i) => (
             <li key={`${b.email ?? b.domain}-${i}`}>

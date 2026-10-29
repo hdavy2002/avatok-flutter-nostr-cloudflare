@@ -1,5 +1,6 @@
 // [HF-SUPPORT-DESK] Shared pieces: corner flowers, chips, avatars, menus, modal, toasts, the 6-digit code boxes.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Genda, Hibiscus, Jasmine, Sticker, type StickerName } from './desi';
 import { initials } from './format';
 
 /* ── colours (the approved mock-ups) ───────────────────────────────────── */
@@ -70,12 +71,19 @@ export function Spinner({ label = 'Loading' }: { label?: string }) {
   return <span className="hfs-spinner" role="status" aria-label={label} />;
 }
 
-export function Empty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
+/** A friendly empty state: one of the site's stickers with flowers around it, a Hinglish line, then the plain words. */
+export function Empty({ title, children, action, sticker = 'chai', hi }: { title: string; children?: ReactNode; action?: ReactNode; sticker?: StickerName; hi?: string }) {
   return (
     <div className="hfs-empty">
-      <Marigold size={44} />
+      <div className="hfs-empty__art" aria-hidden="true">
+        <span className="e1"><Genda size={56} /></span>
+        <span className="e2"><Jasmine size={30} /></span>
+        <span className="e3"><Hibiscus size={44} /></span>
+        <Sticker name={sticker} w={130} rot={-4} wiggle />
+      </div>
+      {hi && <p className="hfs-empty__hi">{hi}</p>}
       <h3>{title}</h3>
-      {children && <p>{children}</p>}
+      {children && <p className="hfs-empty__txt">{children}</p>}
       {action}
     </div>
   );

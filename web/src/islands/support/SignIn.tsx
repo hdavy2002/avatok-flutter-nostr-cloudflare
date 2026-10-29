@@ -15,6 +15,7 @@ import {
 import { MOCK } from './api';
 import { mockSignedIn } from './auth';
 import { navigate } from './router';
+import { Toran } from './desi';
 import { CodeBoxes, Gold, Lilac, Marigold, useCountdown } from './ui';
 
 /** The few operations the forms need. Real = Clerk + the website's sign-up endpoints; mock = instant. */
@@ -277,6 +278,7 @@ export default function SignIn() {
         </div>
         <a className="hfs-toplink" href={brandUrl('/')}>Back to {BRAND.domain}</a>
       </header>
+      <Toran />
       <main className="hfs-signin__main">
         <section className="hfs-card hfs-card--lg hfs-signin__card">
           <Lilac size={48} className="hfs-flower--tr" />
@@ -305,6 +307,7 @@ export default function SignIn() {
             : <button type="button" className="hfs-btn hfs-btn--amber hfs-btn--xl" onClick={() => setMode('signin')}>I already have an account</button>}
         </section>
       </main>
+      <div className="hfs-strip" aria-hidden="true" />
     </div>
   );
 }

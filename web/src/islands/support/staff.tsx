@@ -5,7 +5,7 @@ import { adminApi } from './api';
 import { useAuthState } from './auth';
 import { Link, navigate } from './router';
 import type { StaffMember, StaffRole } from './types';
-import { Avatar, Gold, Icon, Menu, MenuItem } from './ui';
+import { Avatar, Icon, Marigold, Menu, MenuItem } from './ui';
 
 export interface StaffCtxValue { uid: string; name: string; role: StaffRole; canWrite: boolean; team: StaffMember[]; teamLoaded: boolean; loadTeam: () => void }
 const Ctx = createContext<StaffCtxValue | null>(null);
@@ -84,28 +84,30 @@ export function DeskHeader({ search, onSearch, searchRef, queuesHealthy }: { sea
   useEffect(() => setQ(search ?? ''), [search]);
   return (
     <header className="hfs-dh">
-      <Link to="/desk" className="hfs-dh__brand"><Gold size={28} />Support desk</Link>
-      {onSearch && (
-        <>
-          <label htmlFor="hfs-dq" className="hfs-sr">Search tickets</label>
-          <form className="hfs-dh__search" onSubmit={(e) => { e.preventDefault(); onSearch(q.trim()); }}>
-            <Icon name="search" size={18} />
-            <input id="hfs-dq" ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number, email, phone, handle or words" />
-          </form>
-        </>
-      )}
-      <div className="hfs-dh__right">
-        <span className={`hfs-rolechip hfs-rolechip--${me.role}`}>{me.role === 'admin' ? 'Admin' : me.role === 'agent' ? 'Agent' : 'View only'}</span>
-        <Menu align="right" className="hfs-dh__avatar" label={<Avatar name={me.name} tone="plum" size={38} />} title="Account">
-          {(close) => (
-            <>
-              <div className="hfs-menu__note">{me.name}<br />{auth.email}</div>
-              {queuesHealthy === false && <MenuItem onClick={() => { close(); navigate('/desk/queues'); }}>Queues need a look</MenuItem>}
-              <MenuItem onClick={() => { close(); void auth.signOut(); }}>Sign out</MenuItem>
-              <MenuItem onClick={() => { close(); window.location.href = `https://${BRAND.domain}/`; }}>Back to {BRAND.domain}</MenuItem>
-            </>
-          )}
-        </Menu>
+      <div className="hfs-dh__in hfs-in">
+        <Link to="/desk" className="hfs-dh__brand"><Marigold size={30} /><span>Support desk</span></Link>
+        {onSearch && (
+          <>
+            <label htmlFor="hfs-dq" className="hfs-sr">Search tickets</label>
+            <form className="hfs-dh__search" onSubmit={(e) => { e.preventDefault(); onSearch(q.trim()); }}>
+              <Icon name="search" size={18} />
+              <input id="hfs-dq" ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number, email, phone, handle or words" />
+            </form>
+          </>
+        )}
+        <div className="hfs-dh__right">
+          <span className={`hfs-rolechip hfs-rolechip--${me.role}`}>{me.role === 'admin' ? 'Admin' : me.role === 'agent' ? 'Agent' : 'View only'}</span>
+          <Menu align="right" className="hfs-dh__avatar" label={<Avatar name={me.name} tone="plum" size={40} />} title="Account">
+            {(close) => (
+              <>
+                <div className="hfs-menu__note">{me.name}<br />{auth.email}</div>
+                {queuesHealthy === false && <MenuItem onClick={() => { close(); navigate('/desk/queues'); }}>Queues need a look</MenuItem>}
+                <MenuItem onClick={() => { close(); void auth.signOut(); }}>Sign out</MenuItem>
+                <MenuItem onClick={() => { close(); window.location.href = `https://${BRAND.domain}/`; }}>Back to {BRAND.domain}</MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
       </div>
     </header>
   );
@@ -115,9 +117,11 @@ export function DeskHeader({ search, onSearch, searchRef, queuesHealthy }: { sea
 export function SubHeader({ back, backTo, title, children }: { back: string; backTo: string; title?: string; children?: ReactNode }) {
   return (
     <header className="hfs-dh hfs-dh--sub">
-      <Link to={backTo} className="hfs-dh__back"><Icon name="back" size={20} />{back}</Link>
-      {title && <h1 className="hfs-dh__title">{title}</h1>}
-      <div className="hfs-dh__right">{children}</div>
+      <div className="hfs-dh__in hfs-in">
+        <Link to={backTo} className="hfs-dh__back"><Icon name="back" size={20} /><span>{back}</span></Link>
+        {title && <span className="hfs-dh__title">{title}</span>}
+        <div className="hfs-dh__right">{children}</div>
+      </div>
     </header>
   );
 }

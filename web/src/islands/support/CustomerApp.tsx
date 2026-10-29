@@ -9,6 +9,7 @@ import { ago, fullDate } from './format';
 import { Link, navigate, useLoc } from './router';
 import { sanitizeHtml } from './sanitize';
 import { CATEGORIES, categoryLabel, type CategorySlug, type CustomerMessage, type CustomerTicketDetail, type CustomerTicketRow } from './types';
+import { IconTile, Sticker, type IconName, type Tone } from './desi';
 import { Avatar, Chip, Empty, ErrorBox, Icon, Menu, MenuItem, Rose, Spinner, statusTone, useInterval, usePageVisible, useToast, Marigold, Lilac } from './ui';
 
 type Filter = 'all' | 'open' | 'solved' | 'closed';
@@ -29,7 +30,7 @@ function deviceMeta() {
 function TicketList({ rows, selected, filter, q }: { rows: CustomerTicketRow[]; selected?: string; filter: Filter; q: string }) {
   if (!rows.length) {
     return (
-      <Empty title={q ? 'No tickets match your search' : filter === 'all' ? 'No tickets yet' : 'Nothing here'}>
+      <Empty sticker={q ? 'chugli' : 'mehman'} hi={q ? 'Kuch mila nahi' : filter === 'all' ? 'Abhi koi ticket nahi' : 'Yahan kuch nahi'} title={q ? 'No tickets match your search' : filter === 'all' ? 'No tickets yet' : 'Nothing here'}>
         {q ? 'Try a ticket number or a different word.' : 'When you write to support, your tickets and our replies appear here and in the app.'}
       </Empty>
     );
@@ -60,7 +61,7 @@ function Bubble({ m }: { m: CustomerMessage }) {
   }
   const html = m.author === 'support' && m.html ? sanitizeHtml(m.html) : '';
   return (
-    <article className="hfs-msg">
+    <article className={`hfs-msg${m.author === 'support' ? ' is-support' : ''}`}>
       <div className="hfs-msg__head">
         <strong className={m.author === 'support' ? 'is-support' : ''}>{m.author === 'customer' ? 'You' : m.authorName || `${BRAND.name} Support`}</strong>
         <span>{fullDate(m.createdAt)}</span>
@@ -243,38 +244,45 @@ export default function CustomerApp() {
   }, [rows, filter, q]);
 
   const detailOpen = composing || !!openNumber;
-  const navItems: { key: Filter; label: string }[] = [{ key: 'all', label: 'All tickets' }, { key: 'open', label: 'Open' }, { key: 'solved', label: 'Solved' }, { key: 'closed', label: 'Closed' }];
+  const navItems: { key: Filter; label: string; icon: IconName; tone: Tone }[] = [
+    { key: 'all', label: 'All tickets', icon: 'inbox', tone: 'rani' }, { key: 'open', label: 'Open', icon: 'layers', tone: 'gold' },
+    { key: 'solved', label: 'Solved', icon: 'check', tone: 'lav' }, { key: 'closed', label: 'Closed', icon: 'archive', tone: 'grey' },
+  ];
 
   return (
     <div className="hfs hfs-customer hfs-cust">
       <header className="hfs-bar">
-        <Link to="/" className="hfs-bar__brand"><Wordmark /></Link>
-        <label htmlFor="hfs-q" className="hfs-sr">Search my tickets</label>
-        <div className="hfs-search">
-          <Icon name="search" size={18} />
-          <input id="hfs-q" type="search" placeholder="Search my tickets" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <div className="hfs-bar__user">
-          <Menu align="right" className="hfs-userbtn" label={<><span className="hfs-userbtn__name">{auth.name || 'Me'}</span><Avatar name={auth.name || auth.email} /></>}>
-            {(close) => (
-              <>
-                <div className="hfs-menu__note">{auth.email}</div>
-                <MenuItem onClick={() => { close(); window.location.href = brandUrl('/'); }}>Back to {BRAND.domain}</MenuItem>
-                <MenuItem onClick={() => { close(); void auth.signOut(); }}>Sign out</MenuItem>
-              </>
-            )}
-          </Menu>
+        <div className="hfs-bar__in hfs-in">
+          <Link to="/" className="hfs-bar__brand"><Marigold size={34} /><Wordmark /></Link>
+          <label htmlFor="hfs-q" className="hfs-sr">Search my tickets</label>
+          <div className="hfs-search">
+            <Icon name="search" size={18} />
+            <input id="hfs-q" type="search" placeholder="Search my tickets" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="hfs-bar__user">
+            <Menu align="right" className="hfs-userbtn" label={<><span className="hfs-userbtn__name">{auth.name || 'Me'}</span><Avatar name={auth.name || auth.email} /></>}>
+              {(close) => (
+                <>
+                  <div className="hfs-menu__note">{auth.email}</div>
+                  <MenuItem onClick={() => { close(); window.location.href = brandUrl('/'); }}>Back to {BRAND.domain}</MenuItem>
+                  <MenuItem onClick={() => { close(); void auth.signOut(); }}>Sign out</MenuItem>
+                </>
+              )}
+            </Menu>
+          </div>
         </div>
       </header>
 
-      <div className={`hfs-cgrid${detailOpen ? ' has-detail' : ''}`}>
+      <div className={`hfs-cgrid hfs-in${detailOpen ? ' has-detail' : ''}`}>
         <nav className="hfs-cnav" aria-label="Ticket folders">
           <Link to="/new" className="hfs-btn hfs-btn--primary hfs-btn--xl hfs-cnav__new"><Icon name="plus" size={20} />New ticket</Link>
           {navItems.map((n) => (
-            <Link key={n.key} to={n.key === 'all' ? '/' : `/?s=${n.key}`} className={`hfs-cnav__item${filter === n.key ? ' is-on' : ''}`}>
-              {n.label} <span>{rows ? counts[n.key] : ''}</span>
+            <Link key={n.key} to={n.key === 'all' ? '/' : `/?s=${n.key}`} className={`hfs-cnav__item${filter === n.key ? ' is-on' : ''}`} aria-current={filter === n.key ? 'page' : undefined}>
+              <IconTile name={n.icon} tone={n.tone} size={18} />
+              <span className="hfs-cnav__l">{n.label}</span> <span className="hfs-cnav__n">{rows ? counts[n.key] : ''}</span>
             </Link>
           ))}
+          <div className="hfs-cnav__art" aria-hidden="true"><Sticker name="chugli" w={118} rot={-4} wiggle /></div>
         </nav>
 
         <section className="hfs-card hfs-clist" aria-label="Tickets">
@@ -287,7 +295,7 @@ export default function CustomerApp() {
           {composing ? <NewTicket onCreated={() => void load()} />
             : openNumber ? <TicketPane key={openNumber} number={openNumber} onChanged={() => void load()} />
             : (
-              <Empty title={rows && rows.length ? 'Pick a ticket to read it' : 'We are here to help'} action={<Link to="/new" className="hfs-btn hfs-btn--primary">Open a ticket</Link>}>
+              <Empty sticker="chai" hi="Chai pi lo, hum dekhte hain" title={rows && rows.length ? 'Pick a ticket to read it' : 'We are here to help'} action={<Link to="/new" className="hfs-btn hfs-btn--primary">Open a ticket</Link>}>
                 {rows && rows.length ? 'Your conversation and our replies show here.' : 'Open a ticket and we will reply by email and right here.'}
               </Empty>
             )}

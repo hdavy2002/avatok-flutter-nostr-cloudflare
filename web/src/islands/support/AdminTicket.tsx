@@ -11,6 +11,7 @@ import { Link, navigate, setQuery, useLoc } from './router';
 import { sanitizeHtml } from './sanitize';
 import { SubHeader, useHotkeys, useStaff } from './staff';
 import { CATEGORIES, PRIORITIES, categoryLabel, categoryShort, type AdminDetail, type AdminMessage, type CannedReply, type Status, type TicketEvent } from './types';
+import { Corner } from './desi';
 import { Chip, ErrorBox, Gold, Menu, MenuItem, Modal, PRIORITY_LABEL, Spinner, categoryTone, priorityChipTone, statusTone, useCountdown, useInterval, usePageVisible, useToast } from './ui';
 import { ShortcutList } from './AdminInbox';
 
@@ -41,7 +42,7 @@ function Message({ m, canWrite, onSplit }: { m: AdminMessage; canWrite: boolean;
   if (m.kind === 'system') return <div className="hfs-sysline">{m.text}</div>;
   const html = m.kind === 'support' && m.html ? sanitizeHtml(m.html) : '';
   return (
-    <article className="hfs-card hfs-amsg">
+    <article className={`hfs-card hfs-amsg${m.kind === 'support' ? ' is-support' : ''}`}>
       <div className="hfs-amsg__head">
         <strong className={m.kind === 'support' ? 'is-support' : ''}>{m.kind === 'support' ? `${m.authorName}` : `${m.authorName}${m.authorEmail ? ` <${m.authorEmail}>` : ''}`}</strong>
         <span className="hfs-amsg__meta">
@@ -260,12 +261,14 @@ export default function AdminTicket({ number }: { number: string }) {
         {others.length > 0 && <span className="hfs-viewing" role="status">{others.map((v) => v.name).join(' and ')} {others.length > 1 ? 'are' : 'is'} viewing this ticket</span>}
       </SubHeader>
 
-      <div className="hfs-ticket">
+      <div className="hfs-ticket hfs-in">
         <main className="hfs-ticket__main">
           {fresh && <div className="hfs-banner" role="status">A new message arrived on this ticket. <button type="button" className="hfs-linkbtn" onClick={() => setFresh(false)}>Dismiss</button></div>}
           {readOnly && <div className="hfs-banner hfs-banner--info">You have view-only access. You can read tickets but not change them.</div>}
 
-          <section className="hfs-card hfs-thead">
+          <section className="hfs-card hfs-thead has-corner">
+            <Corner kind="genda" size={60} />
+            <p className="hfs-thead__no">{t.number} · {categoryLabel(t.category)}</p>
             <h1>{t.subject}</h1>
             <div className="hfs-chips">
               <Chip tint={st.tint} ink={st.ink}>{STATUS_LABEL[t.status] ?? t.status}</Chip>
@@ -401,7 +404,8 @@ export default function AdminTicket({ number }: { number: string }) {
           </section>
 
           {c.recentMoney.length > 0 && (
-            <section className="hfs-card hfs-sidecard">
+            <section className="hfs-card hfs-sidecard hfs-t-gold has-corner">
+              <Corner kind="jasmine" size={50} />
               <h2>Recent money</h2>
               <ul className="hfs-money">
                 {c.recentMoney.map((m, i) => (<li key={i}><span>{m.label}</span><strong className={m.amountRupees > 0 ? 'is-in' : ''}>{m.amountRupees > 0 ? '+' : '−'}₹{Math.abs(m.amountRupees).toLocaleString('en-IN')}</strong></li>))}
@@ -409,7 +413,8 @@ export default function AdminTicket({ number }: { number: string }) {
             </section>
           )}
 
-          <section className="hfs-card hfs-sidecard">
+          <section className="hfs-card hfs-sidecard hfs-t-lav has-corner">
+            <Corner kind="hibiscus" size={60} />
             <h2>Other tickets</h2>
             {c.otherTickets.length === 0 ? <p className="hfs-fineprint">No other tickets from this person.</p> : c.otherTickets.map((o) => (
               <Link key={o.number} to={`/desk/t/${o.number}`} className="hfs-other">{o.number} · {o.subject} · {o.status}</Link>
