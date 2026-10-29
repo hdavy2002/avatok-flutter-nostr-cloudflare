@@ -95,7 +95,7 @@ ShrunkPhoto cropPhoto(CropArgs a) {
       final target = w.clamp(PhotoLimits.profileMin, PhotoLimits.profileLongSide).toInt();
       if (target != w) img = im.copyResize(img, width: target, height: target, interpolation: target < w ? im.Interpolation.average : im.Interpolation.cubic);
     } else {
-      final tw = w.clamp(PhotoLimits.coverMinW, PhotoLimits.coverMaxW).toInt();
+      final tw = w.clamp(PhotoLimits.coverMinW, PhotoLimits.coverCropW).toInt();
       if (tw != w) img = im.copyResize(img, width: tw, height: (tw / 3).round(), interpolation: tw < w ? im.Interpolation.average : im.Interpolation.cubic);
     }
     return (Uint8List.fromList(im.encodeJpg(img, quality: 80)), null);

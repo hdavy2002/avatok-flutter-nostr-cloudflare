@@ -66,6 +66,7 @@ abstract final class PhotoLimits {
   static const int coverMinH = 200;
   static const int profileLongSide = 1080;
   static const int coverMaxW = 1600;
+  static const int coverCropW = 1500; // [HF-PHOTO-CROP-APP] crop editor output width (3:1 -> 1500 x 500)
 }
 
 /// [HF-MOD-APP-PHOTOS] The fan's own profile photo and cover (behind `hfPhotoModerationEnabled`).
