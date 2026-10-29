@@ -23,6 +23,7 @@ import 'call_real.dart';
 import 'merch_me.dart'; // [HF-MERCH-APP-1]
 import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import 'sheets.dart';
+import 'my_photos.dart'; // [HF-MOD-APP-PHOTOS]
 import 'onboarding/intro_onb_kit.dart'; // [HF-INTRO-A1]
 import 'call_records_real.dart';
 import 'settings_real.dart';
@@ -124,6 +125,7 @@ class _Dashboard extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
+          if (live) const MyPhotoCard(), // [HF-MOD-APP-PHOTOS] hidden while hfPhotoModerationEnabled is off
           DesiHero(
             eyebrow: 'Namaste, $first',
             title: 'Aaj kisse baat karni hai?',

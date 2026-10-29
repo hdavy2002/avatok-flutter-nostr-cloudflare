@@ -269,6 +269,7 @@ class AppBooking {
     this.hostSlug,
     this.hostName,
     this.fanHandle,
+    this.customerPhotoUrl,
     this.note = '',
     this.expectedNetPaise = 0,
     this.approvalDeadline,
@@ -303,6 +304,7 @@ class AppBooking {
         hostSlug: _s(j['hostSlug']),
         hostName: _s(j['hostName']),
         fanHandle: _s(j['fanHandle']) ?? _s(j['customerHandle']),
+        customerPhotoUrl: _s(j['customerPhotoUrl']),
         note: _s(j['note']) ?? '',
         expectedNetPaise: _i(j['expectedNetPaise']) > 0 ? _i(j['expectedNetPaise']) : _i(j['expectedHostNetPaise']),
         approvalDeadline: j['approvalDeadline'] is String ? DateTime.tryParse(j['approvalDeadline'] as String)?.toLocal() : null,
@@ -333,6 +335,9 @@ class AppBooking {
   final String? hostSlug;
   final String? hostName;
   final String? fanHandle;
+
+  /// [HF-MOD-APP-PHOTOS] The fan's checked profile photo (influencer side only), or null.
+  final String? customerPhotoUrl;
   final String note;
   final int expectedNetPaise;
 

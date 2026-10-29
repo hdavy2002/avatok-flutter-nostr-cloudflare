@@ -24,6 +24,7 @@ import '../data/demo_mode.dart'; // [HF-INTRO-A1]
 import 'screens/my_verifications.dart'; // [HF-CREATOR-BADGES-1]
 import 'screens/intro.dart';
 import 'screens/me.dart';
+import 'screens/my_photos.dart'; // [HF-MOD-APP-PHOTOS]
 import 'screens/merch_fan.dart'; // [HF-MERCH-APP-1]
 import '../data/repos/channel_repo.dart'; // [HF-CHANNEL-APP-1]
 import 'screens/bag.dart'; // [HF-CHANNEL-APP-1]
@@ -237,6 +238,7 @@ final router = GoRouter(
       path: '/settings/blocked',
       builder: (_, __) => const BlockedPeopleScreen(),
     ), // [HF-BLOCK-PROFILE-1]
+    GoRoute(parentNavigatorKey: rootKey, path: '/me/photos', builder: (_, __) => const MyPhotosScreen()), // [HF-MOD-APP-PHOTOS]
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/help',

@@ -832,6 +832,7 @@ class AppBookingTile extends StatelessWidget {
       index: b.id.hashCode.abs() % 4,
       time: label,
       fan: b.fanHandle ?? 'A fan',
+      fanPhotoUrl: b.customerPhotoUrl,
       line: '${showDay ? '${dayLabel(b.date)} · ' : ''}${_minsText(b.minutes)}'
           '${b.topic == null ? '' : ' · ${b.topic!.label}'}'
           '${showStarts && !b.isPast ? ' · ${startsInLabel(b.startAt, DateTime.now())}' : ''}'
@@ -1169,6 +1170,7 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
     final card = WaitingCard(
       key: ValueKey('pending-${b.id}'),
       fan: b.fanHandle ?? 'A fan',
+      fanPhotoUrl: b.customerPhotoUrl,
       when: '${dayLabel(b.date)} · ${slotLabel(b.time)} · ${_minsText(b.minutes)}',
       topic: b.topic?.label,
       note: b.note,

@@ -15,6 +15,7 @@ import '../../ui/async_view.dart';
 import '../booking_kit.dart';
 import '../call_kit.dart';
 import '../desi.dart';
+import '../inf_kit.dart' show FanAvatar; // [HF-MOD-APP-PHOTOS]
 import '../list_kit.dart';
 import '../settings_kit.dart';
 import '../theme.dart';
@@ -241,6 +242,8 @@ class _RealBookingDetailScreenState extends State<RealBookingDetailScreen> {
       DesiCard(
         title: 'Details',
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (host) // [HF-MOD-APP-PHOTOS] the fan's checked photo (first letter when none)
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: FanAvatar(name: name, url: b.customerPhotoUrl, size: 56)),
           _row(host ? 'Caller' : 'With', handle == null ? name : '$name  $handle', key: const ValueKey('detail-who')),
           _row('Date and time', indianWhen(b.day, b.time), key: const ValueKey('detail-when')),
           _row('Length', _length(b.minutes), key: const ValueKey('detail-length')),

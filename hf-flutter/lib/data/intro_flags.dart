@@ -15,12 +15,16 @@ abstract final class IntroFlags {
   /// "Log in with Facebook" under Social media verification.
   static bool facebookLogin = false;
 
+  /// [HF-MOD-APP-PHOTOS] `hfPhotoModerationEnabled`: the Me-tab photo & cover card and the "My photo & cover" screen.
+  static bool photoModeration = false;
+
   static Future<void>? _loading;
 
   static void apply(Map<String, dynamic> j) {
     callOption = j['hfCallOptionEnabled'] == true;
     introOnboarding = j['hfIntroOnboardingEnabled'] == true;
     facebookLogin = j['hfFacebookLoginEnabled'] == true;
+    photoModeration = j['hfPhotoModerationEnabled'] == true;
   }
 
   /// Reads the config once. A failed read leaves every flag false and the next call tries again. Never throws.
@@ -41,6 +45,7 @@ abstract final class IntroFlags {
     callOption = false;
     introOnboarding = false;
     facebookLogin = false;
+    photoModeration = false;
     _loading = null;
   }
 }

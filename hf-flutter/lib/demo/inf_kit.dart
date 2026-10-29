@@ -159,12 +159,39 @@ class InfSectionHead extends StatelessWidget {
 
 const _edges = [Color(0xFFF8C4D9), Color(0xFFB9E2E5), Color(0xFFDDD2FB), Color(0xFFF3DFB3)];
 
+/// [HF-MOD-APP-PHOTOS] Round avatar of a fan: the checked photo, or the first letter of the name when there is none.
+class FanAvatar extends StatelessWidget {
+  const FanAvatar({super.key, required this.name, this.url, this.size = 40});
+  final String name;
+  final String? url;
+  final double size;
+  @override
+  Widget build(BuildContext context) {
+    final letter = name.trim().isEmpty ? '?' : name.trim().characters.first.toUpperCase();
+    final fallback = Center(child: Text(letter, style: t(size * 0.42, color: C.maroon, w: FontWeight.w900)));
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(color: C.blush, shape: BoxShape.circle),
+        child: url == null
+            ? fallback
+            : Image.network(url!, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
+      ),
+    );
+  }
+}
+
 /// One fan booking on the influencer side: gold time stub, fan handle, line(s) and a round icon.
 class InfBookingCard extends StatelessWidget {
-  const InfBookingCard({super.key, required this.index, required this.time, required this.fan, required this.line, this.extra, this.icon = Icons.call_rounded, this.iconInk = C.peacock, this.onTap});
+  const InfBookingCard({super.key, required this.index, required this.time, required this.fan, required this.line, this.extra, this.icon = Icons.call_rounded, this.iconInk = C.peacock, this.onTap, this.fanPhotoUrl});
   final int index;
   final String time;
   final String fan;
+
+  /// [HF-MOD-APP-PHOTOS] The fan's checked photo; the first letter of [fan] shows when null.
+  final String? fanPhotoUrl;
   final String line;
   final String? extra;
   final IconData icon;
@@ -187,7 +214,9 @@ class InfBookingCard extends StatelessWidget {
             if (parts.length > 1) Text(parts.last, style: t(14, color: C.amber, w: FontWeight.w800)),
           ]),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
+        FanAvatar(name: fan, url: fanPhotoUrl),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(fan, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16, w: FontWeight.w900)),
@@ -361,6 +390,7 @@ class WaitingCard extends StatelessWidget {
   const WaitingCard({
     super.key,
     required this.fan,
+    this.fanPhotoUrl,
     required this.when,
     this.topic,
     this.note,
@@ -373,6 +403,7 @@ class WaitingCard extends StatelessWidget {
     this.highlighted = false,
   });
   final String fan;
+  final String? fanPhotoUrl;
   final String when;
   final String? topic;
   final String? note;
@@ -398,6 +429,8 @@ class WaitingCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
+                FanAvatar(name: fan, url: fanPhotoUrl, size: 36),
+                const SizedBox(width: 8),
                 Flexible(child: Text(fan, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(18, w: FontWeight.w900))),
                 const SizedBox(width: 8),
                 Container(

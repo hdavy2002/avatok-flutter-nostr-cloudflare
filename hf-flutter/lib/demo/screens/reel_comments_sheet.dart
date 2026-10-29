@@ -519,6 +519,7 @@ class _ReelCommentsSheetState extends State<ReelCommentsSheet> {
             radius: 16,
             backgroundColor: C.sand,
             foregroundImage: c.authorAvatar == null ? null : NetworkImage(c.authorAvatar!),
+            onForegroundImageError: c.authorAvatar == null ? null : (_, __) {}, // [HF-MOD-APP-PHOTOS] a photo that cannot load falls back to the initial
             child: Text(c.authorName.isEmpty ? '?' : c.authorName.characters.first.toUpperCase(), style: t(14, color: C.maroon)),
           ),
           const SizedBox(width: 10),

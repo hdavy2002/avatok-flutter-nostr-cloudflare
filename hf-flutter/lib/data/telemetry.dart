@@ -25,6 +25,10 @@ abstract final class Telemetry {
 
   /// Every event the app may send. Keep in step with the telemetry catalog.
   static const Set<String> catalogEvents = {
+    // [HF-MOD-APP-PHOTOS] fan profile photo and cover (never carries the picture)
+    'hf_photo_pick', // {kind, source}
+    'hf_photo_upload_app', // {kind, bytes, ms, ok, error?}
+    'hf_photo_result_app', // {kind, result: live|refused|timeout}
     // [HF-INTRO-A1] influencer intro-video onboarding (never carries a name, the description, Aadhaar details or the video)
     'hf_onb_step_view', // {step}
     'hf_onb_categories', // {n, has_sensitive}
