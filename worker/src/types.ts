@@ -51,6 +51,7 @@ export interface Env {
   Q_EMAIL_BULK?: Queue;      // email-bulk — receipts, statements, acknowledgements
   Q_WA_PRIORITY?: Queue;     // whatsapp-priority — OTP-class WhatsApp
   Q_WA_NORMAL?: Queue;       // whatsapp-normal — notifications
+  Q_SUPPORT_INBOUND?: Queue; // [HF-SUPPORT-1] support-inbound — {job:'inbound', r2Key}; self-consumed (lib/support_inbound.ts)
   Q_ANALYTICS: Queue;
   Q_BRAIN: Queue;
   Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)

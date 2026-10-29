@@ -214,6 +214,13 @@ queue = "whatsapp-priority"
 binding = "Q_WA_NORMAL"
 queue = "whatsapp-normal"
 
+# [HF-SUPPORT-1] Inbound support email. email() streams the .eml to R2 and queues {job:'inbound', r2Key}; this worker consumes it
+# (below). NOTE: create both queues once BEFORE deploying: support-inbound and support-inbound-dlq
+# (scripts/cf.sh worker queues create support-inbound). Then point Email Routing for support@ and support+* at this worker.
+[[queues.producers]]
+binding = "Q_SUPPORT_INBOUND"
+queue = "support-inbound"
+
 [[queues.producers]]
 binding = "Q_ANALYTICS"        # PostHog event batching — never call PostHog sync from a Worker
 queue = "analytics"
@@ -372,6 +379,20 @@ max_retries = 2
 
 [[queues.consumers]]
 queue = "whatsapp-normal-dlq"
+max_batch_size = 10
+max_retries = 2
+
+# [HF-SUPPORT-1] Inbound support mail, self-consumed (lib/support_inbound.ts). Up to 50 per batch; failures retry with backoff, then the DLQ
+# marks the support_inbound row failed (visible and retryable on the desk's Queues page).
+[[queues.consumers]]
+queue = "support-inbound"
+max_batch_size = 50
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "support-inbound-dlq"
+
+[[queues.consumers]]
+queue = "support-inbound-dlq"
 max_batch_size = 10
 max_retries = 2
 

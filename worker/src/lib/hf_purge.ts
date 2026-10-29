@@ -20,6 +20,8 @@ export interface HfPurgeEnv {
   DB_META: D1Database;
   VERIFICATION?: R2Bucket;
   BLOBS?: R2Bucket;
+  /** [HF-SUPPORT-1] support ticket files (support/ prefix). Optional: without it the ticket rows are still anonymised. */
+  BACKUP_R2?: R2Bucket;
 }
 
 export type HfPurgeScope = "full" | "lane_caller";
@@ -286,5 +288,54 @@ export async function purgeHfUser(env: HfPurgeEnv, uid: string, opts: HfPurgeOpt
       } else res.skipped.push("hf_host_ledger_absent");
     } catch (e) { res.errors.push(`hf_token_records:${String(e).slice(0, 120)}`); }
   }
+  // 7. [HF-SUPPORT-1] Support tickets of the deleted account are ANONYMISED (rulebook 24.8): the person's identity goes everywhere, the uploaded
+  //    files and raw .eml go, and the text of NON-money tickets is blanked (free text can hold anything). MONEY tickets (wallet, withdraw, refund,
+  //    calls) keep their text for 8 years with the uid replaced by a one-way hash; the nightly retention job deletes them then. Idempotent.
+  if (scope === "full") {
+    try { res.counts["support_tickets"] = await anonymiseSupportTickets(env, uid, opts.colsCache); }
+    catch (e) { res.errors.push(`support_tickets:${String(e).slice(0, 120)}`); }
+  }
   return res;
+}
+
+/** [HF-SUPPORT-1] See step 7 of purgeHfUser. Returns the number of tickets anonymised. Tables absent (migration not applied) = 0. */
+export async function anonymiseSupportTickets(env: HfPurgeEnv, uid: string, colsCache?: Map<string, string[]>): Promise<number> {
+  if (!uid || !HF_UID_SAFE.test(uid)) return 0;
+  void colsCache;
+  let tickets: Array<{ number: number; money: number; contact_id: number }> = [];
+  try {
+    tickets = (await env.DB_META.prepare("SELECT number,money,contact_id FROM support_tickets WHERE uid=?1").bind(uid).all<{ number: number; money: number; contact_id: number }>()).results ?? [];
+  } catch { return 0; } // support tables not created yet
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hfsupport:${uid}`)))).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  const hashed = `del:${hash}`;
+  const r2 = env.BACKUP_R2;
+  for (const t of tickets) {
+    if (r2) {
+      // uploaded files, email HTML and the raw .eml (headers carry the address) go for every ticket, money or not
+      for (const prefix of [`support/att/${t.number}/`, `support/html/${t.number}/`]) {
+        let cursor: string | undefined;
+        do {
+          const list = await r2.list({ prefix, cursor, limit: 1000 });
+          const keys = list.objects.map((o) => o.key);
+          if (keys.length) await r2.delete(keys);
+          cursor = list.truncated ? list.cursor : undefined;
+        } while (cursor);
+      }
+      const raws = (await env.DB_META.prepare("SELECT DISTINCT raw_r2_key AS k FROM support_messages WHERE ticket_number=?1 AND raw_r2_key IS NOT NULL").bind(t.number).all<{ k: string }>()).results ?? [];
+      const keys = raws.map((x) => x.k).filter((k) => k.startsWith("support/inbound/"));
+      if (keys.length) await r2.delete(keys);
+    }
+    await env.DB_META.batch([
+      env.DB_META.prepare("DELETE FROM support_attachments WHERE ticket_number=?1").bind(t.number),
+      env.DB_META.prepare("UPDATE support_messages SET author_uid=CASE WHEN author_uid=?2 THEN ?3 ELSE author_uid END, raw_r2_key=NULL, html_r2_key=NULL, message_id_header=NULL, in_reply_to=NULL, hash=NULL,"
+        + " author_name=CASE WHEN author_type='customer' THEN NULL ELSE author_name END,"
+        + " text=CASE WHEN ?4=1 THEN text ELSE '[removed: account deleted]' END, preview=CASE WHEN ?4=1 THEN preview ELSE '' END WHERE ticket_number=?1").bind(t.number, uid, hashed, t.money),
+      env.DB_META.prepare("UPDATE support_tickets SET uid=?2, subject=CASE WHEN money=1 THEN subject ELSE 'Removed ticket' END, preview=CASE WHEN money=1 THEN preview ELSE '' END, meta_json=NULL, unread_customer=0 WHERE number=?1").bind(t.number, hashed),
+    ]);
+    await env.DB_META.prepare("DELETE FROM support_fts WHERE number=?1").bind(t.number).run().catch(() => undefined);
+  }
+  // the person's contact row: no address, name or number survives (tickets keep pointing at the empty row)
+  await env.DB_META.prepare("UPDATE support_contacts SET email=NULL,name=NULL,whatsapp=NULL,uid=NULL WHERE uid=?1").bind(uid).run().catch(() => undefined);
+  for (const t of tickets) await env.DB_META.prepare("UPDATE support_contacts SET email=NULL,name=NULL,whatsapp=NULL,uid=NULL WHERE id=?1 AND uid IS NULL").bind(t.contact_id).run().catch(() => undefined);
+  return tickets.length;
 }

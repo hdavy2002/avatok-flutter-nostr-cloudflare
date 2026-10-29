@@ -35,6 +35,10 @@ import {
 import { commercialCheckout, commercialHold, resendCommercialConfirmation } from "./routes/commercial_checkout";
 import { recoverEmailOutbox } from "./lib/email_outbox";
 import { handleWhatsAppQueue, recoverWhatsAppQueue } from "./lib/whatsapp_queue"; // [SUPPORT-QUEUE-1]
+import { handleInboundEmail, handleSupportInboundQueue } from "./lib/support_inbound"; // [HF-SUPPORT-1]
+import { runSupportJobs } from "./lib/support_jobs"; // [HF-SUPPORT-1]
+import { hfSupportRoute } from "./routes/hf_support"; // [HF-SUPPORT-1]
+import { hfSupportAdminRoute } from "./routes/hf_support_admin"; // [HF-SUPPORT-1]
 import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialSessionAttachmentUpload } from "./routes/commercial_session_attachment";
@@ -472,6 +476,12 @@ export default {
     return res;
   },
 
+  // [HF-SUPPORT-1] Cloudflare Email Routing: support@ and support+*@ are routed to this worker. The raw message is streamed to R2 and
+  // its key queued (lib/support_inbound.ts); parsing and the ticket logic run in the support-inbound consumer, never here.
+  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
+    await handleInboundEmail(message, env);
+  },
+
   // Phase 7 — this worker consumes its own money queue (max_retries=5 →
   // money-dlq). The engine is idempotent: a retry or cron re-run can never
   // double-refund (WalletDO op_id dedupe + settlement_log).
@@ -487,6 +497,8 @@ export default {
     await hydrateKvSecrets(env); // [HF-MERCH-PT-LOGIN-1] queue consumers may reach Printrove (orders / catalogue)
     // [SUPPORT-QUEUE-1] whatsapp-priority / whatsapp-normal (+ -dlq): id-only jobs, paced sends.
     if (batch.queue.startsWith("whatsapp-")) { await handleWhatsAppQueue(batch, env); return; }
+    // [HF-SUPPORT-1] support-inbound (+ -dlq): {job:'inbound', r2Key} jobs; the .eml is read from R2.
+    if (batch.queue.startsWith("support-inbound")) { await handleSupportInboundQueue(batch, env); return; }
     // [HF-MOD-2] hf-mod-photo / hf-mod-video: Clef safety checks, {job_id} messages, own retry delays.
     if (batch.queue.startsWith("hf-mod-")) { await handleModerationQueue(batch, env); return; }
     for (const msg of batch.messages) {
@@ -599,6 +611,10 @@ export default {
           .catch(() => { console.error("[commercial-email-recovery] failed"); }),
         recoverWhatsAppQueue(env)
           .catch(() => { console.error("[whatsapp-queue-recovery] failed"); }),
+        // [HF-SUPPORT-1] Support desk jobs (re-queue lost inbound mail, alert summaries, un-snooze, 5-day reminder, auto-solve/close, SLA, nightly retention, email-outbox R2 sweep). Never throws.
+        runSupportJobs(env)
+          .then((r) => { if (r.inboundRequeued || r.summaries || r.unsnoozed || r.reminders || r.autoSolved || r.autoClosed || r.slaRecomputed || r.retention?.tickets || r.outboxSwept || r.errors.length) console.log("[support-jobs]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[support-jobs] failed:", String(e)); }),
         // [LISTING-EXPIRY-1] Close published shows whose scheduled end has passed.
         expireEndedEventListings(env)
           .then((r) => { if (r.scanned) console.log("[listing-schedule-expiry]", JSON.stringify(r)); })
@@ -1196,6 +1212,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/hf/onboarding/")) { const r = await hfIntroOnboardingRoute(req, env, p, ctx); if (r) return r; } // [HF-INTRO-W1]
       if (p === "/api/admin/hf/intro-applications" || p.startsWith("/api/admin/hf/intro-applications/")) { const r = await hfIntroAdminRoute(req, env, p); if (r) return r; } // [HF-INTRO-W1]
       if (p === "/api/hf/pages" || p.startsWith("/api/hf/pages/") || p.startsWith("/api/admin/hf/pages/")) { const r = await hfPagesRoute(req, env, p); if (r) return r; } // [HF-PAGES-1]
+      if (p.startsWith("/api/hf/support/")) { const r = await hfSupportRoute(req, env, p); if (r) return r; } // [HF-SUPPORT-1] customer tickets (app + support site)
+      if (p.startsWith("/api/admin/hf/support/")) { const r = await hfSupportAdminRoute(req, env, p); if (r) return r; } // [HF-SUPPORT-1] support desk
       if (p.startsWith("/api/hf/spaces/")) { const r = await hfSpacesRoute(req, env, p, ctx); if (r) return r; } // [HF-CREATOR-SPACES-1]
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/merch/")) { const r = await hfMerchRoute(req, env, p, ctx); if (r) return r; } // [HF-MERCH-CORE-1]
