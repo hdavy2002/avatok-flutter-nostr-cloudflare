@@ -3,7 +3,7 @@
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
   | 'orders' | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
-  | 'support' | 'close' | 'become' | 'profile-photo' | 'verifications' | 'safety';
+  | 'support' | 'close' | 'become' | 'profile-photo' | 'my-photo' | 'verifications' | 'safety';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
 
@@ -21,6 +21,8 @@ export interface DashRoute {
   needsFavourites?: boolean;
   /** [HF-MERCH-CREATOR-WEB-1][HF-MERCH-FAN-WEB-1] Needs the merch shop (hfMerchEnabled). Hidden from the menu while it is off. */
   needsMerch?: boolean;
+  /** [HF-MOD-WEB-PHOTOS] Needs the photo safety check (hfPhotoModerationEnabled). Hidden from the menu while it is off. */
+  needsPhotos?: boolean;
   title: string;
 }
 
@@ -31,6 +33,7 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'calls', path: '/dashboard/calls', label: 'Calls', icon: 'calls', group: 'me', title: 'Calls' },
   { section: 'appointments', path: '/dashboard/appointments', label: 'My appointments', icon: 'calendar', group: 'me', needsBookings: true, title: 'My appointments' },
   { section: 'orders', path: '/dashboard/orders', label: 'My orders', icon: 'bag', group: 'me', needsMerch: true, title: 'My orders' },
+  { section: 'my-photo', path: '/dashboard/my-photo', label: 'My photo & cover', icon: 'profile', group: 'me', needsPhotos: true, title: 'My photo & cover' },
   { section: 'fraands', path: '/dashboard/fraands', label: 'My Fraands', icon: 'heart', group: 'me', needsFavourites: true, title: 'My Fraands' },
   { section: 'host', path: '/dashboard/host', label: 'Influencer profile', icon: 'star', group: 'host', title: 'Influencer profile' },
   { section: 'host-calendar', path: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'calendar', group: 'host', hostOnly: true, needsBookings: true, title: 'Influencer calendar' },

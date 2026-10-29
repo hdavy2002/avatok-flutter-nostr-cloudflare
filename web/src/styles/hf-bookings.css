@@ -115,3 +115,8 @@
 .hfb-waiting-bar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:12px 14px;border:1px dashed #e08a00;border-radius:14px;background:#fffaf0;color:#46113e;font-weight:700}
 .hfb-appointment-date.is-waiting{border:2px dashed #e08a00}
 .hfb-day-count.is-waiting{background:#fff4de;color:#7a4a00}
+
+/* [HF-MOD-WEB-PHOTOS] /* Round photo of a fan next to a name (influencer's bookings, reel comments). */
+.hfb-pav{width:44px;height:44px;border-radius:50%;overflow:hidden;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#ffe6ef;color:#4a1747;font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:18px;vertical-align:middle}
+.hfb-pav img{width:100%;height:100%;object-fit:cover;display:block}
+.hfb-person{display:flex;align-items:center;gap:10px;min-width:0}

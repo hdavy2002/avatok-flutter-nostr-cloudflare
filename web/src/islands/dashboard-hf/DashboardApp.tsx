@@ -11,6 +11,7 @@ import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import { favouritesEnabled } from '../../lib/hfFavouritesApi';
 import { merchEnabled } from '../../lib/merchApi'; // [HF-MERCH-FAN-WEB-1]
+import { photoModerationEnabled } from '../../lib/hfPhotosApi'; // [HF-MOD-WEB-PHOTOS]
 import { capture, captureException } from '../../lib/analytics';
 import { BRAND } from '../../lib/brand';
 import { DASH_ROUTES, dashRouteFor, type DashSection } from '../../lib/dashboardRoutes';
@@ -39,6 +40,7 @@ import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
 import MerchApp from './merch/MerchApp'; // [HF-MERCH-CREATOR-WEB-1]
 import OrdersV3 from './v3/Orders'; // [HF-MERCH-FAN-WEB-1]
+import MyPhotoV3 from './v3/MyPhoto'; // [HF-MOD-WEB-PHOTOS]
 import { CallOptionCard, useCallOption } from './v3/CallOption'; // [HF-INTRO-B4]
 import ProfilePhoto from './v3/ProfilePhoto'; // [HF-CHANNEL-PHOTO-1]
 import SafetyV3 from './v3/Safety'; // [HF-CALL-SAFETY-WEB]
@@ -68,6 +70,7 @@ function Shell({ initial }: { initial: DashSection }) {
   const [bookingOn, setBookingOn] = useState(false);
   const [favouritesOn, setFavouritesOn] = useState(false);
   const [merchOn, setMerchOn] = useState(false);
+  const [photoOn, setPhotoOn] = useState(false); // [HF-MOD-WEB-PHOTOS]
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
 
@@ -81,9 +84,9 @@ function Shell({ initial }: { initial: DashSection }) {
         const me = await hfCall<DashboardAccount>('GET', '/api/hf/me');
         if (!current()) return;
         if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-        const [enabled, favs, merch] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled()]);
+        const [enabled, favs, merch, photos] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled(), photoModerationEnabled()]);
         if (!current()) return;
-        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhase('ready');
+        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhotoOn(photos); setPhase('ready');
       } catch (e) {
         captureException(e, { area: 'hf_dashboard', step: 'identity' });
         if (current()) setPhase('error');
@@ -129,7 +132,7 @@ function Shell({ initial }: { initial: DashSection }) {
   if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
 
   const hostReady = account.host?.status === 'live' && !account.closing;
-  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn) || (route.needsMerch && !merchOn);
+  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn) || (route.needsMerch && !merchOn) || (route.needsPhotos && !photoOn);
   const key = `${section}:${nav}:${account.uid}`;
   let body;
   if (blocked) {
@@ -142,6 +145,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'calls': body = <CallsV3 key={key} account={account} />; break;
     case 'appointments': body = <AppointmentsV3 key={key} enabled={bookingOn && !account.closing} uid={account.uid} />; break;
     case 'orders': body = <OrdersV3 key={key} />; break;
+    case 'my-photo': body = <MyPhotoV3 key={key} account={account} />; break;
     case 'fraands': body = <FraandsV3 key={key} />; break;
     case 'become': body = <BecomeV3 key={key} account={account} />; break;
     case 'verifications': body = <VerificationsV3 key={key} account={account} />; break;
@@ -159,7 +163,7 @@ function Shell({ initial }: { initial: DashSection }) {
     <DashDataProvider uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
       <ToastProvider>
         <PolicyUpdatePrompt uid={account.uid} />
-        <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn} merchOn={merchOn}>
+        <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn} merchOn={merchOn} photoOn={photoOn}>
           <DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider>
         </DashShell>
       </ToastProvider>

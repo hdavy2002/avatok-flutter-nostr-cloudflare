@@ -13,6 +13,13 @@ const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayLabel = (day: Date) => day.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const person = (row: HfBooking, role: BookingRole) => role === 'host' ? row.customerHandle || 'A customer' : row.hostName || 'Your influencer';
 
+/** [HF-MOD-WEB-PHOTOS] Round photo of the fan (only an AI-passed photo arrives), the first letter of the name when there is none. */
+function PersonPhoto({ row, role }: { row: HfBooking; role: BookingRole }) {
+  if (role !== 'host') return null;
+  const url = row.customerPhotoUrl;
+  return <span className="hfb-pav" aria-hidden="true">{url ? <img src={url} alt="" loading="lazy" referrerPolicy="no-referrer" /> : Array.from(person(row, role).replace(/^@/, '') || '?')[0]?.toLocaleUpperCase()}</span>;
+}
+
 export default function HostBookings({ role = 'customer' }: { role?: BookingRole }) {
   const feature = useBookingFeature();
   const embedded = useEmbedded();
@@ -121,7 +128,7 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
         <div className="hfb-section-head"><h2 id="hfb-agenda-title">{dayLabel(selected)}</h2><span className="hfb-muted">Daily agenda</span></div>
         {loading ? <p className="hfb-card" role="status">Loading your agenda…</p> : dayRows.length === 0 ? <div className="hfb-card"><h3>{message ? 'Appointments may be missing' : 'No appointments on this day'}</h3><p className="hfb-muted">{message ? 'Try loading the calendar again to see the full day.' : 'Choose another day or return to today to see your booked conversations.'}</p>{role === 'customer' && !message && <a className="hfb-button" href="/marketplace">Explore influencers</a>}</div> : <ul className="hfb-booking-list">
           {dayRows.map(row => <li className="hfb-card hfb-booking-row" key={row.id}>
-            <div><span className={'hfb-status hfb-status-' + row.status}>{row.status.replaceAll('_', ' ')}</span><h3>{person(row, role)}</h3><p><time dateTime={row.startUtc}>{dateLabel(row.startUtc, timezone)}</time> – <time dateTime={row.endUtc}>{dateLabel(row.endUtc, timezone)}</time></p><p className="hfb-muted">Influencer timezone: {row.hostTimezone}</p></div>
+            <div><span className={'hfb-status hfb-status-' + row.status}>{row.status.replaceAll('_', ' ')}</span><div className="hfb-person"><PersonPhoto row={row} role={role} /><h3>{person(row, role)}</h3></div><p><time dateTime={row.startUtc}>{dateLabel(row.startUtc, timezone)}</time> – <time dateTime={row.endUtc}>{dateLabel(row.endUtc, timezone)}</time></p><p className="hfb-muted">Influencer timezone: {row.hostTimezone}</p></div>
             {role === 'host' && typeof row.expectedHostNetPaise === 'number' && row.status === 'confirmed' && <p className="hfb-money"><strong>{money(row.expectedHostNetPaise)}</strong><span>expected on hold</span></p>}
             <a className="hfb-button" href={'/bookings/' + encodeURIComponent(row.id)} aria-label={`View appointment with ${person(row, role)} on ${dateLabel(row.startUtc, timezone)}`}>View details</a>
           </li>)}

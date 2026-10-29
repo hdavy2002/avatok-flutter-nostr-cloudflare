@@ -13,7 +13,7 @@ import { useSafetyMe, activeOf } from './Safety'; // [HF-CALL-SAFETY-WEB]
 
 interface Item { key: DashSection | 'signout'; href: string; label: string; icon: string; badge?: number | null; badgeTone?: 'gold' | ''; disabled?: string }
 
-export default function Shell({ account, active, bookingOn, favouritesOn, merchOn = false, children }: { account: DashboardAccount; active: DashSection; bookingOn: boolean; favouritesOn: boolean; merchOn?: boolean; children: ReactNode }) {
+export default function Shell({ account, active, bookingOn, favouritesOn, merchOn = false, photoOn = false, children }: { account: DashboardAccount; active: DashSection; bookingOn: boolean; favouritesOn: boolean; merchOn?: boolean; photoOn?: boolean; children: ReactNode }) {
   const { insights, summary, wallet, favs, profile } = useDash();
   const [drawer, setDrawer] = useState(false);
   const [bye, setBye] = useState(false);
@@ -37,6 +37,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       { key: 'wallet', href: '/dashboard/wallet', label: 'Wallet', icon: 'wallet' },
       { key: 'calls', href: '/dashboard/calls', label: 'Calls', icon: 'phone', badge: toRate, badgeTone: 'gold' },
       { key: 'appointments', href: '/dashboard/appointments', label: 'My appointments', icon: 'cal', badge: apptsToday, disabled: bookingOn ? undefined : 'Opens soon' },
+      ...(photoOn ? [{ key: 'my-photo' as const, href: '/dashboard/my-photo', label: 'My photo & cover', icon: 'user' }] : []), // [HF-MOD-WEB-PHOTOS]
       ...(merchOn ? [{ key: 'orders' as const, href: '/dashboard/orders', label: 'My orders', icon: 'bag' }] : []), // [HF-MERCH-FAN-WEB-1]
       ...(favouritesOn ? [{ key: 'fraands' as const, href: '/dashboard/fraands', label: 'My Fraands', icon: 'heart', badge: online }] : []),
     ] },

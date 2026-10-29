@@ -542,7 +542,7 @@ function Reels({ initial, nextCursor, preview = false }: Props) {
       <div className="ex-clist">
         {comments === null && <p className="ex-cnote">Loading...</p>}
         {comments?.length === 0 && !cErr && <p className="ex-cnote">No comments yet. Say hello!</p>}
-        {comments?.map(c => <div className="ex-comment" key={c.id}><b>{c.author.name || 'Someone'}</b><span>{ago(c.createdAt)}</span><p>{c.body}</p></div>)}
+        {comments?.map(c => <div className="ex-comment" key={c.id}><span className="ex-cav" aria-hidden="true">{c.author.avatar ? <img src={c.author.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span style={{ margin: 0, fontSize: 'inherit', color: 'inherit' }}>{Array.from(c.author.name || 'S')[0]?.toLocaleUpperCase()}</span>}</span><b>{c.author.name || 'Someone'}</b><span>{ago(c.createdAt)}</span><p>{c.body}</p></div>)}
       </div>
       {cErr && <p className="ex-cerr" role="alert">{cErr}</p>}
       <form onSubmit={post}>
