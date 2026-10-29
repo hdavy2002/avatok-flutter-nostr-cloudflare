@@ -144,11 +144,16 @@ describe("commercial email delivery behavior", () => {
   it("reports queue acceptance while delivery remains queued", async () => {
     const db = new EmailDb();
     const send = vi.fn(async () => undefined);
-    const result = await enqueueEmail({ DB_META: db, Q_EMAIL: { send } } as any, {
+    // [SUPPORT-QUEUE-1] content goes to R2; the queue message is ids only.
+    const r2 = { put: vi.fn(async () => undefined) };
+    const result = await enqueueEmail({ DB_META: db, BACKUP_R2: r2, Q_EMAIL: { send } } as any, {
       to: "buyer@example.test", subject: "Confirmation", html: "<p>ok</p>",
       outboxKey: "commercial-email:order-1:buyer-1:v1", orderId: "order-1", recipientId: "buyer-1",
     });
     expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0]).toMatchObject({ job: "send", key: "commercial-email:order-1:buyer-1:v1" });
+    expect(send.mock.calls[0][0]).not.toHaveProperty("html");
+    expect(r2.put).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ queued: true, status: "queued", durable: true });
     expect(db.row?.delivery_status).toBe("queued");
     expect(db.row?.provider_message_id).toBeNull();

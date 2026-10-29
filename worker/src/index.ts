@@ -34,6 +34,7 @@ import {
 } from "./routes/commercial_stream_sessions";
 import { commercialCheckout, commercialHold, resendCommercialConfirmation } from "./routes/commercial_checkout";
 import { recoverEmailOutbox } from "./lib/email_outbox";
+import { handleWhatsAppQueue, recoverWhatsAppQueue } from "./lib/whatsapp_queue"; // [SUPPORT-QUEUE-1]
 import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialSessionAttachmentUpload } from "./routes/commercial_session_attachment";
@@ -479,6 +480,8 @@ export default {
   // device ctx comment inside it), so this is a safe, already-handled case.
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     await hydrateKvSecrets(env); // [HF-MERCH-PT-LOGIN-1] queue consumers may reach Printrove (orders / catalogue)
+    // [SUPPORT-QUEUE-1] whatsapp-priority / whatsapp-normal (+ -dlq): id-only jobs, paced sends.
+    if (batch.queue.startsWith("whatsapp-")) { await handleWhatsAppQueue(batch, env); return; }
     for (const msg of batch.messages) {
       try {
         if (batch.queue.startsWith("money-dlq")) {
@@ -586,6 +589,8 @@ export default {
           .catch((e) => { console.error("[listing-publication-reconciliation] failed:", String(e)); }),
         recoverEmailOutbox(env)
           .catch(() => { console.error("[commercial-email-recovery] failed"); }),
+        recoverWhatsAppQueue(env)
+          .catch(() => { console.error("[whatsapp-queue-recovery] failed"); }),
         // [LISTING-EXPIRY-1] Close published shows whose scheduled end has passed.
         expireEndedEventListings(env)
           .then((r) => { if (r.scanned) console.log("[listing-schedule-expiry]", JSON.stringify(r)); })

@@ -22,6 +22,7 @@ import { track, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { fanout } from "./listings";
 import { clerkEmail } from "../ledger";
+import { enqueueEmail } from "../lib/email_outbox";
 
 const APP = "avaverse";
 const FEE = 0.20;                  // 80/20 split (§4) — keep in sync with ledger.PLATFORM_FEE_RATE
@@ -330,7 +331,7 @@ export async function verseStatement(req: Request, env: Env): Promise<Response> 
           <tr><th>Date</th><th>Type</th><th>Listing</th><th>Gross</th><th>Fee</th><th>Net</th></tr>${tbl}
           <tr><th colspan="3">Total</th><th align="right">₹${inr(totals.gross)}</th><th align="right">₹${inr(totals.fee)}</th><th align="right">₹${inr(totals.net)}</th></tr>
         </table></div>`;
-      try { await env.Q_EMAIL.send({ to: email, subject: `Your ${BRAND.name} earnings statement — ${month}`, html }); } catch { /* best-effort */ }
+      try { await enqueueEmail(env, { to: email, subject: `Your ${BRAND.name} earnings statement — ${month}`, kind: "earnings_statement", html }, { lane: "bulk", inlineFallback: true }); } catch { /* best-effort */ }
       return json({ ok: true, emailed: true, month, items: items.length, totals });
     }
     return json({ error: "no email on file" }, 404);

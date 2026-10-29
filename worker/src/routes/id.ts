@@ -20,6 +20,7 @@ import { notifyUser } from "../notify";
 import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
 import { attachVerifiedClerkEmail } from "../lib/clerk_verified_email";
 import { isPlaceholderEmail } from "../lib/placeholder_email";
+import { enqueueEmail } from "../lib/email_outbox";
 
 const MIN_CONFIDENCE = 90;        // §10.4 auto-approve threshold
 const MAX_ATTEMPTS_24H = 3;       // §10.4 retry cap
@@ -263,12 +264,14 @@ export async function idEmailStart(req: Request, env: Env): Promise<Response> {
   await env.TOKENS.put(sendKey, String(sends + 1), { expirationTtl: 3600 });
 
   try {
-    await env.Q_EMAIL.send({
+    const queued = await enqueueEmail(env, {
       to: email,
       subject: `Your ${BRAND.name} verification code`,
+      kind: "email_otp",
       html: emailOtpHtml(code),
       from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
-    });
+    }, { lane: "priority", inlineFallback: true });
+    if (!queued.queued) throw new Error(`email_not_queued:${queued.status}`);
   } catch {
     await env.TOKENS.delete(`otp:email:${ctx.uid}`);
     metric(env, "email_otp_enqueue_error", [1]);
@@ -417,12 +420,14 @@ export async function idPasswordStart(req: Request, env: Env): Promise<Response>
   await env.TOKENS.put(sendKey, String(sends + 1), { expirationTtl: 3600 });
 
   try {
-    await env.Q_EMAIL.send({
+    const queued = await enqueueEmail(env, {
       to: email,
       subject: `Your ${BRAND.name} password code`,
+      kind: "password_otp",
       html: passwordOtpHtml(code),
       from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
-    });
+    }, { lane: "priority", inlineFallback: true });
+    if (!queued.queued) throw new Error(`email_not_queued:${queued.status}`);
   } catch {
     metric(env, "password_otp_enqueue_error", [1]);
     return json({ error: "could not send the email — please try again" }, 502);

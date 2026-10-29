@@ -19,6 +19,7 @@ import { moneySweep } from "./money_sweep";
 import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
 import { sweepUncommittedMedia, UNCOMMITTED_TTL_MS } from "./media_sweep"; // [SPEC-SEND-2 / WS-33] collect speculatively-uploaded media the user never sent
 import { sendEmailDurably } from "./email_delivery";
+import { handleEmailQueueMessage, handleEmailDlq, retryDelaySeconds } from "./email_job"; // [SUPPORT-QUEUE-1] id-only email jobs + legacy shape
 import { handleEmailEvent, type EmailSendingEvent } from "./email_events";
 
 export default {
@@ -39,7 +40,14 @@ export default {
           // Queue delivery acks permanent provider rejections after recording
           // them; cron callers below request an exception so reminder flags do
           // not advance when mail was unavailable or rejected.
-          case "email": await sendEmailDurably(msg.body as EmailMsg, env, { throwOnPermanent: false }); break;
+          // [SUPPORT-QUEUE-1] `email` (legacy drain), `email-priority` (OTP, human replies) and
+          // `email-bulk` (receipts/statements) all accept BOTH the new id-only job and the old
+          // inline message; the DLQs just mark the outbox row failed so it is visible.
+          case "email":
+          case "email-priority":
+          case "email-bulk": await handleEmailQueueMessage(msg.body, env, { throwOnPermanent: false }); break;
+          case "email-priority-dlq":
+          case "email-bulk-dlq": await handleEmailDlq(msg.body, env); break;
           case "email-events": await handleEmailEvent(msg.body as EmailSendingEvent, env); break;
           case "brain-events": await handleBrain(msg.body as BrainMsg, env); break;
           case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
@@ -70,7 +78,10 @@ export default {
           uid: String((msg.body as any)?.uid ?? "server"),
           tx_id: String((msg.body as any)?.id ?? ""),
         });
-        msg.retry(); fail++;
+        // [SUPPORT-QUEUE-1] Email lanes back off 30s, 2m, 10m, 1h, 6h instead of hammering the provider.
+        if (q === "email" || q === "email-priority" || q === "email-bulk") msg.retry({ delaySeconds: retryDelaySeconds(msg.attempts) });
+        else msg.retry();
+        fail++;
       }
     }
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["queue", batch.queue], doubles: [ok, fail], indexes: ["queue"] }); } catch { /* best-effort */ }

@@ -14,6 +14,7 @@
 import { BRAND } from "./lib/brand";
 import type { Env } from "./types";
 import { walletOp } from "./routes/wallet";
+import { enqueueEmail } from "./lib/email_outbox";
 
 export const PLATFORM_FEE_RATE = 0.20; // §4: 80% creator / 20% platform
 export const ACCT_PLATFORM_FEES = "platform:fees";
@@ -343,7 +344,7 @@ export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purcha
     <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : BRAND.name} · Order ${opts.orderId}</p>
   </div>`;
   try {
-    await env.Q_EMAIL.send({ to: email, subject: `Your ${BRAND.name} receipt — ${opts.title}`, html });
-    return true;
+    const queued = await enqueueEmail(env, { to: email, subject: `Your ${BRAND.name} receipt — ${opts.title}`, kind: "receipt", html }, { lane: "bulk", inlineFallback: true });
+    return queued.queued;
   } catch { return false; }
 }

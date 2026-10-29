@@ -46,6 +46,11 @@ export interface Env {
   Q_MODERATION: Queue;
   Q_PUSH: Queue;
   Q_EMAIL: Queue;
+  // [SUPPORT-QUEUE-1] Lane queues. Optional so tests/staging without them fall back to Q_EMAIL.
+  Q_EMAIL_PRIORITY?: Queue;  // email-priority — OTP + human-reply mail
+  Q_EMAIL_BULK?: Queue;      // email-bulk — receipts, statements, acknowledgements
+  Q_WA_PRIORITY?: Queue;     // whatsapp-priority — OTP-class WhatsApp
+  Q_WA_NORMAL?: Queue;       // whatsapp-normal — notifications
   Q_ANALYTICS: Queue;
   Q_BRAIN: Queue;
   Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)

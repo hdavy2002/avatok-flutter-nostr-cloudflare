@@ -23,6 +23,7 @@ import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { clerkEmail } from "../ledger";
 import { track, metric } from "../hooks";
+import { enqueueEmail } from "../lib/email_outbox";
 
 const APP = "avareferral";
 // [SAATHUM-EMAIL-1] Must stay in sync with the Flutter app's kInviteBase, and
@@ -96,13 +97,15 @@ export async function inviteEmail(req: Request, env: Env): Promise<Response> {
 
   const subject = `${inviterName} is inviting you to join ${BRAND.name}`;
   try {
-    await env.Q_EMAIL.send({
+    const queued = await enqueueEmail(env, {
       to: toEmail,
       subject,
+      kind: "invite",
       html: inviteHtml(inviterName, link),
       from: `${inviterName} via ${BRAND.name} <${BRAND.emails.noreply}>`,
       ...(replyTo ? { replyTo } : {}),
-    });
+    }, { lane: "bulk", inlineFallback: true });
+    if (!queued.queued) throw new Error(`email_not_queued:${queued.status}`);
   } catch (e) {
     return json({ ok: false, reason: "queue_failed", detail: String(e).slice(0, 120) }, 502);
   }

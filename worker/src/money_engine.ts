@@ -21,6 +21,7 @@ import { notifyUser } from "./notify";
 import { track } from "./hooks";
 import { settleAffiliate } from "./routes/affiliate";
 import { systemMarkListingCompleted } from "./routes/listings";
+import { enqueueEmail } from "./lib/email_outbox";
 
 export interface MoneyMsg {
   type: "evaluate" | "cancel";
@@ -199,7 +200,7 @@ async function applyAction(env: Env, ctx: SessionCtx, a: Action): Promise<void> 
       // "email both sides": refund emails already went to buyers; tell the creator.
       try {
         const email = await clerkEmail(env, ctx.hostId);
-        if (email) await env.Q_EMAIL.send({ to: email, subject: `Event cancelled: ${ctx.title}`, html: `<p>Your session <b>${ctx.title}</b> was cancelled by the no-show rule (you never went live within the wait window). All buyers were refunded in full and a strike was recorded.</p>` });
+        if (email) await enqueueEmail(env, { to: email, subject: `Event cancelled: ${ctx.title}`, kind: "creator_cancel_notice", html: `<p>Your session <b>${ctx.title}</b> was cancelled by the no-show rule (you never went live within the wait window). All buyers were refunded in full and a strike was recorded.</p>` }, { lane: "bulk", inlineFallback: true });
       } catch { /* best-effort */ }
       return;
     }
@@ -269,12 +270,15 @@ export async function moneyDlq(env: Env, body: unknown, error?: string): Promise
     ).bind(id, JSON.stringify(body ?? {}), error ?? null, Date.now()).run();
   } catch (e) { console.error("failed_settlements write failed:", String(e)); }
   try {
-    await env.Q_EMAIL.send({
+    // [SUPPORT-QUEUE-1] The dead-lettered payload can be big: it goes to R2, the queue carries only an id.
+    await enqueueEmail(env, {
       to: env.ALERT_EMAIL || "hdavy2005@gmail.com",
       subject: `[${BRAND.name}] settlement job dead-lettered`,
+      kind: "ops_alert",
+      outboxKey: `ops-alert:settlement-dlq:${id}`,
       html: `<p>A refund/settlement job exhausted its retries and landed in the DLQ.</p>
              <pre>${JSON.stringify(body ?? {}, null, 2)}</pre>
              <p>failed_settlements id: <b>${id}</b> — retry it from the admin money console.</p>`,
-    });
+    }, { lane: "bulk", inlineFallback: true });
   } catch (e) { console.error("DLQ alert email failed:", String(e)); }
 }

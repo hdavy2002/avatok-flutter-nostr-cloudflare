@@ -179,7 +179,7 @@ async function sendReply(env: Env, s: Subject, channel: "email" | "whatsapp", me
       to, subject: `Re: ${s.id} - ${BRAND.name} support`, outboxKey: `hf-admin-reply:${s.id}:${Date.now()}`, kind: "hf_admin_reply", recipientId: s.uid ?? "anonymous",
       html: `<p style="font:15px/1.5 system-ui">${escHtml(message).replace(/\n/g, "<br>")}</p><p style="font:13px/1.5 system-ui;color:#666">This is a reply about ${escHtml(s.label)} (${escHtml(s.id)}). Just reply to this email to write back.</p>`,
       replyTo: { email: BRAND.emails.support, name: BRAND.name },
-    });
+    }, { lane: "priority" });
     if (q.status === "failed" || q.status === "bounced" || q.status === "unavailable") return { ok: false, status: 502, error: "email_failed", message: "The email could not be queued. Nothing was sent." };
     return { ok: true, to };
   }

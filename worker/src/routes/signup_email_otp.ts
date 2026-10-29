@@ -23,6 +23,7 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { BRAND } from "../lib/brand";
 import { track, metric } from "../hooks";
+import { enqueueEmail } from "../lib/email_outbox";
 
 const APP = "avatok";
 const CLERK_API = "https://api.clerk.com/v1";
@@ -129,12 +130,14 @@ export async function signupEmailSend(req: Request, env: Env): Promise<Response>
   await bumpHourly(env, `su_email_ip:${ipHash}`);
 
   try {
-    await env.Q_EMAIL.send({
+    const queued = await enqueueEmail(env, {
       to: email,
       subject: `Your ${BRAND.name} verification code`,
+      kind: "email_otp",
       html: emailOtpHtml(code),
       from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
-    });
+    }, { lane: "priority", inlineFallback: true });
+    if (!queued.queued) throw new Error(`email_not_queued:${queued.status}`);
   } catch {
     await env.TOKENS.delete(otpKey).catch(() => {});
     metric(env, "email_otp_enqueue_error", [1]);

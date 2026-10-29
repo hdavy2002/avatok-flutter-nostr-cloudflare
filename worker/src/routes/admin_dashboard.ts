@@ -27,6 +27,7 @@ import { json } from "../util";
 import { requireAdmin } from "./admin_money";
 import { metaDb } from "../db/shard";
 import { ACCT_PLATFORM_FEES } from "../ledger";
+import { enqueueEmail } from "../lib/email_outbox";
 
 // ─────────────────────────── roles (§5.14) ────────────────────────────────
 export type AdminRole = "super" | "finance" | "analyst" | "readonly";
@@ -518,7 +519,8 @@ async function dispatchAlert(env: Env, channels: string[], severity: string, mes
   if (channels.includes("email")) {
     try {
       const to = (env as any).ALERT_EMAIL || "hdavy2005@gmail.com";
-      await env.Q_EMAIL.send({ to, subject: `[${BRAND.name} Admin ${severity}] ${message}`, text: message, kind: "admin_alert" });
+      const safe = String(message).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      await enqueueEmail(env, { to, subject: `[${BRAND.name} Admin ${severity}] ${message}`, html: `<p>${safe}</p>`, kind: "admin_alert" }, { lane: "bulk", inlineFallback: true });
     } catch { /* degrade */ }
   }
   // Slack webhook (optional; degrade if unset).

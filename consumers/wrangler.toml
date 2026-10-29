@@ -114,6 +114,37 @@ max_batch_size = 10
 max_batch_timeout = 10
 max_retries = 3
 
+# [SUPPORT-QUEUE-1] Two email lanes. Queue messages are id-only ({job:'send', outboxId, key});
+# the body/attachments are in R2 (BACKUP_R2 email-outbox/...) and the rest is on the
+# email_outbox row. priority = OTP + human replies, bulk = receipts/statements/acks.
+# Retries back off 30s, 2m, 10m, 1h, 6h (src/index.ts retryDelaySeconds), 5 retries, then the DLQ.
+# Create once (BEFORE deploying): scripts/cf.sh consumers queues create email-priority
+#   (+ email-priority-dlq, email-bulk, email-bulk-dlq). The legacy `email` queue above keeps
+#   draining old inline messages for one release; do not remove it.
+[[queues.consumers]]
+queue = "email-priority"
+max_batch_size = 5
+max_batch_timeout = 2
+max_retries = 5
+dead_letter_queue = "email-priority-dlq"
+
+[[queues.consumers]]
+queue = "email-priority-dlq"
+max_batch_size = 10
+max_retries = 3
+
+[[queues.consumers]]
+queue = "email-bulk"
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 5
+dead_letter_queue = "email-bulk-dlq"
+
+[[queues.consumers]]
+queue = "email-bulk-dlq"
+max_batch_size = 10
+max_retries = 3
+
 # Cloudflare Email Service delivery events (§5): message.delivered/deferred/
 # bounced/complained/rejected, published by the Email Sending event
 # subscription on avatok.ai. Fills email_outbox.delivered_at/bounced_at, which

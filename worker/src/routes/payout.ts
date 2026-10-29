@@ -18,6 +18,7 @@ import { brainIngest } from "../lib/brain_ingest";
 import { notifyUser } from "../notify";
 import { clerkEmail } from "../ledger";
 import { agreementAccepted, currentAgreementVersion } from "./kyc";
+import { enqueueEmail } from "../lib/email_outbox";
 
 const MIN_TOKENS = 1000; // §10.3 minimum withdrawal ($10)
 const CREATOR_AGREEMENT = "creator-agreement"; // A1 — accepted before 1st withdrawal
@@ -41,7 +42,7 @@ async function payoutEmail(env: Env, uid: string, subject: string, lines: string
       ${lines.map((l) => `<p style="color:#444;margin:0 0 8px">${l}</p>`).join("")}
       <p style="color:#999;font-size:12px;margin-top:20px">${BRAND.name} payouts</p>
     </div>`;
-    await env.Q_EMAIL.send({ to: email, subject: `${BRAND.name} payout — ${subject}`, html });
+    await enqueueEmail(env, { to: email, subject: `${BRAND.name} payout — ${subject}`, kind: "payout_notice", html }, { lane: "bulk", inlineFallback: true });
   } catch { /* never block payout flow on email */ }
 }
 

@@ -195,6 +195,25 @@ queue = "push-notifications"
 binding = "Q_EMAIL"
 queue = "email"
 
+# [SUPPORT-QUEUE-1] Email lanes (consumed by avatok-consumers) + WhatsApp lanes (self-consumed
+# below). NOTE: create all eight queues once BEFORE deploying: email-priority, email-bulk,
+# whatsapp-priority, whatsapp-normal and their -dlq twins.
+[[queues.producers]]
+binding = "Q_EMAIL_PRIORITY"
+queue = "email-priority"
+
+[[queues.producers]]
+binding = "Q_EMAIL_BULK"
+queue = "email-bulk"
+
+[[queues.producers]]
+binding = "Q_WA_PRIORITY"
+queue = "whatsapp-priority"
+
+[[queues.producers]]
+binding = "Q_WA_NORMAL"
+queue = "whatsapp-normal"
+
 [[queues.producers]]
 binding = "Q_ANALYTICS"        # PostHog event batching — never call PostHog sync from a Worker
 queue = "analytics"
@@ -295,6 +314,35 @@ max_retries = 3
 queue = "ai-media-jobs"
 max_batch_size = 1
 max_retries = 3
+
+# [SUPPORT-QUEUE-1] WhatsApp lanes, self-consumed (lib/whatsapp_queue.ts needs this worker's
+# D1 + WASENDER_API_KEY). max_concurrency=1 per lane; the 1 msg/sec (configurable) pacing across
+# BOTH lanes is a D1 slot in queue_settings, so the unofficial WasenderAPI number is never burst.
+[[queues.consumers]]
+queue = "whatsapp-priority"
+max_batch_size = 5
+max_batch_timeout = 2
+max_retries = 5
+max_concurrency = 1
+dead_letter_queue = "whatsapp-priority-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-normal"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+max_concurrency = 1
+dead_letter_queue = "whatsapp-normal-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-priority-dlq"
+max_batch_size = 10
+max_retries = 2
+
+[[queues.consumers]]
+queue = "whatsapp-normal-dlq"
+max_batch_size = 10
+max_retries = 2
 
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
