@@ -746,7 +746,9 @@ void main() {
       final api = FakeApi(handler);
       await _pumpRouter(tester, SupportScreen(repo: SupportRepo(api)));
       expect(api.calls.where((c) => c == 'GET /api/hf/support/tickets').length, 1);
-      await tester.fling(find.byKey(const Key('support-list')), const Offset(0, 400), 1000);
+      // Drive the RefreshIndicator's own callback: a fling over the form fields is flaky in widget tests.
+      final indicator = tester.widget<RefreshIndicator>(find.ancestor(of: find.byKey(const Key('support-list')), matching: find.byType(RefreshIndicator)));
+      await tester.runAsync(() => indicator.onRefresh());
       await tester.pumpAndSettle();
       expect(api.calls.where((c) => c == 'GET /api/hf/support/tickets').length, 2);
     });
