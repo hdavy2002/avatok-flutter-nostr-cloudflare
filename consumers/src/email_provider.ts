@@ -128,8 +128,40 @@ export async function sendViaCloudflare(msg: OutboundEmail, env: Env): Promise<S
     type: mimeFor(a.name, a.type),
     disposition: "attachment" as const,
   }));
+  // [HF-SUPPORT-1] Cloudflare Email Service accepts only whitelisted headers plus X-*; it rejects Message-ID
+  // (E_VALIDATION_ERROR). Keep our id as X-HF-Message-Id, and if threading headers are still refused, send once
+  // more with X-* only: the [HF-n] subject tag and the support+n@ Reply-To still thread the conversation.
+  const headers = cloudflareSafeHeaders(msg.headers);
   try {
-    const result = await env.EMAIL.send({
+    return await cloudflareSendOnce(msg, env, from, attachments, headers);
+  } catch (error) {
+    const code = typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : "";
+    const message = error instanceof Error ? error.message : String(error);
+    if (headers && code === "E_VALIDATION_ERROR" && /header/i.test(message)) {
+      const xOnly = Object.fromEntries(Object.entries(headers).filter(([k]) => /^x-/i.test(k)));
+      try { return await cloudflareSendOnce(msg, env, from, attachments, Object.keys(xOnly).length ? xOnly : undefined); } catch (e2) { return cloudflareFailure(e2); }
+    }
+    return cloudflareFailure(error);
+  }
+}
+
+export function cloudflareSafeHeaders(h?: Record<string, string>): Record<string, string> | undefined {
+  if (!h) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(h)) {
+    if (/^message-id$/i.test(k)) out["X-HF-Message-Id"] = v;
+    else out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+async function cloudflareSendOnce(
+  msg: OutboundEmail, env: Env, from: ReturnType<typeof parseSender>,
+  attachments: { filename: string; content: string; type: string; disposition: "attachment" }[],
+  headers: Record<string, string> | undefined,
+): Promise<SendOutcome> {
+  {
+    const result = await env.EMAIL!.send({
       from: { email: from.email, name: from.name },
       to: msg.to,
       subject: msg.subject,
@@ -138,10 +170,14 @@ export async function sendViaCloudflare(msg: OutboundEmail, env: Env): Promise<S
       // Bare string when there is no display name - avoids sending an empty `name`.
       ...(msg.replyTo?.email ? { replyTo: msg.replyTo.name ? { email: msg.replyTo.email, name: msg.replyTo.name } : msg.replyTo.email } : {}),
       ...(attachments.length ? { attachments } : {}),
-      ...(msg.headers ? { headers: msg.headers } : {}),
+      ...(headers ? { headers } : {}),
     });
     return { ok: true, provider: "cloudflare", messageId: result.messageId ?? null };
-  } catch (error) {
+  }
+}
+
+function cloudflareFailure(error: unknown): SendOutcome {
+  {
     const code = typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : "";
     const message = error instanceof Error ? error.message : String(error);
     if (SENDER_CONFIG_CODES.has(code)) {
