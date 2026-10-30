@@ -50,6 +50,14 @@ function afterSignInUrl(): string {
   return isFreeWatchTarget(next) ? next : finishUrl(next);
 }
 
+/** [HF-SIGNIN-SPEED-1] Where a WhatsApp-code sign-in lands. The number was just proven by the code and the Worker only
+ * mints a ticket for an account whose WhatsApp number is verified (routes/whatsapp_auth.ts verifiedAccountForPhone), so
+ * the phone gate (/sign-up?finish=1: a whole extra page load + Clerk load + /api/account/phone/status) would always
+ * pass straight through. Go directly to the destination. Google (no number proven) keeps afterSignInUrl(). */
+function afterWhatsAppSignInUrl(): string {
+  return nextUrl();
+}
+
 /** /sign-up, carrying the page the visitor was headed for. */
 function signUpHref(): string {
   const n = nextUrl();
@@ -60,6 +68,15 @@ function Inner() {
   const {t:uiT}=useUiTranslation("web-auth");
 
   const { isLoaded, signIn, setActive } = useSignIn();
+  // [HF-SIGNIN-SPEED-1] Latest Clerk handles, so a submit made before clerk-js finished loading can wait for it.
+  const clerkRef = useRef({ isLoaded, signIn, setActive });
+  clerkRef.current = { isLoaded, signIn, setActive };
+  /** Resolves once Clerk is loaded (or after `ms`, then redeem reports its own "still loading" error). */
+  async function clerkReady(ms = 10000) {
+    const t0 = Date.now();
+    while (!clerkRef.current.isLoaded && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 40));
+    return clerkRef.current;
+  }
 
   const [waStage, setWaStage] = useState<'number' | 'code' | 'age' | 'no_account'>('number');
   // [HF-AUTH-WA-1] A phone-only account made by the app holds its ticket here until the 18+ tick is given.
@@ -136,9 +153,10 @@ function Inner() {
       }
       if (r.status === 'signed_in') {
         finishingRef.current = true;
-        await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, r.ticket);
+        const c = await clerkReady();
+        await redeemWhatsAppTicket(c.signIn as unknown as PwlSignIn, c.setActive, r.ticket);
         capture('auth_signin_result', { method: 'whatsapp_code', outcome: 'ok' });
-        location.href = afterSignInUrl();
+        location.href = afterWhatsAppSignInUrl();
         return;
       }
       // no_account (or, from an old Worker, needs_email): this number has no account yet.
@@ -160,11 +178,12 @@ function Inner() {
     setFormError(null);
     try {
       finishingRef.current = true;
-      await redeemWhatsAppTicket(signIn as unknown as PwlSignIn, setActive, waTicket);
+      const c = await clerkReady();
+      await redeemWhatsAppTicket(c.signIn as unknown as PwlSignIn, c.setActive, waTicket);
       const token = await getActiveTokenWaited();
       if (!token) throw new Error('no_token');
       await confirmAge18(token);
-      location.href = afterSignInUrl();
+      location.href = afterWhatsAppSignInUrl();
     } catch (err) {
       finishingRef.current = false;
       setFormError(waApiMessage(err, 'We couldn’t finish that. Please try again.'));
@@ -212,7 +231,9 @@ function Inner() {
             label="WhatsApp number" autoFocus
           />
           <p className="auth-hint">We’ll send a 6-digit code on WhatsApp to log you in. No password.</p>
-          <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}>Send code on WhatsApp</Button>
+          {/* [HF-SIGNIN-SPEED-1] Sending the code is a plain Worker call (no Clerk), so it no longer waits for clerk-js. Clerk
+              finishes loading while the person types their code; verifyWa waits for it before redeeming the ticket. */}
+          <Button type="submit" loading={submitting}>Send code on WhatsApp</Button>
         </>
       )}
       {waStage === 'age' && (

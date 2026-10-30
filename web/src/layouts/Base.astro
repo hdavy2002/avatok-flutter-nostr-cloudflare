@@ -71,6 +71,8 @@ export interface Props {
   /** [HF-CLERK-EARLY-1] Force (true) or suppress (false) the early clerk-js download for signed-in visitors.
    *  Default: on for pages that show nothing without a session (dashboard, bookings, account, wallet). */
   clerkEarly?: boolean;
+  /** [HF-SIGNIN-SPEED-1] With clerkEarly: start clerk-js even without a session cookie (the sign-in/sign-up form needs it to submit). */
+  clerkEarlyAnon?: boolean;
 }
 
 const {
@@ -102,6 +104,7 @@ const {
   extraJsonLd,
   bag = false,
   clerkEarly,
+  clerkEarlyAnon = false,
 } = Astro.props;
 
 // [HF-CLERK-EARLY-1] Pages that cannot show anything without a session. For a visitor whose Clerk cookie says
@@ -171,10 +174,10 @@ if (wantsClerkEarly && CLERK_PUBLISHABLE_KEY && clerkFapiHost()) {
       <link rel="preconnect" href={`https://${clerkEarlyHost}`} crossorigin />
     )}
     {clerkEarlyUrl && (
-      <script is:inline define:vars={{ clerkUrl: clerkEarlyUrl, clerkKey: CLERK_PUBLISHABLE_KEY, embedMarker: EMBED_UA_MARKER }}>
+      <script is:inline define:vars={{ clerkUrl: clerkEarlyUrl, clerkKey: CLERK_PUBLISHABLE_KEY, embedMarker: EMBED_UA_MARKER, clerkAnon: clerkEarlyAnon }}>
         try {
           var m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
-          if (m && m[1] && m[1] !== '0' && navigator.userAgent.indexOf(embedMarker) === -1 && !document.querySelector('script[data-clerk-js-script]')) {
+          if ((clerkAnon || (m && m[1] && m[1] !== '0')) && navigator.userAgent.indexOf(embedMarker) === -1 && !document.querySelector('script[data-clerk-js-script]')) {
             var s = document.createElement('script');
             s.async = true;
             s.crossOrigin = 'anonymous';
@@ -189,6 +192,18 @@ if (wantsClerkEarly && CLERK_PUBLISHABLE_KEY && clerkFapiHost()) {
     {/* [WEB-POSTHOG-1] PostHog core — every page through Base.astro gets it.
         The landing page (index.astro) emits its own document and never
         touches this layout, so it loads the same script separately. */}
+    {/* [HF-SIGNIN-SPEED-1] Same auth-first pages + same cookie test as the clerk-js download above: fetch the site's own
+        Clerk chunk (lib/clerk -> clerk-react + bridge) in parallel NOW. Before this, that chunk was only requested after
+        the client:only dashboard app rendered <SessionBridge/> (React.lazy), serialising it behind the app bundle. It only
+        warms the module cache; nothing mounts until the island asks, so the single-provider rule is untouched. */}
+    <script>
+      try {
+        const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+        if (m && m[1] && m[1] !== '0' && /^\/(dashboard|bookings|account|wallet)(\/|$)/.test(location.pathname)) {
+          void import('../lib/clerk').catch(() => {});
+        }
+      } catch { /* hint only */ }
+    </script>
     <script>
       import { initAnalytics } from '../lib/analytics';
       import { initImageTelemetry } from '../lib/imageTelemetry';
