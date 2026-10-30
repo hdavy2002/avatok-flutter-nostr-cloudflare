@@ -40,7 +40,7 @@
  * because a visitor reaching it means the SDK is broken on this page and that is
  * invisible from the server side.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth, useClerk } from '@clerk/clerk-react';
 import { ClerkIsland, clearLegacyIdentityStorage } from '../../lib/clerk';
 import { capture, reset } from '../../lib/analytics';
@@ -58,7 +58,6 @@ const HARD_BACKSTOP_MS = 20000;
 function Inner() {
   const clerk = useClerk();
   const { isLoaded } = useAuth();
-  const [status, setStatus] = useState('Signing you out…');
   // Shared across both effects so the hard backstop and the sign-out path cannot
   // both navigate. A ref, not a local: the two timers live in different effects.
   const doneRef = useRef(false);
@@ -70,6 +69,12 @@ function Inner() {
 
   useEffect(() => {
     clearLegacyIdentityStorage();
+    // [HF-SIGNOUT-MSG-1] Forget this tab's dashboard cache (hf_dash_* in sessionStorage, [HF-DASH-CACHE-1]) so the next person never sees it.
+    try {
+      const dead: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); if (k && k.startsWith('hf_dash_')) dead.push(k); }
+      dead.forEach(k => sessionStorage.removeItem(k));
+    } catch { /* storage blocked: nothing was cached */ }
   }, []);
 
   useEffect(() => {
@@ -107,7 +112,6 @@ function Inner() {
       } catch {
         // Already signed out, or Clerk unreachable. Either way there is nothing
         // further this page can do, and leaving is better than hanging.
-        setStatus('Signing you out…');
       }
       // §1.3 — clear the PostHog distinct_id/session on sign-out regardless of
       // whether Clerk's own call succeeded; there is nothing left to identify.
@@ -123,7 +127,8 @@ function Inner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, clerk]);
 
-  return <span>{status}</span>;
+  // [HF-SIGNOUT-MSG-1] The page itself (sign-out.astro) shows the one message; this island only does the work.
+  return null;
 }
 
 export default function SignOutIsland() {
