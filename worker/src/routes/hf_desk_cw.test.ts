@@ -386,3 +386,24 @@ describe("quoted email", () => {
     expect(splitQuote("plain > not a quote").main).toBe("plain > not a quote");
   });
 });
+
+describe("my inbox", () => {
+  it("lists active tickets as cards, unread until read, and reading clears the ticket's unread flag", async () => {
+    await mail("Rahul <rahul@example.com>", "Wallet top-up failed", "money cut");
+    await mail("Anita <anita@example.com>", "Spam offer", "buy");
+    t.db.prepare("UPDATE support_tickets SET status='spam' WHERE number=10002").run();
+    const list = await call("GET", `${A}/notifications?page=1&sort_order=desc`);
+    expect(list.body.data.meta).toMatchObject({ count: 1, unread_count: 1, current_page: 1 });
+    const card = list.body.data.payload[0];
+    expect(card).toMatchObject({ id: 10001, primary_actor_type: "Conversation", primary_actor_id: 10001, read_at: null, notification_type: "conversation_creation" });
+    expect(card.push_message_body).toBe("Rahul: Wallet top-up failed");
+    expect(card.primary_actor.id).toBe(10001);
+    expect((await call("GET", `${A}/notifications/unread_count`)).body).toBe(1);
+    await call("POST", `${A}/notifications/read_all`, { primary_actor_type: "Conversation", primary_actor_id: 10001 });
+    expect((await call("GET", `${A}/notifications/unread_count`)).body).toBe(0);
+    await call("POST", `${A}/notifications/10001/unread`);
+    expect((await call("GET", `${A}/notifications/unread_count`)).body).toBe(1);
+    await call("POST", `${A}/notifications/read_all`);
+    expect((await call("GET", `${A}/notifications/unread_count`)).body).toBe(0);
+  });
+});

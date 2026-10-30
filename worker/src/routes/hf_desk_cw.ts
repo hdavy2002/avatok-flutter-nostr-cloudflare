@@ -227,14 +227,15 @@ function contactJson(c: Contact | null, blocked = false) {
 // ---------------------------------------------------------------------------------------------------------------------
 // labels: the 8 built-in categories (one per ticket) + agent-made labels (any number per ticket)
 // ---------------------------------------------------------------------------------------------------------------------
-const LABEL_COLOURS: Record<string, string> = { calls: "#1f93ff", wallet: "#d81b72", withdraw: "#f59e0b", bookings: "#10b981", influencer: "#8b5cf6", app: "#0ea5e9", report: "#ef4444", other: "#64748b" };
+// [HF-DESK-UX-1] website palette (no green): lavender, rani, marigold, plum2, rani-light, plum, deep red, muted
+const LABEL_COLOURS: Record<string, string> = { calls: "#6d4fd0", wallet: "#d81b72", withdraw: "#f59e0b", bookings: "#6b2468", influencer: "#e0569b", app: "#4a1747", report: "#b42318", other: "#6f5b6f" };
 const CAT_KEYS = Object.keys(CATEGORIES) as string[];
 interface LabelRow { id: number; title: string; description: string; color: string; show_on_sidebar: number }
 async function customLabels(env: Env): Promise<LabelRow[]> {
   return (await env.DB_META.prepare("SELECT id,title,description,color,show_on_sidebar FROM support_labels ORDER BY title").all<LabelRow>().catch(() => ({ results: [] as LabelRow[] }))).results ?? [];
 }
 async function labelsJson(env: Env) {
-  const builtIn = CAT_KEYS.map((c, i) => ({ id: i + 1, title: c, description: (CATEGORIES as Record<string, string>)[c] ?? "", color: LABEL_COLOURS[c] ?? "#64748b", show_on_sidebar: true }));
+  const builtIn = CAT_KEYS.map((c, i) => ({ id: i + 1, title: c, description: (CATEGORIES as Record<string, string>)[c] ?? "", color: LABEL_COLOURS[c] ?? "#6f5b6f", show_on_sidebar: true }));
   const mine = (await customLabels(env)).map((l) => ({ id: LABEL_BASE + l.id, title: l.title, description: l.description, color: l.color, show_on_sidebar: !!l.show_on_sidebar }));
   return [...builtIn, ...mine];
 }
@@ -865,6 +866,50 @@ export const markdownToText = (md: string): string =>
   md.replace(/\r\n/g, "\n").replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").trim();
 
 // ---------------------------------------------------------------------------------------------------------------------
+// My Inbox (Chatwoot "notifications"): one card per active ticket, newest activity first. A card is unread while the
+// ticket has an unread customer message (unread_staff=1); reading the card marks the ticket read, like opening it.
+// ---------------------------------------------------------------------------------------------------------------------
+const ACTIVE = "('new','open','waiting','on_hold')";
+async function notificationsRoute(env: Env, req: Request, url: URL, s: Session, r: string): Promise<Response> {
+  const db = env.DB_META;
+  if (r === "/notifications/unread_count") {
+    const c = await db.prepare(`SELECT COUNT(*) AS c FROM support_tickets WHERE unread_staff=1 AND status IN ${ACTIVE}`).first<{ c: number }>();
+    return out(c?.c ?? 0);
+  }
+  if (r === "/notifications/read_all" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { primary_actor_id?: unknown };
+    const id = n(body.primary_actor_id);
+    if (id > 0) await db.prepare("UPDATE support_tickets SET unread_staff=0 WHERE number=?1").bind(id).run();
+    else await db.prepare(`UPDATE support_tickets SET unread_staff=0 WHERE unread_staff=1 AND status IN ${ACTIVE}`).run();
+    return out({});
+  }
+  const one = /^\/notifications\/(\d+)\/unread$/.exec(r);
+  if (one && req.method === "POST") {
+    await db.prepare("UPDATE support_tickets SET unread_staff=1 WHERE number=?1").bind(n(one[1])).run();
+    return out({});
+  }
+  if (r !== "/notifications" || req.method !== "GET") return out({});
+  const page = Math.max(1, n(url.searchParams.get("page")) || 1);
+  const asc = url.searchParams.get("sort_order") === "asc";
+  const rows = (await db.prepare(`SELECT * FROM support_tickets WHERE status IN ${ACTIVE} ORDER BY updated_at ${asc ? "ASC" : "DESC"} LIMIT ${PAGE} OFFSET ${(page - 1) * PAGE}`).all<TicketRow>()).results ?? [];
+  const counts = await db.prepare(`SELECT COUNT(*) AS c, SUM(CASE WHEN unread_staff=1 THEN 1 ELSE 0 END) AS u FROM support_tickets WHERE status IN ${ACTIVE}`).first<{ c: number; u: number | null }>();
+  const ag = await agents(env);
+  const payload = [];
+  for (const t of rows) {
+    const conv = await conversationJson(env, t, ag, s.agent, s.th, s.base);
+    const who = (conv.meta?.sender as { name?: string } | undefined)?.name || "Customer";
+    payload.push({
+      id: t.number, notification_type: t.status === "new" ? "conversation_creation" : "assigned_conversation_new_message",
+      primary_actor_type: "Conversation", primary_actor_id: t.number, primary_actor: conv,
+      push_message_title: `HF-${t.number}`, push_message_body: `${who}: ${t.subject || "(no subject)"}`,
+      read_at: t.unread_staff ? null : secs(t.updated_at), created_at: secs(t.created_at), last_activity_at: secs(t.updated_at),
+      snoozed_until: null, meta: {}, user: { id: s.agent.id },
+    });
+  }
+  return out({ data: { meta: { unread_count: counts?.u ?? 0, count: counts?.c ?? 0, current_page: page }, payload } });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // router
 // ---------------------------------------------------------------------------------------------------------------------
 export async function hfDeskCwRoute(req: Request, env: Env, p: string): Promise<Response | null> {
@@ -1037,8 +1082,7 @@ export async function hfDeskCwRoute(req: Request, env: Env, p: string): Promise<
     }
 
     // Everything the email desk does not use yet: answer empty in the shape the dashboard expects, so screens render.
-    if (r === "/notifications") return out({ data: { meta: { unread_count: 0, count: 0, current_page: 1 }, payload: [] } });
-    if (r === "/notifications/unread_count") return out(0);
+    if (r === "/notifications" || r.startsWith("/notifications/")) return await notificationsRoute(env, req, url, s, r);
     if (r === "/custom_filters" || r === "/teams" || r === "/custom_attribute_definitions" || r === "/macros" || r === "/dashboard_apps" || r === "/agent_bots" || r === "/automation_rules" || r === "/campaigns" || r === "/portals" || r === "/working_hours") return out(r === "/macros" || r === "/automation_rules" || r === "/portals" ? { payload: [] } : []);
     if (r === "/integrations/apps") return out({ payload: [] });
     return out(m === "GET" ? { payload: [] } : {});

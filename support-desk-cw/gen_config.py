@@ -30,3 +30,6 @@ var p=document.createElement('link');p.rel='preconnect';p.href='https://fonts.gs
 var f=document.createElement('link');f.rel='stylesheet';f.href='https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@600;700;800;900&display=swap';h.appendChild(f);
 var t=document.createElement('link');t.rel='stylesheet';t.href='/hf-theme.css';h.appendChild(t);};
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',add);}else{add();}})();""")
+# [HF-DESK-UX-1] The desk's designed look is the ivory (light) theme. Chatwoot follows the computer's dark mode by default
+# ('auto'); start every agent on light once. Picking a theme later in Profile settings still sticks.
+print("""(function(){try{if(!localStorage.getItem('hf_scheme_v1')){localStorage.setItem('color_scheme',JSON.stringify('light'));localStorage.setItem('hf_scheme_v1','1');}}catch(e){}})();""")

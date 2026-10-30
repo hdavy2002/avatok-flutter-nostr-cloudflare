@@ -1,0 +1,13 @@
+diff --git a/app/javascript/dashboard/components/ChatList.vue b/app/javascript/dashboard/components/ChatList.vue
+index a73d230..8bc539c 100644
+--- a/app/javascript/dashboard/components/ChatList.vue
++++ b/app/javascript/dashboard/components/ChatList.vue
+@@ -71,7 +71,7 @@ const { buildConversationPath, buildConversationListPath } =
+ 
+ const resolveAttributesModalRef = ref(null);
+ 
+-const activeAssigneeTab = ref(wootConstants.ASSIGNEE_TYPE.ME);
++const activeAssigneeTab = ref(wootConstants.ASSIGNEE_TYPE.ALL); // [HF-DESK] shared support inbox: open on All
+ const activeStatus = ref(wootConstants.STATUS_TYPE.OPEN);
+ const activeSortBy = ref(wootConstants.SORT_BY_TYPE.LAST_ACTIVITY_AT_DESC);
+ const showAdvancedFilters = ref(false);
