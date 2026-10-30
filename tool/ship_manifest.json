@@ -12770,5 +12770,20 @@
         "note": "Owner signs in at the desk once and stays on the dashboard; support_desk_sessions stops growing per page load."
       }
     ]
+  },
+  "HF-DESK-CW-3": {
+    "description": "Agent desk: attachments in/out (signed links), To/Cc/Bcc through the outbox (X-HF-Cc/X-HF-Bcc -> consumer cc/bcc), Settings that save (support_staff, support_labels, support_canned, personal signature), contacts list, full-text search, spam/merge/split/block sender actions.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$exception",
+        "property": "area",
+        "exists": false,
+        "min_events": 0,
+        "note": "Owner sends a desk reply with a file and a Cc; both the customer and the Cc address receive it with the attachment; no hf_desk_cw exceptions."
+      }
+    ]
   }
 }

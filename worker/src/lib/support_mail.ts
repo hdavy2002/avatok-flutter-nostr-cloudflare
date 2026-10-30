@@ -114,6 +114,9 @@ export interface OutgoingMail {
   outboxKey: string;
   autoSubmitted?: boolean;
   attachments?: { name: string; content: string }[];
+  /** [HF-DESK-CW-3] extra recipients; stored as X-HF-Cc / X-HF-Bcc in headers_json, turned into real Cc/Bcc by the consumer. */
+  cc?: string[];
+  bcc?: string[];
   /** Thread headers; fetched from the ticket when omitted. */
   ids?: { last: string | null; all: string[] };
 }
@@ -123,6 +126,8 @@ export async function sendTicketEmail(env: Env, m: OutgoingMail): Promise<EmailQ
   const headers = threadHeaders(m.messageId, ids, {
     "X-HF-Ticket": String(m.ticket.number),
     ...(m.autoSubmitted ? { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" } : {}),
+    ...(m.cc?.length ? { "X-HF-Cc": m.cc.join(",") } : {}),
+    ...(m.bcc?.length ? { "X-HF-Bcc": m.bcc.join(",") } : {}),
   });
   return enqueueEmail(env, {
     to: m.to,

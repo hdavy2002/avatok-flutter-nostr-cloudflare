@@ -1,0 +1,178 @@
+diff --git a/app/javascript/dashboard/components-next/message/Message.vue b/app/javascript/dashboard/components-next/message/Message.vue
+index 28f2cd6..6503b12 100644
+--- a/app/javascript/dashboard/components-next/message/Message.vue
++++ b/app/javascript/dashboard/components-next/message/Message.vue
+@@ -415,6 +415,7 @@ const payloadForContextMenu = computed(() => {
+     content_attributes: props.contentAttributes,
+     content: displayedContent.value,
+     conversation_id: props.conversationId,
++    message_type: props.messageType, // [HF-DESK-CW-3] lets the menu offer "Split into a new ticket" on customer messages
+   };
+ });
+ 
+@@ -429,7 +430,9 @@ const contextMenuEnabledOptions = computed(() => {
+ 
+   return {
+     copy: hasText,
++    // [HF-DESK-CW-3] tickets keep every message (retention rules); deleting is not offered
+     delete:
++      false &&
+       (hasText || hasAttachments) &&
+       !isFailedOrProcessing &&
+       !isMessageDeleted.value,
+@@ -444,7 +447,9 @@ const contextMenuEnabledOptions = computed(() => {
+       !props.private &&
+       props.inboxSupportsReplyTo.outgoing &&
+       !isFailedOrProcessing,
++    // [HF-DESK-CW-3] forwarding is not supported by the ticket engine behind this desk
+     forwardEmail:
++      false &&
+       props.isEmailInbox &&
+       !props.private &&
+       !isFailedOrProcessing &&
+diff --git a/app/javascript/dashboard/components/widgets/conversation/MoreActions.vue b/app/javascript/dashboard/components/widgets/conversation/MoreActions.vue
+index 448c010..f67549e 100644
+--- a/app/javascript/dashboard/components/widgets/conversation/MoreActions.vue
++++ b/app/javascript/dashboard/components/widgets/conversation/MoreActions.vue
+@@ -5,6 +5,9 @@ import { useStore } from 'vuex';
+ import { useAlert } from 'dashboard/composables';
+ import { useI18n } from 'vue-i18n';
+ import { emitter } from 'shared/helpers/mitt';
++import { useRouter } from 'vue-router';
++import { BUS_EVENTS } from 'shared/constants/busEvents';
++import { parseAPIErrorResponse } from 'dashboard/store/utils/api';
+ import EmailTranscriptModal from './EmailTranscriptModal.vue';
+ import ResolveAction from '../../buttons/ResolveAction.vue';
+ import ButtonV4 from 'dashboard/components-next/button/Button.vue';
+@@ -24,18 +27,57 @@ const [showEmailActionsModal, toggleEmailModal] = useToggle(false);
+ const [showActionsDropdown, toggleDropdown] = useToggle(false);
+ 
+ const currentChat = computed(() => store.getters.getSelectedChat);
++const router = useRouter();
++
++// [HF-DESK-CW-3] Ticket actions from our ticket engine: spam, block sender, merge.
++const hfPost = (path, body = {}) =>
++  window.axios.post(
++    `/api/v1/accounts/${store.getters.getCurrentAccountId}/conversations/${currentChat.value.id}/${path}`,
++    body
++  );
++const hfLeave = path => {
++  emitter.emit(BUS_EVENTS.WEBSOCKET_RECONNECT);
++  router.push(`/app/accounts/${store.getters.getCurrentAccountId}/${path}`);
++};
++const hfAction = async action => {
++  try {
++    if (action === 'hf_spam' || action === 'hf_spam_block') {
++      const block = action === 'hf_spam_block';
++      // eslint-disable-next-line no-alert
++      if (!window.confirm(block ? 'Mark as spam and block this sender? Their future emails will be dropped.' : 'Mark this ticket as spam?')) return;
++      await hfPost('hf_spam', { block });
++      useAlert(block ? 'Marked as spam and sender blocked' : 'Marked as spam');
++      hfLeave('dashboard');
++    } else if (action === 'hf_block') {
++      // eslint-disable-next-line no-alert
++      if (!window.confirm('Block this sender? Their future emails will be dropped.')) return;
++      await hfPost('hf_block');
++      useAlert('Sender blocked');
++    } else if (action === 'hf_merge') {
++      // eslint-disable-next-line no-alert
++      const into = window.prompt(`Merge HF-${currentChat.value.id} into which ticket? (for example HF-10002)`);
++      if (!into) return;
++      const { data } = await hfPost('hf_merge', { into });
++      useAlert(`Merged into HF-${data.into}`);
++      hfLeave(`conversations/${data.into}`);
++    }
++  } catch (error) {
++    useAlert(parseAPIErrorResponse(error) || 'Something went wrong');
++  }
++};
+ 
+ const actionMenuItems = computed(() => {
+   const items = [];
+ 
+-  if (!currentChat.value.muted) {
++  // [HF-DESK-CW-3] Chatwoot's mute is not part of our engine; "Block sender" below replaces it
++  if (false && !currentChat.value.muted) {
+     items.push({
+       icon: 'i-lucide-volume-off',
+       label: t('CONTACT_PANEL.MUTE_CONTACT'),
+       action: 'mute',
+       value: 'mute',
+     });
+-  } else {
++  } else if (false) {
+     items.push({
+       icon: 'i-lucide-volume-1',
+       label: t('CONTACT_PANEL.UNMUTE_CONTACT'),
+@@ -51,6 +93,13 @@ const actionMenuItems = computed(() => {
+     value: 'send_transcript',
+   });
+ 
++  items.push(
++    { icon: 'i-lucide-merge', label: 'Merge into another ticket…', action: 'hf_merge', value: 'hf_merge' },
++    { icon: 'i-lucide-shield-alert', label: 'Mark as spam', action: 'hf_spam', value: 'hf_spam' },
++    { icon: 'i-lucide-shield-x', label: 'Spam + block sender', action: 'hf_spam_block', value: 'hf_spam_block' },
++    { icon: 'i-lucide-ban', label: 'Block sender', action: 'hf_block', value: 'hf_block' }
++  );
++
+   return items;
+ });
+ 
+@@ -65,6 +114,8 @@ const handleActionClick = ({ action }) => {
+     useAlert(t('CONTACT_PANEL.UNMUTED_SUCCESS'));
+   } else if (action === 'send_transcript') {
+     toggleEmailModal();
++  } else if (action.startsWith('hf_')) {
++    hfAction(action);
+   }
+ };
+ 
+diff --git a/app/javascript/dashboard/modules/conversations/components/MessageContextMenu.vue b/app/javascript/dashboard/modules/conversations/components/MessageContextMenu.vue
+index d4da47a..d2e30a0 100644
+--- a/app/javascript/dashboard/modules/conversations/components/MessageContextMenu.vue
++++ b/app/javascript/dashboard/modules/conversations/components/MessageContextMenu.vue
+@@ -76,6 +76,10 @@ export default {
+     messageId() {
+       return this.message.id;
+     },
++    // [HF-DESK-CW-3] customer messages can be split into a new ticket
++    hfCanSplit() {
++      return (this.message.message_type ?? this.message.messageType) === 0;
++    },
+     messageContent() {
+       return this.message.content;
+     },
+@@ -86,6 +90,17 @@ export default {
+     },
+   },
+   methods: {
++    async hfSplit() {
++      try {
++        const { data } = await window.axios.post(
++          `/api/v1/accounts/${this.currentAccountId}/conversations/${this.conversationId}/messages/${this.messageId}/hf_split`
++        );
++        useAlert(`Split into a new ticket: HF-${data.conversation_id}`);
++      } catch (error) {
++        useAlert(parseAPIErrorResponse(error) || 'Could not split this message');
++      }
++      this.handleClose();
++    },
+     async copyLinkToMessage() {
+       const fullConversationURL =
+         window.chatwootConfig.hostURL +
+@@ -248,6 +263,15 @@ export default {
+           variant="icon"
+           @click.stop="handleTranslate"
+         />
++        <MenuItem
++          v-if="hfCanSplit"
++          :option="{
++            icon: 'arrow-forward',
++            label: 'Split into a new ticket',
++          }"
++          variant="icon"
++          @click.stop="hfSplit"
++        />
+         <hr />
+         <MenuItem
+           v-if="enabledOptions['copyLink']"

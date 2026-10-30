@@ -383,6 +383,9 @@ export interface EmailMsg {
   attachments?: { name: string; content: string }[];
   /** [HF-SUPPORT-1] extra RFC 5322 headers (Message-ID / In-Reply-To / References / Auto-Submitted) for support threading. */
   headers?: Record<string, string>;
+  /** [HF-DESK-CW-3] extra recipients; carried on the outbox row inside headers_json as X-HF-Cc / X-HF-Bcc and removed before sending. */
+  cc?: string[];
+  bcc?: string[];
 }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 

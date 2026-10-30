@@ -37,6 +37,9 @@ export interface OutboundEmail {
   replyTo?: { email: string; name?: string };
   attachments?: { name: string; content: string; type?: string }[]; // content = base64
   headers?: Record<string, string>;
+  /** [HF-DESK-CW-3] extra recipients (support desk replies). */
+  cc?: string[];
+  bcc?: string[];
 }
 
 export type ProviderPolicy = "brevo" | "cloudflare" | "cloudflare_then_brevo";
@@ -164,6 +167,8 @@ async function cloudflareSendOnce(
     const result = await env.EMAIL!.send({
       from: { email: from.email, name: from.name },
       to: msg.to,
+      ...(msg.cc?.length ? { cc: msg.cc } : {}),
+      ...(msg.bcc?.length ? { bcc: msg.bcc } : {}),
       subject: msg.subject,
       html: msg.html,
       text: msg.text ?? htmlToText(msg.html),
@@ -206,6 +211,8 @@ export async function sendViaBrevo(msg: OutboundEmail, env: Env): Promise<SendOu
       body: JSON.stringify({
         sender: from,
         to: [{ email: msg.to }],
+        ...(msg.cc?.length ? { cc: msg.cc.map((email) => ({ email })) } : {}),
+        ...(msg.bcc?.length ? { bcc: msg.bcc.map((email) => ({ email })) } : {}),
         ...(msg.replyTo?.email ? { replyTo: { email: msg.replyTo.email, ...(msg.replyTo.name ? { name: msg.replyTo.name } : {}) } } : {}),
         subject: msg.subject,
         htmlContent: msg.html,

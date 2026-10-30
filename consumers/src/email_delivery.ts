@@ -100,6 +100,8 @@ export async function sendEmailDurably(msg: EmailMsg, env: Env, opts?: { throwOn
       from: msg.from,
       replyTo: msg.replyTo,
       attachments: msg.attachments,
+      ...(msg.cc?.length ? { cc: msg.cc } : {}),
+      ...(msg.bcc?.length ? { bcc: msg.bcc } : {}),
       // [HF-SUPPORT-1] msg.headers (threading) first, so our own bookkeeping headers can never be overridden.
       headers: { ...(msg.headers ?? {}), "X-Saathum-Outbox-Key": key, "X-Saathum-Kind": msg.kind ?? "email" },
     },

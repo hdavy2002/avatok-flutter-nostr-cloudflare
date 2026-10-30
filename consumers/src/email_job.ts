@@ -109,9 +109,13 @@ export async function handleEmailQueueMessage(body: unknown, env: Env, opts?: { 
 
   let headers: EmailMsg["headers"];
   try { headers = row.headers_json ? JSON.parse(row.headers_json) : undefined; } catch { headers = undefined; }
+  // [HF-DESK-CW-3] Cc / Bcc ride in headers_json under reserved keys; they are recipients, never sent as headers (Bcc must stay hidden).
+  const { cc, bcc, headers: sendHeaders } = splitRecipientHeaders(headers);
 
   await sendEmailDurably({
-    headers,
+    headers: sendHeaders,
+    ...(cc.length ? { cc } : {}),
+    ...(bcc.length ? { bcc } : {}),
     to: row.to_email,
     subject: row.subject,
     html,
@@ -139,4 +143,19 @@ export async function handleEmailDlq(body: unknown, env: Env): Promise<void> {
   if (!isEmailJob(body)) { console.error("[email-dlq] unrecognised message dropped"); return; }
   await failPermanently(env, body.key, "dead-lettered after queue retries");
   console.error(`[email-dlq] ${body.key} dead-lettered`);
+}
+
+/** [HF-DESK-CW-3] Pull X-HF-Cc / X-HF-Bcc (comma-separated addresses) out of the stored headers. */
+export function splitRecipientHeaders(h: Record<string, string> | undefined): { cc: string[]; bcc: string[]; headers: Record<string, string> | undefined } {
+  if (!h) return { cc: [], bcc: [], headers: h };
+  const rest: Record<string, string> = {};
+  let cc: string[] = [];
+  let bcc: string[] = [];
+  const list = (v: string) => v.split(",").map((x) => x.trim()).filter((x) => /^[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+$/.test(x)).slice(0, 10);
+  for (const [k, v] of Object.entries(h)) {
+    if (/^x-hf-cc$/i.test(k)) cc = list(String(v));
+    else if (/^x-hf-bcc$/i.test(k)) bcc = list(String(v));
+    else rest[k] = v;
+  }
+  return { cc, bcc, headers: Object.keys(rest).length ? rest : undefined };
 }
