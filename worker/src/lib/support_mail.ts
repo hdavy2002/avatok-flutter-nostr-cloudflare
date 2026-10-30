@@ -13,16 +13,18 @@ import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { emailFor } from "./identity";
 import { realEmailOrNull } from "./placeholder_email";
 import {
-  addEvent, escapeHtml, MINUTE_MS, NUDGE_INTERVAL_MS, newMessageId, replyToFor, supportFrom, supportSiteOrigin, ticketCode,
+  addEvent, cleanTicketSubject, escapeHtml, MINUTE_MS, NUDGE_INTERVAL_MS, newMessageId, replyToFor, supportFrom, supportSiteOrigin, ticketCode,
   textToHtml, type TicketRow, ACK_TEXT, AFTER_HOURS_TEXT,
 } from "./support_core";
 import { htmlToPlainText, bytesToBinary } from "./support_mime";
 
 const tag = (n: number, subject: string): string => {
-  const clean = subject.replace(/^\s*((re|fwd?|aw)\s*:\s*)+/i, "").replace(/\[HF-\d+\]\s*/gi, "").trim() || "Your request";
+  const clean = cleanTicketSubject(subject) || "Your request";
   return `[${ticketCode(n)}] ${clean}`;
 };
 export const ticketSubject = tag;
+/** Acknowledgement subject: the ticket number up front so it is the first thing the customer sees [HF-SUPPORT-ACK-SUBJECT-1]. */
+export const ackSubject = (n: number, subject: string): string => `Ticket ${ticketCode(n)} received: ${cleanTicketSubject(subject) || "Your request"}`;
 
 /** Recipient for a ticket: contact email, else the email typed at sign-up, else the account email (Clerk). Never a placeholder. */
 export async function recipientEmailFor(env: Env, t: Pick<TicketRow, "uid" | "contact_id">): Promise<string | null> {
@@ -117,6 +119,8 @@ export interface OutgoingMail {
   /** [HF-DESK-CW-3] extra recipients; stored as X-HF-Cc / X-HF-Bcc in headers_json, turned into real Cc/Bcc by the consumer. */
   cc?: string[];
   bcc?: string[];
+  /** Subject override; default "[HF-N] <ticket subject>". */
+  subject?: string;
   /** Thread headers; fetched from the ticket when omitted. */
   ids?: { last: string | null; all: string[] };
 }
@@ -131,7 +135,7 @@ export async function sendTicketEmail(env: Env, m: OutgoingMail): Promise<EmailQ
   });
   return enqueueEmail(env, {
     to: m.to,
-    subject: tag(m.ticket.number, m.ticket.subject),
+    subject: m.subject ?? tag(m.ticket.number, m.ticket.subject),
     html: m.html,
     outboxKey: m.outboxKey,
     kind: m.kind,
@@ -147,6 +151,9 @@ export async function sendAck(env: Env, t: Pick<TicketRow, "number" | "subject">
   return sendTicketEmail(env, {
     to, ticket: t, html: ackEmailHtml(t.number, opts.afterHours, opts.unknownSender), kind: "support_ack", lane: "bulk",
     messageId: newMessageId(t.number), outboxKey: `support-ack:${t.number}`, autoSubmitted: true,
+    // Own conversation in the customer's inbox: no In-Reply-To/References, so Gmail does not fold the ack under the
+    // customer's original subject and hide the ticket number. Replies still route by Reply-To support+N and the subject.
+    subject: ackSubject(t.number, t.subject), ids: { last: null, all: [] },
   });
 }
 

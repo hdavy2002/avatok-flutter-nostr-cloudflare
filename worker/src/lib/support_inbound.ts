@@ -12,8 +12,7 @@ import { safeQueueSend } from "./queue_guard";
 import {
   accountUidForEmail, addEvent, allocateTicketNumber, attachmentKey, checkAttachment, classifyMail, emailsOfTicketOwner, getTicket, htmlKey, inboundKey, loadSettings,
   mayAutoReply, MAX_MESSAGE_ATTACHMENT_BYTES, resolveThread, setTicketStatus, sha256Hex, spamScore, statusOnCustomerMessage, stripQuotedReply, upsertContact,
-  HOUR_MS, MAX_AUTOREPLIES_PER_HOUR, isBusinessTime, ticketCode, type TicketRow, type MailClass,
-} from "./support_core";
+  HOUR_MS, MAX_AUTOREPLIES_PER_HOUR, isBusinessTime, ticketCode, type TicketRow, type MailClass, cleanTicketSubject } from "./support_core";
 import { htmlToPlainText, parseMime } from "./support_mime";
 import { addMessage, createTicket, findIdenticalRecent, overDailyTicketLimit, textHash, type NewAttachmentRecord } from "./support_ops";
 import { sendAck } from "./support_mail";
@@ -262,7 +261,7 @@ export async function processInbound(env: Env, job: InboundJob, now = Date.now()
       if (!latest) { await finish(env, r2Key, "dropped", "daily_limit", null, headerId); return { result: "dropped", reason: "daily_limit" }; }
       plan = { kind: "append", ticket: (await getTicket(env, latest.number)) as TicketRow, status: "open", reopened: false, reason: "daily_limit_appended" };
     } else {
-      const subject = mail.subject.replace(/^\s*((re|fwd?|aw)\s*:\s*)+/i, "").replace(/\[HF-\d+\]\s*/gi, "").trim() || "(no subject)";
+      const subject = cleanTicketSubject(mail.subject) || "(no subject)";
       plan = { kind: "new", linkedFrom: null, subject, category: "other", isSpam,
         note: mismatch ? "thread_hint_ignored_sender_mismatch" : (verdict.reasons.length ? `spam_signals:${verdict.reasons.join(",")}` : null) };
     }

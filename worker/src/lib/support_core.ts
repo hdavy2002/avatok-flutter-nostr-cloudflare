@@ -48,6 +48,11 @@ export function statusLabel(status: string): string {
 }
 
 export const ticketCode = (n: number): string => `HF-${n}`;
+/** Strip Re:/Fwd:, "[HF-N]" tags and the ack's "Ticket HF-N received:" prefix from a subject. */
+export function cleanTicketSubject(subject: string): string {
+  return subject.replace(/^\s*((re|fwd?|aw)\s*:\s*)+/i, "").replace(/\[HF-\d+\]\s*/gi, "")
+    .replace(/^\s*Ticket\s+HF-\d+\s+received\s*:\s*/i, "").replace(/^\s*((re|fwd?|aw)\s*:\s*)+/i, "").trim();
+}
 /** "HF-10234" | "10234" -> 10234, else null. */
 export function parseTicketNumber(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined) return null;
@@ -344,7 +349,8 @@ export function ticketFromRecipients(recipients: string[]): number | null {
 
 /** "[HF-10234]" anywhere in the subject (Re:/Fwd: and extra tags are fine). */
 export function ticketFromSubject(subject: string): number | null {
-  const m = /\[HF-(\d{4,9})\]/i.exec(subject);
+  // "[HF-10234] ..." on replies, "Ticket HF-10234 received: ..." on the acknowledgement [HF-SUPPORT-ACK-SUBJECT-1]
+  const m = /\[HF-(\d{4,9})\]/i.exec(subject) ?? /\bTicket\s+HF-(\d{4,9})\b/i.exec(subject);
   return m ? parseInt(m[1], 10) : null;
 }
 
