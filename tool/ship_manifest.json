@@ -12800,5 +12800,35 @@
         "note": "New email to support@ produces an ack in Gmail whose subject starts 'Ticket HF-'."
       }
     ]
+  },
+  "HF-REPLY-ADDR-1": {
+    "description": "Support Reply-To is support+N-<tag>@ (tag = sha256 of N + a random key in support_settings.reply_address_key). A mail to a correctly tagged address threads from any sender (Cc'd people); plain or wrong-tag addresses keep the owner-only rule.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$exception",
+        "property": "area",
+        "exists": false,
+        "min_events": 0,
+        "note": "A desk reply's Reply-To in Gmail shows support+N-xxxxxxxxxx@; replying to it lands on the same ticket."
+      }
+    ]
+  },
+  "HF-DESK-THEME-1": {
+    "description": "Agent desk themed: website palette over Chatwoot's colour variables (gen_theme.py -> hf-theme.css, light + dark), Chatwoot's compiled brand blue swapped for rani, Nunito/Comfortaa, Hello Fraands mark/wordmark/favicons, themed sign-in page.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$exception",
+        "property": "area",
+        "exists": false,
+        "min_events": 0,
+        "note": "desk.<domain> shows ivory/rani/plum, Nunito/Comfortaa and the mark; owner approves the look."
+      }
+    ]
   }
 }
