@@ -179,3 +179,12 @@ describe("markdown", () => {
     );
   });
 });
+
+describe("ui settings", () => {
+  it("keeps the agent's layout choices (contact panel open by default)", async () => {
+    expect((await call("GET", "/cw/auth/validate_token")).body.payload.data.ui_settings.is_contact_sidebar_open).toBe(true);
+    const r = await call("PUT", "/cw/api/v1/profile", { profile: { ui_settings: { is_contact_sidebar_open: false, conversation_display_type: "condensed" } } });
+    expect(r.body.ui_settings).toMatchObject({ is_contact_sidebar_open: false, conversation_display_type: "condensed" });
+    expect((await call("GET", "/cw/auth/validate_token")).body.payload.data.ui_settings.is_contact_sidebar_open).toBe(false);
+  });
+});

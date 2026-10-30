@@ -113,13 +113,29 @@ async function exchange(req: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------------------------------------------------
 // JSON shapes (mirrors app/views/api/v1/**.jbuilder in Chatwoot)
 // ---------------------------------------------------------------------------------------------------------------------
+// Layout choices the dashboard saves (contact panel open, list layout, sort...). Kept per agent in support_settings.
+const DEFAULT_UI: Record<string, unknown> = { is_contact_sidebar_open: true };
+const uiKey = (uid: string) => `desk_ui:${uid}`;
+async function loadUi(env: Env, uid: string): Promise<Record<string, unknown>> {
+  const row = await env.DB_META.prepare("SELECT value FROM support_settings WHERE key=?1").bind(uiKey(uid)).first<{ value: string }>().catch(() => null);
+  try { return { ...DEFAULT_UI, ...(row ? JSON.parse(row.value) : {}) }; } catch { return { ...DEFAULT_UI }; }
+}
+async function saveUi(env: Env, uid: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const next = { ...(await loadUi(env, uid)), ...patch };
+  const v = JSON.stringify(next);
+  if (v.length > 20_000) return next;
+  await env.DB_META.prepare("INSERT INTO support_settings (key,value,updated_at) VALUES (?1,?2,?3) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+    .bind(uiKey(uid), v, Date.now()).run();
+  return next;
+}
+
 const cwRole = (r: string) => (r === "admin" ? "administrator" : "agent");
 
-function userJson(a: Agent, staff: StaffCtx) {
+function userJson(a: Agent, staff: StaffCtx, ui: Record<string, unknown> = DEFAULT_UI) {
   const name = a.name || staff.name || a.email || "Agent";
   return {
     id: a.id, account_id: ACCOUNT_ID, available_name: name, avatar_url: "", confirmed: true, display_name: name, message_signature: "",
-    email: a.email || staff.email || "", name, provider: "email", pubsub_token: "", role: cwRole(staff.role), ui_settings: {}, uid: a.email, type: "User",
+    email: a.email || staff.email || "", name, provider: "email", pubsub_token: "", role: cwRole(staff.role), ui_settings: ui, uid: a.email, type: "User",
     access_token: "",
     accounts: [{
       id: ACCOUNT_ID, name: `${BRAND.name} Support`, status: "active", active_at: null, role: cwRole(staff.role), permissions: [cwRole(staff.role)],
@@ -431,12 +447,18 @@ export async function hfDeskCwRoute(req: Request, env: Env, p: string): Promise<
     const s = await sessionStaff(req, env);
     if (!s) return fail(401, "You need to sign in or sign up before continuing.");
     const { staff, agent } = s;
-    const me = userJson(agent, staff);
+    let me = userJson(agent, staff, await loadUi(env, staff.uid));
 
     if (path === "/auth/validate_token") return out({ payload: { success: true, data: me } });
     if (path === "/auth/sign_out" && m === "DELETE") {
       await env.DB_META.prepare("DELETE FROM support_desk_sessions WHERE token_hash=?1").bind(await sha256Hex(req.headers.get("access-token") ?? "")).run();
       return out({ success: true });
+    }
+    if (path === "/api/v1/profile" && m === "PUT") {
+      const b = await bodyOf(req);
+      const prof = (b.profile ?? {}) as Record<string, unknown>;
+      if (prof.ui_settings && typeof prof.ui_settings === "object") me = userJson(agent, staff, await saveUi(env, staff.uid, prof.ui_settings as Record<string, unknown>));
+      return out(me);
     }
     if (path.startsWith("/api/v1/profile")) return out(me);
 
