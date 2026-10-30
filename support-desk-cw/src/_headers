@@ -3,7 +3,7 @@
   Referrer-Policy: same-origin
 /index.html
   Cache-Control: no-store
-/hf-login.html
+/hf-login
   Cache-Control: no-store
 /hf-config.js
   Cache-Control: no-store

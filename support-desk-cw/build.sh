@@ -21,13 +21,14 @@ mkdir -p "$SRC/hfdesk"
 cp "$HERE/src/index.html" "$SRC/hfdesk/index.html"
 cp "$HERE/src/vite.hfdesk.config.ts" "$SRC/vite.hfdesk.config.ts"
 
-(cd "$SRC" && pnpm install --frozen-lockfile --ignore-scripts >/dev/null)
+(cd "$SRC" && npx -y pnpm@10.2.0 install --frozen-lockfile --ignore-scripts --config.node-version=24.11.0 --reporter=append-only | tail -4)
 (cd "$SRC" && NODE_OPTIONS=--max-old-space-size=7000 npx vite build -c vite.hfdesk.config.ts)
 
 rm -rf "$HERE/dist"
 mv "$SRC/hfdesk-dist" "$HERE/dist"
 mv "$HERE/dist/hfdesk/index.html" "$HERE/dist/index.html" && rmdir "$HERE/dist/hfdesk"
 rm -rf "$HERE/dist/videos" "$HERE/dist/downloads"          # onboarding videos: 35 MB we never show
+rm -f "$HERE/dist/404.html" "$HERE/dist/422.html" "$HERE/dist/500.html"   # a 404.html turns off the Pages single-page fallback
 cp "$HERE/src/hf-login.html" "$HERE/src/_redirects" "$HERE/src/_headers" "$HERE/dist/"
 cp "$HERE/CHATWOOT-LICENSE" "$HERE/dist/CHATWOOT-LICENSE.txt"
 python3 "$HERE/gen_config.py" "$ROOT/Specs/brand.json" > "$HERE/dist/hf-config.js"
