@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BRAND } from '../../../lib/brand';
 import { capture } from '../../../lib/analytics';
+import { cachedFetch, cachedPeek } from '../../../lib/hfCallsApi';
 import { merchEnabled } from '../merch/api';
 import { getTickets, sendTicket, type Ticket } from './data';
 import { Card, Ic, PageHead, Sticker, istDay, useToast } from './ui';
@@ -51,12 +52,13 @@ export default function Support() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [tickets, setTickets] = useState<Ticket[] | null>(null);
+  const [tickets, setTickets] = useState<Ticket[] | null>(() => cachedPeek<Ticket[]>('support:tickets')?.v ?? null); // [HF-DASH-CACHE-1] last list at once
   const [merchOn, setMerchOn] = useState(false);
   useEffect(() => { void merchEnabled().then(setMerchOn); }, []);
   const topics = merchOn ? [...TOPICS, MERCH_TOPIC] : TOPICS;
-  const load = () => { void getTickets().then(r => setTickets(r.ok ? r.data.items : [])); };
-  useEffect(load, []);
+  // [HF-DASH-CACHE-1] cached list refreshes quietly (30 s); after sending a ticket the list is re-read for real. A failed read never wipes a good list.
+  const load = (force = false) => { void cachedFetch<Ticket[] | null>('support:tickets', () => getTickets().then(r => (r.ok ? r.data.items : null)), 30_000, force).then(v => setTickets(prev => v ?? prev ?? [])).catch(() => setTickets(prev => prev ?? [])); };
+  useEffect(() => { load(); }, []);
   const ql = q.trim().toLowerCase();
   const fk = FAQ_KEY[topic] ?? topic;
   const list = (merchOn ? [...FAQ, ...MERCH_FAQ] : FAQ).filter(([k, qq, a]) => (!fk || k === fk) && (!ql || (qq + a).toLowerCase().includes(ql)));
@@ -65,7 +67,7 @@ export default function Support() {
     setBusy(true); setErr('');
     const r = await sendTicket(tTopic, msg.trim());
     setBusy(false);
-    if (r.ok) { setMsg(''); toast(`Got it! Ticket ${r.data.id} — we’ll reply by email or WhatsApp.`); capture('hf_dash3_ticket_sent', { topic: tTopic }); load(); }
+    if (r.ok) { setMsg(''); toast(`Got it! Ticket ${r.data.id} — we’ll reply by email or WhatsApp.`); capture('hf_dash3_ticket_sent', { topic: tTopic }); load(true); }
     else setErr(r.status === 429 ? 'You’ve sent a lot today. Please try again tomorrow or email us.' : r.message || 'We could not send that. Please try again.');
   };
   return <>

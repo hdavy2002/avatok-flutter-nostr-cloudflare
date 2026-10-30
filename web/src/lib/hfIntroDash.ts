@@ -1,8 +1,8 @@
 /* [HF-INTRO-B4] Web dashboard client for the intro-video project: call option (A/B), the intro banner state and Log in with Facebook.
  * Specs/HF-INTRO-VIDEO-1-API.md (W1 /api/hf/me fields, W2 /api/hosts/me/call-option), Specs/HF-FACEBOOK-LOGIN-1.md (W3 start route).
  * Every piece is gated on a public flag from /api/config; any failure = flag off = today's dashboard. */
-import { request } from './apiClient';
-import { hfCall, type HfResult } from './hfCallsApi';
+import { getMe, hfCall, type HfResult } from './hfCallsApi';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 
 export type CallOption = 'A' | 'B';
 // [HF-VERIFY-WEB-FLOW] channels (hfChannelsEnabled, YouTube with Google) and instagram (hfInstagramLoginEnabled) join the list for the My verifications buttons.
@@ -11,7 +11,7 @@ export const NO_INTRO_FLAGS: IntroFlags = { callOption: false, intro: false, fac
 let flagsP: Promise<IntroFlags> | null = null;
 export function introFlags(): Promise<IntroFlags> {
   if (!flagsP) {
-    flagsP = request<{ hfCallOptionEnabled?: boolean; hfIntroOnboardingEnabled?: boolean; hfFacebookLoginEnabled?: boolean; hfInstagramLoginEnabled?: boolean; hfChannelsEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
+    flagsP = publicConfig() // [HF-DASH-CACHE-1] shared /api/config request
       .then(c => ({
         callOption: c?.hfCallOptionEnabled === true, intro: c?.hfIntroOnboardingEnabled === true,
         channels: c?.hfChannelsEnabled === true,
@@ -31,7 +31,7 @@ export interface IntroMe {
   needsIntroVideo?: boolean; introStatus?: IntroStatus; callOption?: CallOption | null;
   introRejectReasons?: Array<{ code?: string; text?: string } | string> | null; introRejectNote?: string | null;
 }
-export const getIntroMe = (): Promise<HfResult<IntroMe>> => hfCall<IntroMe>('GET', '/api/hf/me');
+export const getIntroMe = (): Promise<HfResult<IntroMe>> => getMe<IntroMe>(); // [HF-DASH-CACHE-1] shared /me
 
 export const reasonText = (r: { code?: string; text?: string } | string): string => (typeof r === 'string' ? r : r.text || r.code || '');
 

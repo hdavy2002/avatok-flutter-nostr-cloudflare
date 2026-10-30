@@ -7,7 +7,7 @@ import { Component, useCallback, useEffect, useRef, useState, type MouseEvent, t
 import SessionBridge from '../calls/SessionBridge';
 import { isInfluencer, type DashboardAccount } from '../../components/account/DashboardNav';
 import { DashboardEmbed } from '../../components/account/dashboardEmbed';
-import { hfCall, signInUrl } from '../../lib/hfCallsApi';
+import { getMe, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import { favouritesEnabled } from '../../lib/hfFavouritesApi';
 import { merchEnabled } from '../../lib/merchApi'; // [HF-MERCH-FAN-WEB-1]
@@ -26,6 +26,7 @@ import '../../styles/hf-dashboard.css'; // host screens keep their existing look
 import '../../styles/hf-dash3.css'; // [HF-DASH-V3-1]
 import DashShell from './v3/Shell';
 import { DashDataProvider } from './v3/data';
+import { dropDashCaches, readBoot, writeBoot } from './v3/dashCache'; // [HF-DASH-CACHE-1]
 import { ToastProvider } from './v3/ui';
 import OverviewV3 from './v3/Overview';
 import CallsV3 from './v3/Calls';
@@ -73,36 +74,65 @@ function Shell({ initial }: { initial: DashSection }) {
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
 
+  // [HF-DASH-CACHE-1] The account on screen, readable inside load() without re-subscribing.
+  const accountRef = useRef<DashboardAccount | null>(null);
+
   useEffect(() => {
     let disposed = false;
-    async function load() {
+    // [HF-DASH-CACHE-1] /api/config is one shared request now, so the five flag checks cost one round trip.
+    const loadFlags = async () => {
+      const [enabled, favs, merch, photos, photosRequired] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled(), photoModerationEnabled(), photosRequiredEnabled()]);
+      return { enabled, favs, merch, photos, photosRequired };
+    };
+    // [HF-PHOTO-CROP-WEB] Mandatory photos: a signed-in member without a clear face photo and a cover goes to the onboarding page first.
+    // Fails open (unknown status = let them in). Never runs on the support desk; my-photo, support and close stay reachable.
+    // Returns true when the page is leaving for the onboarding page.
+    const photoGate = async (me: DashboardAccount, photosRequired: boolean): Promise<boolean> => {
+      if (!photosRequired || me.closing || onSupportDesk()) return false;
+      const here = dashRouteFor(location.pathname)?.section;
+      if (here === 'my-photo' || here === 'support' || here === 'close') return false;
+      const st = await photoGateStatus(me.uid);
+      return st.complete === false && redirectToPhotoOnboarding('dashboard');
+    };
+    async function load(useCache: boolean) {
       const run = ++generation.current;
       const current = () => !disposed && run === generation.current;
-      setPhase('boot'); setAccount(null);
-      try {
-        const me = await hfCall<DashboardAccount>('GET', '/api/hf/me');
-        if (!current()) return;
-        if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-        const [enabled, favs, merch, photos, photosRequired] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled(), photoModerationEnabled(), photosRequiredEnabled()]);
-        if (!current()) return;
-        // [HF-PHOTO-CROP-WEB] Mandatory photos: a signed-in member without a clear face photo and a cover goes to the onboarding page first.
-        // Fails open (unknown status = let them in). Never runs on the support desk; my-photo, support and close stay reachable.
-        if (photosRequired && !me.data.closing && !onSupportDesk()) {
-          const here = dashRouteFor(location.pathname)?.section;
-          if (here !== 'my-photo' && here !== 'support' && here !== 'close') {
-            const st = await photoGateStatus(me.data.uid);
-            if (!current()) return;
-            if (st.complete === false && redirectToPhotoOnboarding('dashboard')) return;
-          }
+      // [HF-DASH-CACHE-1] Something is already on screen (or the last visit left a cache for this tab): show it now, refresh behind it.
+      let shown = accountRef.current;
+      if (!shown && useCache) {
+        const c = readBoot<DashboardAccount>();
+        if (c) {
+          shown = c.me; accountRef.current = c.me;
+          setAccount(c.me); setBookingOn(c.flags.bookingOn); setFavouritesOn(c.flags.favouritesOn); setMerchOn(c.flags.merchOn); setPhotoOn(c.flags.photoOn); setPhase('ready');
         }
-        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhotoOn(photos || photosRequired); setPhase('ready');
+      }
+      if (!shown) { setPhase('boot'); setAccount(null); }
+      try {
+        // [HF-DASH-CACHE-1] /me (one shared request) and the flags no longer wait for each other.
+        const [meR, f] = await Promise.all([getMe<DashboardAccount>({ fresh: true }), loadFlags()]);
+        if (!current()) return;
+        if (!meR.ok) {
+          if (meR.status === 401) { dropDashCaches(); accountRef.current = null; setAccount(null); setPhase('signedout'); return; }
+          if (!shown) setPhase('error'); // a failed refresh never takes away what the person is already looking at
+          return;
+        }
+        const me = meR.data;
+        if (shown && shown.uid !== me.uid) { dropDashCaches(); shown = null; } // the cache belonged to someone else
+        if (!shown && await photoGate(me, f.photosRequired)) return;
+        if (!current()) return;
+        const flags = { bookingOn: f.enabled, favouritesOn: f.favs, merchOn: f.merch, photoOn: f.photos || f.photosRequired };
+        // Skip the state writes when nothing changed, so a background refresh does not re-render the open screen.
+        if (!shown || JSON.stringify(shown) !== JSON.stringify(me)) { accountRef.current = me; setAccount(me); }
+        setBookingOn(flags.bookingOn); setFavouritesOn(flags.favouritesOn); setMerchOn(flags.merchOn); setPhotoOn(flags.photoOn); setPhase('ready');
+        writeBoot(me, flags);
+        if (shown) void photoGate(me, f.photosRequired); // cached view: the gate runs behind it and redirects if the photos are missing
       } catch (e) {
         captureException(e, { area: 'hf_dashboard', step: 'identity' });
-        if (current()) setPhase('error');
+        if (current() && !shown) setPhase('error');
       }
     }
-    void load();
-    const changed = () => { void load(); };
+    void load(true);
+    const changed = () => { void load(false); };
     window.addEventListener('site:active-session-changed', changed);
     return () => { disposed = true; ++generation.current; window.removeEventListener('site:active-session-changed', changed); };
   }, [retry]);
@@ -136,7 +166,12 @@ function Shell({ initial }: { initial: DashSection }) {
     window.scrollTo({ top: 0 });
   }, [section]);
 
-  if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading your dashboard…</p></main>;
+  // [HF-DASH-CACHE-1] No cache yet: draw the shape of the dashboard (not a bare line of text) while the first answer comes.
+  if (phase === 'boot') return <div className="hfd-v3"><div className="hf3 h3-bootsk" role="status" aria-label="Loading your dashboard">
+    <div className="h3-shell">
+      <aside className="h3-side"><div className="h3-nav"><span className="sk" style={{ height: 44 }} /><span className="sk" style={{ height: 96, marginTop: 14 }} />{[0, 1, 2, 3, 4].map(i => <span key={i} className="sk" style={{ height: 36, marginTop: 10 }} />)}</div></aside>
+      <main className="h3-main"><span className="sk" style={{ height: 56, maxWidth: 420 }} /><span className="sk card" /><span className="sk card" /><span className="sk card" /><span className="sk card" /></main>
+    </div></div></div>;
   if (phase === 'signedout') return <main className="hfc-page"><h1>Dashboard</h1><p>Please sign in to see your dashboard.</p><a className="hfc-btn hfc-primary" href={signInUrl(location.pathname + location.search)}>Sign in</a></main>;
   if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
 
@@ -171,7 +206,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'close': body = <CloseV3 key={key} />; break;
   }
   return <div className="hfd-v3" onClick={go}>
-    <DashDataProvider uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
+    <DashDataProvider key={account.uid} uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
       <ToastProvider>
         <PolicyUpdatePrompt uid={account.uid} />
         <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn} merchOn={merchOn} photoOn={photoOn}>
