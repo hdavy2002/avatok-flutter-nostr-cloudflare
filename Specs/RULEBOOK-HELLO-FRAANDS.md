@@ -806,6 +806,5 @@ else, or come back later."
 | 2026-10-30 | [HF-DESK-CW-1] (owner) HF-SUPPORT-10 added: the agent desk becomes Chatwoot's open-source dashboard running against our ticket engine (Chatwoot-compatible API in the worker, desk on its own Pages project). Customer site, app Contact Support and email flows unchanged. Theming deferred. |
 | 2026-10-30 | [HF-DESK-CW-3] (owner) HF-SUPPORT-10 extended: desk attachments, To/Cc/Bcc, Settings (agents, labels, canned replies, signature), contacts, full search, spam/merge/split/block sender. |
 | 2026-10-30 | [HF-SUPPORT-ACK-SUBJECT-1] (owner) HF-SUPPORT-3: the acknowledgement email's subject is now "Ticket HF-n received: <subject>" and it starts its own conversation in the customer's inbox (no In-Reply-To), so the number is visible; staff replies keep "[HF-n] <subject>". |
-
 | 2026-10-30 | [HF-REPLY-ADDR-1] (owner) HF-SUPPORT-11 added: tagged, unguessable Reply-To addresses; tagged replies thread from anyone on the email (Cc). |
 | 2026-10-30 | [HF-DESK-THEME-1] (owner) Agent desk now uses the site palette (rani primary, plum, ivory; plum dark mode), Nunito + Comfortaa and the Hello Fraands mark, wordmark and favicons; sign-in page restyled. |
