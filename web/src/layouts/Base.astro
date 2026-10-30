@@ -11,6 +11,9 @@ import SiteFooter from '../components/callvaal/Footer.astro';
 import SeoHead from '../components/SeoHead.astro';
 import { EMBED_UA_MARKER } from '../lib/embed';
 import { ORG } from '../lib/org';
+import { CLERK_PUBLISHABLE_KEY } from '../lib/env';
+import { clerkFapiHost } from '../lib/config';
+import { clerkJsScriptUrl } from '@clerk/shared/loadClerkJsScript';
 import type { PublicContent } from '../lib/seo/types';
 
 export interface Props {
@@ -65,6 +68,9 @@ export interface Props {
   extraJsonLd?: Record<string, unknown>[];
   /** [HF-CHANNEL-WEB-1] Show the Bag button (with the item count) in the shared header. */
   bag?: boolean;
+  /** [HF-CLERK-EARLY-1] Force (true) or suppress (false) the early clerk-js download for signed-in visitors.
+   *  Default: on for pages that show nothing without a session (dashboard, bookings, account, wallet). */
+  clerkEarly?: boolean;
 }
 
 const {
@@ -95,7 +101,25 @@ const {
   indiaLandingLanguage = true,
   extraJsonLd,
   bag = false,
+  clerkEarly,
 } = Astro.props;
+
+// [HF-CLERK-EARLY-1] Pages that cannot show anything without a session. For a visitor whose Clerk cookie says
+// "signed in" (checked in the browser, below) clerk-js is CRITICAL there, so its download starts from <head>
+// instead of after island hydration -> lazy chunk -> ClerkProvider mount (~1.2 s later on /dashboard).
+// Signed-out visitors and every public page keep the "load later" rule (WEB-PERF).
+const AUTH_FIRST_PATH = /^\/(dashboard|bookings|account|wallet)(\/|$)/;
+const wantsClerkEarly = clerkEarly ?? AUTH_FIRST_PATH.test(Astro.url.pathname);
+let clerkEarlyUrl: string | undefined;
+let clerkEarlyHost: string | undefined;
+if (wantsClerkEarly && CLERK_PUBLISHABLE_KEY && clerkFapiHost()) {
+  try {
+    // Same function @clerk/clerk-react's loader calls, with the same inputs (no proxyUrl/domain/clerkJSUrl are
+    // configured in lib/clerk.tsx), so the URL is byte-identical to the one the SDK would request.
+    clerkEarlyUrl = clerkJsScriptUrl({ publishableKey: CLERK_PUBLISHABLE_KEY });
+    clerkEarlyHost = clerkFapiHost();
+  } catch { /* leave the normal late path in charge */ }
+}
 
 ---
 
@@ -138,6 +162,30 @@ const {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" />
     {indiaLandingLanguage && <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" />}
+    {/* [HF-CLERK-EARLY-1] Signed-in visitor on an auth-first page: start clerk-js NOW. The script tag carries the
+        exact attributes @clerk/clerk-react's loadClerkJsScript sets (data-clerk-js-script, publishable key,
+        crossorigin=anonymous); the SDK finds this tag / window.Clerk and reuses it instead of fetching again, and
+        ClerkProvider (single instance, lib/clerk.tsx) still calls Clerk.load() when it mounts. The cookie test is the
+        same as lib/sessionHint.ts. Anything throwing here just leaves the normal late path. */}
+    {clerkEarlyUrl && clerkEarlyHost && (
+      <link rel="preconnect" href={`https://${clerkEarlyHost}`} crossorigin />
+    )}
+    {clerkEarlyUrl && (
+      <script is:inline define:vars={{ clerkUrl: clerkEarlyUrl, clerkKey: CLERK_PUBLISHABLE_KEY, embedMarker: EMBED_UA_MARKER }}>
+        try {
+          var m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
+          if (m && m[1] && m[1] !== '0' && navigator.userAgent.indexOf(embedMarker) === -1 && !document.querySelector('script[data-clerk-js-script]')) {
+            var s = document.createElement('script');
+            s.async = true;
+            s.crossOrigin = 'anonymous';
+            s.setAttribute('data-clerk-js-script', 'true');
+            s.setAttribute('data-clerk-publishable-key', clerkKey);
+            s.src = clerkUrl;
+            document.head.appendChild(s);
+          }
+        } catch (e) { /* the SDK loads clerk-js itself when the provider mounts */ }
+      </script>
+    )}
     {/* [WEB-POSTHOG-1] PostHog core — every page through Base.astro gets it.
         The landing page (index.astro) emits its own document and never
         touches this layout, so it loads the same script separately. */}
