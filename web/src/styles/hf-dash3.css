@@ -356,6 +356,8 @@ a.h3-step{color:inherit;text-decoration:none}a.h3-step:hover{border-color:var(--
 .hf3 .h3-failed{flex-wrap:wrap}
 .hf3 .h3-hero .text{position:relative;z-index:2}
 .hf3 .h3-kpi{text-decoration:none;color:inherit}
+/* [HF-WALLET-CARD-1] The rule above (same specificity, later) turned the plum wallet card's text dark-on-dark; keep it white. */
+.hf3 .h3-kpi.k1,.hf3 .h3-kpi.k1 .big{color:#fff}
 @media (prefers-reduced-motion:no-preference){.hf3 a.h3-kpi:hover{transform:translateY(-2px)}}
 
 /* [HF-DASH-LAYOUT-1] Every screen size. The mini profile is a CSS flex column (an inline style here used to beat the rail rule and
