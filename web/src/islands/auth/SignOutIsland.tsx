@@ -69,6 +69,12 @@ function Inner() {
 
   useEffect(() => {
     clearLegacyIdentityStorage();
+    // [HF-SIGNOUT-MSG-1] Forget this tab's dashboard cache (hf_dash_* in sessionStorage, [HF-DASH-CACHE-1]) so the next person never sees it.
+    try {
+      const dead: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); if (k && k.startsWith('hf_dash_')) dead.push(k); }
+      dead.forEach(k => sessionStorage.removeItem(k));
+    } catch { /* storage blocked: nothing was cached */ }
   }, []);
 
   useEffect(() => {
