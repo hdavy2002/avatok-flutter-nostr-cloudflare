@@ -134,7 +134,7 @@ describe("tickets", () => {
     expect(stored).toBeTruthy();
     expect(stored.subject).toContain(`[HF-${n}]`);
     expect(stored.to_email ?? stored.recipient ?? "").toBeDefined();
-    expect(String(stored.reply_to_json)).toContain(`support+${n}@hellofraands.com`);
+    expect(String(stored.reply_to_json)).toMatch(new RegExp(`support\\+${n}-[0-9a-f]{10}@hellofraands\\.com`)); // [HF-REPLY-ADDR-1] tagged
     expect(stored.lane).toBe("priority");
     const body = await t.r2.get(stored.body_r2_key);
     const html = await body!.text();

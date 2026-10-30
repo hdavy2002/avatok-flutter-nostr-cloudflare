@@ -118,7 +118,40 @@ export const supportSiteOrigin = (): string => `https://support.${BRAND.domain}`
 export const supportFromAddress = (): string => BRAND.emails.support;
 export const supportFrom = (): string => `${BRAND.emailFromName} Support <${BRAND.emails.support}>`;
 /** support+10234@<brand domain> */
-export const replyToFor = (n: number): { email: string; name: string } => ({ email: `support+${n}@${BRAND.domain}`, name: `${BRAND.emailFromName} Support` });
+// [HF-REPLY-ADDR-1] Reply-To carries a keyed tag: support+<N>-<tag>@. The tag is the start of sha256(N + a random key kept in
+// support_settings), so nobody can work out the address of someone else's ticket from its number. A mail to a correctly
+// tagged address threads from any sender (e.g. a Cc'd person); a bare support+<N>@ keeps the owner-only rule.
+const REPLY_KEY_SETTING = "reply_address_key";
+const replyKeyMemo = new WeakMap<object, string>(); // per database binding (one in production; many in tests)
+export async function replyAddressKey(env: Env): Promise<string> {
+  const hit = replyKeyMemo.get(env.DB_META as unknown as object);
+  if (hit) return hit;
+  let key = await getSetting(env, REPLY_KEY_SETTING).catch(() => null);
+  if (!key) {
+    const b = new Uint8Array(32);
+    crypto.getRandomValues(b);
+    const fresh = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    // first writer wins; everyone then reads the stored key
+    await env.DB_META.prepare("INSERT OR IGNORE INTO support_settings (key,value,updated_at) VALUES (?1,?2,?3)").bind(REPLY_KEY_SETTING, fresh, Date.now()).run();
+    key = (await getSetting(env, REPLY_KEY_SETTING)) ?? fresh;
+  }
+  replyKeyMemo.set(env.DB_META as unknown as object, key);
+  return key;
+}
+export async function replyTag(env: Env, n: number): Promise<string> {
+  return (await sha256Hex(`hf-reply:${n}:${await replyAddressKey(env)}`)).slice(0, 10);
+}
+export async function replyToFor(env: Env, n: number): Promise<{ email: string; name: string }> {
+  return { email: `${supportLocalPart()}+${n}-${await replyTag(env, n)}@${BRAND.domain}`, name: `${BRAND.emailFromName} Support` };
+}
+/** True when the tag is the one we issued for ticket n (constant-time-ish compare). */
+export async function isValidReplyTag(env: Env, n: number, tag: string): Promise<boolean> {
+  const want = await replyTag(env, n);
+  if (tag.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ tag.charCodeAt(i);
+  return diff === 0;
+}
 export const supportLocalPart = (): string => BRAND.emails.support.split("@")[0].toLowerCase();
 /** Message-ID we stamp on outgoing mail: <hf-10234-<uuid>@domain> (angle brackets added by callers). */
 export const newMessageId = (n: number): string => `hf-${n}-${crypto.randomUUID()}@${BRAND.domain}`;
@@ -336,15 +369,22 @@ export const canCustomerReopen = (status: string, solvedAt: number | null, now: 
 export interface ThreadHints { recipients: string[]; subject: string; inReplyTo: string | null; references: string[] }
 export type ThreadSource = "recipient" | "subject" | "in_reply_to" | "references";
 
-/** support+10234@domain (any of the recipient addresses). */
-export function ticketFromRecipients(recipients: string[]): number | null {
+/** support+10234@domain or support+10234-<tag>@domain (any of the recipient addresses). A tagged address wins. */
+export function recipientThread(recipients: string[]): { number: number; tag: string | null } | null {
   const local = supportLocalPart();
   const domain = BRAND.domain.toLowerCase();
+  let plain: { number: number; tag: string | null } | null = null;
   for (const raw of recipients) {
-    const m = /^([^@+\s]+)\+(\d{4,9})@(.+)$/.exec(raw.trim().toLowerCase().replace(/^<|>$/g, ""));
-    if (m && m[1] === local && m[3] === domain) return parseInt(m[2], 10);
+    const m = /^([^@+\s]+)\+(\d{4,9})(?:-([0-9a-f]{6,16}))?@(.+)$/.exec(raw.trim().toLowerCase().replace(/^<|>$/g, ""));
+    if (!m || m[1] !== local || m[4] !== domain) continue;
+    const hit = { number: parseInt(m[2], 10), tag: m[3] ?? null };
+    if (hit.tag) return hit;
+    plain ??= hit;
   }
-  return null;
+  return plain;
+}
+export function ticketFromRecipients(recipients: string[]): number | null {
+  return recipientThread(recipients)?.number ?? null;
 }
 
 /** "[HF-10234]" anywhere in the subject (Re:/Fwd: and extra tags are fine). */
@@ -361,9 +401,9 @@ export function ticketFromSubject(subject: string): number | null {
 export async function resolveThread(
   hints: ThreadHints,
   lookupMessageId: (id: string) => Promise<number | null>,
-): Promise<{ number: number; source: ThreadSource } | null> {
-  const fromRecipient = ticketFromRecipients(hints.recipients);
-  if (fromRecipient) return { number: fromRecipient, source: "recipient" };
+): Promise<{ number: number; source: ThreadSource; tag?: string | null } | null> {
+  const fromRecipient = recipientThread(hints.recipients);
+  if (fromRecipient) return { number: fromRecipient.number, source: "recipient", tag: fromRecipient.tag };
   const fromSubject = ticketFromSubject(hints.subject);
   if (fromSubject) return { number: fromSubject, source: "subject" };
   if (hints.inReplyTo) {

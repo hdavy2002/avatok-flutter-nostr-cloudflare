@@ -42,14 +42,15 @@ describe("threading", () => {
   it("prefers recipient, then subject, then In-Reply-To, then References", async () => {
     const lookup = async (id: string) => (id === "a@x" ? 10050 : id === "b@x" ? 10060 : null);
     const base = { recipients: [] as string[], subject: "hi", inReplyTo: null as string | null, references: [] as string[] };
-    expect(await resolveThread({ ...base, recipients: ["support+10001@hellofraands.com"], subject: "[HF-10002] x" }, lookup)).toEqual({ number: 10001, source: "recipient" });
+    expect(await resolveThread({ ...base, recipients: ["support+10001@hellofraands.com"], subject: "[HF-10002] x" }, lookup)).toEqual({ number: 10001, source: "recipient", tag: null });
     expect(await resolveThread({ ...base, subject: "[HF-10002] x", inReplyTo: "a@x" }, lookup)).toEqual({ number: 10002, source: "subject" });
     expect(await resolveThread({ ...base, inReplyTo: "a@x" }, lookup)).toEqual({ number: 10050, source: "in_reply_to" });
     expect(await resolveThread({ ...base, inReplyTo: "zz@x", references: ["b@x", "zz@x"] }, lookup)).toEqual({ number: 10060, source: "references" });
     expect(await resolveThread(base, lookup)).toBeNull();
   });
-  it("uses the brand domain for Reply-To", () => {
-    expect(replyToFor(10234).email).toBe("support+10234@hellofraands.com");
+  it("uses the brand domain for Reply-To", async () => {
+    // [HF-REPLY-ADDR-1] tagged; see support_reply_address.test.ts
+    expect((await replyToFor(makeEnv().env, 10234)).email).toMatch(/^support\+10234-[0-9a-f]{10}@hellofraands\.com$/);
   });
 });
 

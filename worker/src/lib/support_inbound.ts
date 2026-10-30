@@ -12,7 +12,7 @@ import { safeQueueSend } from "./queue_guard";
 import {
   accountUidForEmail, addEvent, allocateTicketNumber, attachmentKey, checkAttachment, classifyMail, emailsOfTicketOwner, getTicket, htmlKey, inboundKey, loadSettings,
   mayAutoReply, MAX_MESSAGE_ATTACHMENT_BYTES, resolveThread, setTicketStatus, sha256Hex, spamScore, statusOnCustomerMessage, stripQuotedReply, upsertContact,
-  HOUR_MS, MAX_AUTOREPLIES_PER_HOUR, isBusinessTime, ticketCode, type TicketRow, type MailClass, cleanTicketSubject } from "./support_core";
+  HOUR_MS, MAX_AUTOREPLIES_PER_HOUR, isBusinessTime, ticketCode, type TicketRow, type MailClass, cleanTicketSubject, isValidReplyTag } from "./support_core";
 import { htmlToPlainText, parseMime } from "./support_mime";
 import { addMessage, createTicket, findIdenticalRecent, overDailyTicketLimit, textHash, type NewAttachmentRecord } from "./support_ops";
 import { sendAck } from "./support_mail";
@@ -219,9 +219,14 @@ export async function processInbound(env: Env, job: InboundJob, now = Date.now()
     existing = await getTicket(env, thread.number);
     for (let hop = 0; existing?.merged_into && hop < 5; hop++) existing = await getTicket(env, existing.merged_into);
     if (existing) {
-      // A ticket number alone is not a key: only the ticket owner's address may add to it.
-      const owners = await emailsOfTicketOwner(env, existing);
-      if (!owners.includes(from)) { mismatch = true; existing = null; }
+      // A ticket number alone is not a key: only the ticket owner's address may add to it. [HF-REPLY-ADDR-1] The one
+      // exception is a reply to our tagged Reply-To (support+N-<tag>@): only people we emailed know that address, so
+      // anyone on the thread (e.g. a Cc'd colleague) may answer into it.
+      const signed = thread.source === "recipient" && !!thread.tag && thread.number === existing.number && await isValidReplyTag(env, thread.number, thread.tag);
+      if (!signed) {
+        const owners = await emailsOfTicketOwner(env, existing);
+        if (!owners.includes(from)) { mismatch = true; existing = null; }
+      }
     }
   }
   // Out-of-office / list replies never reopen or add to a thread.

@@ -140,7 +140,7 @@ export async function sendTicketEmail(env: Env, m: OutgoingMail): Promise<EmailQ
     outboxKey: m.outboxKey,
     kind: m.kind,
     from: supportFrom(),
-    replyTo: replyToFor(m.ticket.number),
+    replyTo: await replyToFor(env, m.ticket.number),
     headers,
     attachments: m.attachments,
   }, { lane: m.lane });
