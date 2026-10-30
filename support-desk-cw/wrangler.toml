@@ -1,0 +1,4 @@
+# [HF-DESK-CW-1] Cloudflare Pages project for the agent desk (Chatwoot dashboard build). Deployed with build.sh.
+name = "hf-desk"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"

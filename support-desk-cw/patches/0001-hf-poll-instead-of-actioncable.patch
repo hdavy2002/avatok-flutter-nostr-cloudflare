@@ -1,0 +1,37 @@
+diff --git a/app/javascript/shared/helpers/BaseActionCableConnector.js b/app/javascript/shared/helpers/BaseActionCableConnector.js
+index 06f529d..c9bc1fc 100644
+--- a/app/javascript/shared/helpers/BaseActionCableConnector.js
++++ b/app/javascript/shared/helpers/BaseActionCableConnector.js
+@@ -14,6 +14,32 @@ class BaseActionCableConnector {
+   ) {
+     const websocketURL = websocketHost ? `${websocketHost}/cable` : undefined;
+ 
++    // [HF-DESK-CW-1] no ActionCable server here. Poll the API for the same events instead.
++    if (window.chatwootConfig?.hfPoll) {
++      this.app = app;
++      this.events = {};
++      this.isAValidEvent = () => true;
++      this.consumer = { connection: { isOpen: () => true }, disconnect: () => clearTimeout(this.hfTimer) };
++      this.subscription = { updatePresence() {}, perform() {} };
++      this.hfCursor = 0;
++      const tick = async () => {
++        try {
++          const accountId = app.$store.getters.getCurrentAccountId;
++          if (accountId && window.axios) {
++            const { data } = await window.axios.get(`/api/v1/accounts/${accountId}/hf_updates`, { params: { since: this.hfCursor || undefined } });
++            if (data.reload) this.onReconnect();
++            this.hfCursor = data.cursor;
++            (data.events || []).forEach(e => this.onReceived(e));
++          }
++        } catch (e) {
++          // offline or signed out: try again on the next tick
++        }
++        this.hfTimer = setTimeout(tick, document.hidden ? 20000 : window.chatwootConfig.hfPoll);
++      };
++      this.hfTimer = setTimeout(tick, 1000);
++      return;
++    }
++
+     this.consumer = createConsumer(websocketURL);
+     this.subscription = this.consumer.subscriptions.create(
+       {

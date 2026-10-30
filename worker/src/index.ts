@@ -39,6 +39,7 @@ import { handleInboundEmail, handleSupportInboundQueue } from "./lib/support_inb
 import { runSupportJobs } from "./lib/support_jobs"; // [HF-SUPPORT-1]
 import { hfSupportRoute } from "./routes/hf_support"; // [HF-SUPPORT-1]
 import { hfSupportAdminRoute } from "./routes/hf_support_admin"; // [HF-SUPPORT-1]
+import { hfDeskCwRoute } from "./routes/hf_desk_cw"; // [HF-DESK-CW-1]
 import { commercialLifecycle, runCommercialOrphanNoShowSweep } from "./routes/commercial_lifecycle";
 import { commercialRoutePattern } from "./lib/commercial_ids";
 import { commercialSessionAttachmentUpload } from "./routes/commercial_session_attachment";
@@ -734,6 +735,9 @@ function continentHint(req: Request): DurableObjectLocationHint | undefined {
 }
 
 async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // [HF-DESK-CW-1] Chatwoot-compatible API for the agent desk. Before the global preflight: the desk sends
+    // access-token/client/uid headers that the shared CORS list does not allow.
+    { const p0 = new URL(req.url).pathname; if (p0.startsWith("/cw/")) { const r = await hfDeskCwRoute(req, env, p0); if (r) return r; } }
     if (req.method === "OPTIONS") return preflight();
     const url = new URL(req.url);
     const p = url.pathname;

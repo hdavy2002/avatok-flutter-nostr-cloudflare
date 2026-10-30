@@ -12740,5 +12740,20 @@
         "note": "Submit refused with reason application_incomplete and the missing codes; nobody reaches the influencer dashboard without hf_hosts.status live."
       }
     ]
+  },
+  "HF-DESK-CW-1": {
+    "description": "Agent desk = Chatwoot's MIT dashboard (support-desk-cw/, Pages hf-desk) on a Chatwoot-compatible API at /cw/ in avatok-api (routes/hf_desk_cw.ts) over the support_* tables; Clerk sign-in exchanged for a desk session (support_desk_sessions); live updates by polling /hf_updates.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$exception",
+        "property": "area",
+        "exists": false,
+        "min_events": 0,
+        "note": "No hf_desk_cw exceptions in PostHog; owner signs in at the desk, sees HF tickets, sends one reply that arrives in Gmail as [HF-n]."
+      }
+    ]
   }
 }

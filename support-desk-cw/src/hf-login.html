@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Sign in · Support desk</title>
+<script src="/hf-config.js"></script>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;font-family:Inter,system-ui,sans-serif;color:#1e293b}
+  .box{width:min(420px,calc(100vw - 32px));text-align:center}
+  h1{font-size:20px;margin:0 0 6px} p{color:#64748b;font-size:14px;margin:0 0 20px}
+  #msg{margin-top:16px;font-size:14px;color:#b91c1c;min-height:20px}
+  button{margin-top:12px;padding:10px 16px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-size:14px}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1 id="title">Support desk</h1>
+  <p>Sign in with your team account.</p>
+  <div id="signin"></div>
+  <div id="msg"></div>
+  <button id="other" hidden>Use a different account</button>
+</div>
+<script>
+// [HF-DESK-CW-1] Clerk sign-in -> desk session. The Clerk session token proves who you are; the API swaps it for a desk
+// token (only if you are on the support team) and the Chatwoot dashboard reads it from the cw_d_session_info cookie.
+(function () {
+  var cfg = window.hfDesk;
+  document.getElementById('title').textContent = cfg.name + ' support desk';
+  var msg = function (t) { document.getElementById('msg').textContent = t || ''; };
+  var s = document.createElement('script');
+  s.async = true; s.crossOrigin = 'anonymous';
+  s.src = 'https://' + cfg.clerkHost + '/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+  s.setAttribute('data-clerk-publishable-key', cfg.clerkKey);
+  s.onerror = function () { msg('Could not load sign-in. Check your connection and reload.'); };
+  s.onload = async function () {
+    var C = window.Clerk;
+    await C.load();
+    var q = new URLSearchParams(location.search);
+    if (q.get('signout') === '1') { await C.signOut().catch(function () {}); history.replaceState(null, '', '/app/login'); }
+    if (!C.user) {
+      C.mountSignIn(document.getElementById('signin'), { forceRedirectUrl: '/app/login', signUpUrl: '/app/login', routing: 'hash' });
+      return;
+    }
+    msg('');
+    try {
+      var token = await C.session.getToken();
+      var r = await fetch(cfg.apiHost + '/auth/hf_exchange', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
+      if (r.status === 403) {
+        msg(C.user.primaryEmailAddress ? C.user.primaryEmailAddress.emailAddress + ' is not on the support team.' : 'This account is not on the support team.');
+        var b = document.getElementById('other'); b.hidden = false;
+        b.onclick = async function () { await C.signOut(); location.reload(); };
+        return;
+      }
+      if (!r.ok) { msg('Sign-in failed (' + r.status + '). Please try again.'); return; }
+      var d = await r.json();
+      var days = Math.max(1, Math.floor((Number(d.headers.expiry) * 1000 - Date.now()) / 864e5));
+      document.cookie = 'cw_d_session_info=' + encodeURIComponent(JSON.stringify(d.headers)) + '; path=/; max-age=' + days * 86400 + '; samesite=lax; secure';
+      location.replace('/app');
+    } catch (e) { msg('Sign-in failed. Please try again.'); }
+  };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
