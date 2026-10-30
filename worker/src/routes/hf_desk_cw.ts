@@ -21,6 +21,7 @@ import { BRAND } from "../lib/brand";
 import { postStaffReply } from "../lib/support_reply";
 import { addMessage } from "../lib/support_ops";
 import { applyPatch } from "./hf_support_admin";
+import { primaryVerifiedEmailFor } from "../lib/identity";
 import {
   addEvent, CATEGORIES, escapeHtml, getTicket, resolveStaff, sanitizeHtml, sha256Hex, type StaffCtx, type TicketRow,
 } from "../lib/support_core";
@@ -71,6 +72,26 @@ async function agents(env: Env): Promise<Agent[]> {
   return r.results ?? [];
 }
 
+/**
+ * The desk user for a staff member. Chatwoot treats user id 0 as "signed out" and bounces to the login page, so every
+ * staff member needs a real id. A support_staff row is found by uid, else claimed by email (the owner's seed row has no uid
+ * until claimed: isAdminUid admins never pass resolveStaff's email path). Admins with no row get a stable non-zero id.
+ */
+async function agentFor(env: Env, staff: StaffCtx): Promise<Agent> {
+  const list = await agents(env);
+  const byUid = list.find((a) => a.uid === staff.uid);
+  if (byUid) return byUid;
+  const email = (staff.email ?? (await primaryVerifiedEmailFor(env, staff.uid).catch(() => null)) ?? "").toLowerCase();
+  const byEmail = email ? list.find((a) => !a.uid && a.email.toLowerCase() === email) : undefined;
+  if (byEmail) {
+    await env.DB_META.prepare("UPDATE support_staff SET uid=?2 WHERE email=?1 AND uid IS NULL").bind(byEmail.email, staff.uid).run().catch(() => undefined);
+    return { ...byEmail, uid: staff.uid };
+  }
+  let h = 0;
+  for (const c of staff.uid) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { id: 900_000 + (h % 99_999), uid: staff.uid, email: email || staff.email || "", name: staff.name, role: staff.role };
+}
+
 async function sessionStaff(req: Request, env: Env): Promise<{ staff: StaffCtx; agent: Agent } | null> {
   const token = req.headers.get("access-token");
   if (!token) return null;
@@ -79,9 +100,7 @@ async function sessionStaff(req: Request, env: Env): Promise<{ staff: StaffCtx; 
   if (!row) return null;
   const staff = await resolveStaff(env, row.uid);
   if (!staff) return null;
-  const list = await agents(env);
-  const agent = list.find((a) => a.uid === staff.uid) ?? { id: 0, uid: staff.uid, email: staff.email ?? "", name: staff.name, role: staff.role };
-  return { staff, agent };
+  return { staff, agent: await agentFor(env, staff) };
 }
 
 function randomToken(): string {
@@ -102,8 +121,7 @@ async function exchange(req: Request, env: Env): Promise<Response> {
   await env.DB_META.prepare("INSERT INTO support_desk_sessions (token_hash,uid,created_at,expires_at) VALUES (?1,?2,?3,?4)")
     .bind(await sha256Hex(token), staff.uid, now, expires).run();
   await env.DB_META.prepare("DELETE FROM support_desk_sessions WHERE expires_at<?1").bind(now).run().catch(() => undefined);
-  const list = await agents(env);
-  const agent = list.find((a) => a.uid === staff.uid) ?? { id: 0, uid: staff.uid, email: staff.email ?? "", name: staff.name, role: staff.role };
+  const agent = await agentFor(env, staff);
   return out({
     headers: { "access-token": token, "token-type": "Bearer", client, expiry: String(Math.floor(expires / 1000)), uid: agent.email || staff.uid },
     data: userJson(agent, staff),

@@ -188,3 +188,15 @@ describe("ui settings", () => {
     expect((await call("GET", "/cw/auth/validate_token")).body.payload.data.ui_settings.is_contact_sidebar_open).toBe(false);
   });
 });
+
+describe("agent identity", () => {
+  it("claims the owner's seed row (no uid yet) for an admin who never passed the email lookup, so the user id is never 0", async () => {
+    t.db.prepare("UPDATE support_staff SET uid=NULL WHERE email='owner@example.com'").run();
+    t.env.ADMIN_UIDS = "u-admin";
+    t.db.prepare("INSERT INTO hf_user_email (uid,email,updated_at) VALUES ('u-admin','owner@example.com',1)").run();
+    clearStaffMemo();
+    const r = await call("GET", "/cw/auth/validate_token");
+    expect(r.status).toBe(200);
+    expect(r.body.payload.data.id).not.toBe(0);
+  });
+});
