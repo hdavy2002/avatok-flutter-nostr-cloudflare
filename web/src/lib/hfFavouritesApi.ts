@@ -1,17 +1,14 @@
 /* [HF-DASH-FRAANDS-1] Saved hosts ("hearts"). Worker routes: /api/hf/favourites (see worker/src/routes/hf_favourites.ts). */
-import { request } from './apiClient';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 import { hfCall, type HfResult, type HostPresence } from './hfCallsApi';
 
 export interface FavouriteHost {
   slug: string; displayName: string; photoUrl: string | null; headline: string | null; presence: HostPresence; savedAt: number;
 }
 
-let favouritesConfig: Promise<boolean> | null = null;
-/** hfFavouritesEnabled from /api/config (one request per page). Fails closed: any error counts as off. */
+/** hfFavouritesEnabled from /api/config (one request per page, shared). Fails closed: any error counts as off. */
 export function favouritesEnabled(): Promise<boolean> {
-  if (!favouritesConfig) favouritesConfig = request<{ hfFavouritesEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
-    .then(c => c?.hfFavouritesEnabled === true).catch(() => false);
-  return favouritesConfig;
+  return publicConfig().then(c => c.hfFavouritesEnabled === true); // [HF-DASH-CACHE-1]
 }
 
 export const listFavourites = (): Promise<HfResult<{ ok: true; items: FavouriteHost[]; count: number }>> =>

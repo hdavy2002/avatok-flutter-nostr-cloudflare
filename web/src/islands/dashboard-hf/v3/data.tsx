@@ -1,12 +1,13 @@
 /* [HF-DASH-V3-1] One shared load for the dashboard shell: insights, summary, wallet, saved influencers and profile.
  * Every part is independent: a part that fails is `null` + an error flag, and the screen shows its own "Try again".
  * Worker: GET /api/hf/me/insights, /api/hf/me/summary, /api/hf/wallet, /api/hf/favourites, /api/hf/me/profile (routes/hf_dash_v3.ts). */
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { fetchWallet, hfCall, type HfResult, type WalletInfo } from '../../../lib/hfCallsApi';
 import { getDashSummary, partsFailed, type DashSummary } from '../../../lib/hfDashApi';
 import { listFavourites, type FavouriteHost } from '../../../lib/hfFavouritesApi';
 import { capture, captureException } from '../../../lib/analytics';
 import type { PriceTier } from '../../../lib/hfStdPlan';
+import { readShell, writeShell } from './dashCache'; // [HF-DASH-CACHE-1]
 
 export interface Insights {
   ok: boolean;
@@ -55,24 +56,35 @@ const empty = { data: null, failed: false };
 const Ctx = createContext<DashData>({ insights: empty, summary: empty, wallet: empty, favs: empty, profile: empty, reload: () => undefined });
 export const useDash = () => useContext(Ctx);
 
-export function DashDataProvider({ uid, favouritesOn, nav, children }: { uid: string; favouritesOn: boolean; nav: number; children: ReactNode }) {
-  const [insights, setInsights] = useState<Part<Insights>>(empty);
-  const [summary, setSummary] = useState<Part<DashSummary>>(empty);
-  const [wallet, setWallet] = useState<Part<WalletInfo>>(empty);
-  const [favs, setFavs] = useState<Part<Fav[]>>(empty);
-  const [profile, setProfile] = useState<Part<DashProfile>>(empty);
-  const gen = useRef(0);
+/** [HF-DASH-CACHE-1] Shell data is kept across screen changes. A revisit only refreshes it in the background when it is older than this. */
+export const SHELL_STALE_MS = 45_000;
+type PartName = 'insights' | 'summary' | 'wallet' | 'favs' | 'profile';
 
-  const load = useCallback(<T,>(name: string, fn: () => Promise<HfResult<T>>, set: (p: Part<T>) => void) => {
+export function DashDataProvider({ uid, favouritesOn, nav, children }: { uid: string; favouritesOn: boolean; nav: number; children: ReactNode }) {
+  // [HF-DASH-CACHE-1] Start from the last visit's data (sessionStorage, this uid only) so the shell paints at once; the load below refreshes it.
+  const [snap] = useState(() => readShell(uid));
+  const seed = <T,>(v: unknown): Part<T> => (v != null ? { data: v as T, failed: false } : empty);
+  const [insights, setInsights] = useState<Part<Insights>>(() => seed(snap?.insights));
+  const [summary, setSummary] = useState<Part<DashSummary>>(() => seed(snap?.summary));
+  const [wallet, setWallet] = useState<Part<WalletInfo>>(() => seed(snap?.wallet));
+  const [favs, setFavs] = useState<Part<Fav[]>>(() => (favouritesOn ? seed(snap?.favs) : empty));
+  const [profile, setProfile] = useState<Part<DashProfile>>(() => seed(snap?.profile));
+  const gen = useRef(0);
+  const loadedAt = useRef(0);
+
+  const load = useCallback(<T,>(name: string, fn: () => Promise<HfResult<T>>, set: Dispatch<SetStateAction<Part<T>>>) => {
     const run = gen.current;
+    // [HF-DASH-CACHE-1] A failed background refresh keeps the data already on screen; only an empty part shows its "Try again".
+    const fail = () => set(p => (p.data ? p : { data: null, failed: true }));
     fn().then(r => {
       if (run !== gen.current) return;
       if (r.ok) set({ data: r.data, failed: false });
-      else { set({ data: null, failed: true }); if (r.status !== 401 && r.status !== 0) captureException(new Error(`hf_dash3_${name}_${r.status}_${r.code}`), { area: 'hf_dash_v3', part: name, status: r.status }); }
-    }).catch(e => { if (run === gen.current) { set({ data: null, failed: true }); captureException(e, { area: 'hf_dash_v3', part: name }); } });
+      else { fail(); if (r.status !== 401 && r.status !== 0) captureException(new Error(`hf_dash3_${name}_${r.status}_${r.code}`), { area: 'hf_dash_v3', part: name, status: r.status }); }
+    }).catch(e => { if (run === gen.current) { fail(); captureException(e, { area: 'hf_dash_v3', part: name }); } });
   }, []);
 
-  const reload = useCallback((part?: 'insights' | 'summary' | 'wallet' | 'favs' | 'profile') => {
+  const reload = useCallback((part?: PartName) => {
+    if (!part) loadedAt.current = Date.now();
     if (!part || part === 'insights') load('insights', getInsights, setInsights);
     if (!part || part === 'summary') {
       const t0 = performance.now();
@@ -86,12 +98,27 @@ export function DashDataProvider({ uid, favouritesOn, nav, children }: { uid: st
     }
   }, [load, favouritesOn]);
 
-  useEffect(() => { gen.current++; reload(); }, [uid, nav, reload]);
+  useEffect(() => { gen.current++; reload(); }, [uid, reload]);
+  // [HF-DASH-CACHE-1] Moving between screens (or Back, or returning to the tab) no longer reloads the shell: only when the data is older than SHELL_STALE_MS.
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } if (Date.now() - loadedAt.current > SHELL_STALE_MS) reload(); }, [nav, reload]);
+  useEffect(() => {
+    const vis = () => { if (document.visibilityState === 'visible' && Date.now() - loadedAt.current > SHELL_STALE_MS) reload(); };
+    document.addEventListener('visibilitychange', vis);
+    return () => document.removeEventListener('visibilitychange', vis);
+  }, [reload]);
   // Refresh presence and balance every minute while the tab is visible.
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === 'visible') { reload('favs'); reload('wallet'); } }, 60_000);
     return () => clearInterval(t);
   }, [reload]);
+
+  // [HF-DASH-CACHE-1] Keep the last good shell data for the next visit (debounced; skipped while everything is still empty).
+  useEffect(() => {
+    if (!insights.data && !summary.data && !wallet.data && !profile.data && !favs.data) return;
+    const t = setTimeout(() => writeShell(uid, { insights: insights.data, summary: summary.data, wallet: wallet.data, profile: profile.data, favs: favs.data }), 500);
+    return () => clearTimeout(t);
+  }, [uid, insights, summary, wallet, profile, favs]);
 
   return <Ctx.Provider value={{ insights, summary, wallet, favs, profile, reload }}>{children}</Ctx.Provider>;
 }

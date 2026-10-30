@@ -2,6 +2,7 @@
  * Every response is { ok:true, ... } or { ok:false, error, message }; money is integer paise. */
 import { hfCall, type HfResult } from '../../../lib/hfCallsApi';
 import { request } from '../../../lib/apiClient';
+import { publicConfig } from '../../../lib/hfConfig'; // [HF-DASH-CACHE-1]
 import { API_BASE } from '../../../lib/env';
 
 export interface Colour { name: string; hex: string }
@@ -61,9 +62,8 @@ let cfg: Promise<{ enabled: boolean; minMarkupRupees: number; holdDays: number }
 /** hfMerchEnabled (and two numbers the screens show) from /api/config, one request per page. Any failure counts as off. */
 export function merchConfig() {
   if (!cfg) {
-    cfg = request<{ hfMerchEnabled?: boolean; hfMerchMinMarkupRupees?: number; hfMerchHoldDays?: number }>('/api/config', { timeoutMs: 8000 })
-      .then(c => ({ enabled: c?.hfMerchEnabled === true, minMarkupRupees: Number(c?.hfMerchMinMarkupRupees) || 10, holdDays: Number(c?.hfMerchHoldDays) || 7 }))
-      .catch(() => ({ enabled: false, minMarkupRupees: 10, holdDays: 7 }));
+    cfg = publicConfig() // [HF-DASH-CACHE-1] shared /api/config request
+      .then(c => ({ enabled: c.hfMerchEnabled === true, minMarkupRupees: Number(c.hfMerchMinMarkupRupees) || 10, holdDays: Number(c.hfMerchHoldDays) || 7 }));
   }
   return cfg;
 }

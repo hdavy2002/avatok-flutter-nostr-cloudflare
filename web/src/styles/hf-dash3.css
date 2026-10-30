@@ -409,3 +409,8 @@ a.h3-step{color:inherit;text-decoration:none}a.h3-step:hover{border-color:var(--
 .h3-modewarn{margin-top:12px;padding:12px 14px;border-radius:16px;background:var(--goldtint);color:var(--plum)}
 .h3-queue-list{margin:8px 0 0;padding-left:1.4rem;display:grid;gap:4px}
 @media (max-width:420px){.h3-modes{grid-template-columns:1fr}}
+
+/* [HF-DASH-CACHE-1] Boot skeleton while the first /api/hf/me answer is on its way (same .sk tokens as the screens). */
+.h3-bootsk .sk{display:block;width:100%;background-size:200% 100%}
+.h3-bootsk .sk.card{height:150px;border-radius:18px}
+@media (prefers-reduced-motion:no-preference){.h3-bootsk .sk{animation:h3shim 1.4s ease-in-out infinite}@keyframes h3shim{from{background-position:200% 0}to{background-position:-200% 0}}}

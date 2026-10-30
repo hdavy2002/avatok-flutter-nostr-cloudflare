@@ -3,7 +3,8 @@
 import { ApiError, request } from './apiClient';
 import { explicitAgeRecovery } from './hfAgeRecovery';
 import { redirectToPhotoOnboarding } from './hfPhotosApi'; // [HF-PHOTO-CROP-WEB]
-import { activeSessionSignedOut } from './clerk';
+import { ACTIVE_SESSION_CHANGED, activeSessionSignedOut } from './clerk';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 
 export type HostPresence = 'online' | 'busy' | 'offline';
 export type CallStatus =
@@ -48,6 +49,8 @@ export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PAT
   if (opts.isCurrent && !opts.isCurrent()) return { ok: false, status: 0, code: 'stale_session', message: '', body: {} };
   try {
     const data = await request<T>(path, { method, auth, body, timeoutMs: opts.timeoutMs ?? 20_000 });
+    // [HF-DASH-CACHE-1] A successful write makes every cached read suspect: drop the short-lived caches so the next read is fresh.
+    if (method !== 'GET') { clearCachedFetch(); if (path === '/api/hf/me' || path.startsWith('/api/hf/me/ack')) invalidateMe(); }
     return { ok: true, data };
   } catch (e) {
     if (e instanceof ApiError) {
@@ -63,15 +66,67 @@ export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PAT
   }
 }
 
-let cfgPromise: Promise<boolean> | null = null;
-/** hfCallsEnabled from /api/config (one request per page). Any failure counts as off. */
+/** hfCallsEnabled from /api/config (one request per page, shared: lib/hfConfig.ts). Any failure counts as off. */
 export function callsEnabled(): Promise<boolean> {
-  if (!cfgPromise) {
-    cfgPromise = request<{ hfCallsEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
-      .then(c => c?.hfCallsEnabled === true).catch(() => false);
-  }
-  return cfgPromise;
+  return publicConfig().then(c => c.hfCallsEnabled === true);
 }
+
+/* ── [HF-DASH-CACHE-1] shared GET /api/hf/me ─────────────────────────────────────────────────────────────────────
+ * The dashboard shell, the intro banner, Profile and Become all need /api/hf/me. They now share one in-flight request and one short-lived
+ * result per page. Only successful answers are kept. A write to /api/hf/me (PATCH, ack) calls invalidateMe() from hfCall above. */
+const ME_TTL_MS = 20_000;
+let meEpoch = 0;
+let meUid: string | null = null;
+let meEntry: { at: number; res: HfResult<any> } | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+let meInflight: Promise<HfResult<any>> | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/** Forget the cached /me (and any request still in flight, whose answer is then not stored). */
+export function invalidateMe(): void { meEpoch++; meEntry = null; meInflight = null; }
+
+/** GET /api/hf/me, deduped and cached ~20 s. `fresh` skips the cached answer (but still joins a request already in flight). */
+export function getMe<T = Record<string, unknown>>(opts: { fresh?: boolean } = {}): Promise<HfResult<T>> {
+  if (meInflight) return meInflight as Promise<HfResult<T>>;
+  if (!opts.fresh && meEntry && Date.now() - meEntry.at < ME_TTL_MS) return Promise.resolve(meEntry.res as HfResult<T>);
+  const epoch = meEpoch;
+  const p: Promise<HfResult<any>> = hfCall<T>('GET', '/api/hf/me').then(res => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (epoch === meEpoch) {
+      if (res.ok) {
+        const uid = typeof (res.data as { uid?: unknown })?.uid === 'string' ? (res.data as { uid: string }).uid : null;
+        if (meUid && uid && uid !== meUid) clearCachedFetch(); // a different person: nothing cached for the last one may be shown
+        if (uid) meUid = uid;
+        meEntry = { at: Date.now(), res };
+      } else if (res.status === 401) { meEntry = null; meUid = null; clearCachedFetch(); }
+    }
+    if (meInflight === p) meInflight = null;
+    return res;
+  });
+  meInflight = p;
+  return p;
+}
+
+/* ── [HF-DASH-CACHE-1] per-endpoint read cache ───────────────────────────────────────────────────────────────────
+ * cachedFetch(key, fn, ttl): memory only, dedupes requests in flight, keeps only good answers (not `{ok:false}`, null or undefined).
+ * cachedPeek(key) gives the last good answer even when older than the ttl, so a screen can paint it instantly and refresh quietly. */
+const memo = new Map<string, { at: number; v: unknown }>();
+const flight = new Map<string, Promise<unknown>>();
+let memoEpoch = 0;
+export const isCacheable = (v: unknown): boolean => v != null && !(typeof v === 'object' && 'ok' in (v as object) && (v as { ok?: unknown }).ok === false);
+export function cachedPeek<T>(key: string): { v: T; at: number } | undefined { return memo.get(key) as { v: T; at: number } | undefined; }
+export function cachedFetch<T>(key: string, fn: () => Promise<T>, ttlMs = 30_000, force = false): Promise<T> {
+  const hit = memo.get(key);
+  if (!force && hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.v as T);
+  const f = flight.get(key);
+  if (f) return f as Promise<T>;
+  const epoch = memoEpoch;
+  const p: Promise<T> = fn().then(v => { if (epoch === memoEpoch && isCacheable(v)) memo.set(key, { at: Date.now(), v }); return v; })
+    .finally(() => { if (flight.get(key) === p) flight.delete(key); });
+  flight.set(key, p);
+  return p;
+}
+export function clearCachedFetch(): void { memoEpoch++; memo.clear(); flight.clear(); }
+
+// Session change: a stored /me answer may belong to the last person. (An answer still in flight is left alone: it was asked after the token was ready.)
+if (typeof window !== 'undefined') window.addEventListener(ACTIVE_SESSION_CHANGED, () => { if (meEntry) invalidateMe(); });
 
 /** Server timestamps may be epoch seconds or milliseconds, or ISO strings. */
 export function toMs(v: number | string | null | undefined): number | null {

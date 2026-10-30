@@ -2,7 +2,7 @@
  * estimate that uses the published formula (we keep ₹2 a minute plus 40% of the rate above ₹2, HF-REEL-30; hosts set ₹5–₹1,000/min).
  * Worker: GET /api/hosts/me ({ host, kyc }), GET /api/hf/me (WhatsApp verified). The steps themselves happen in /hosts/onboarding. */
 import { useEffect, useState } from 'react';
-import { hfCall } from '../../../lib/hfCallsApi';
+import { getMe, hfCall } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
 import { capture } from '../../../lib/analytics';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
@@ -31,7 +31,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
   const [mins, setMins] = useState(300);
   useEffect(() => {
     void hfCall<HostMe>('GET', '/api/hosts/me').then(r => setMe(r.ok ? r.data : { host: null, kyc: { aadhaar: { done: false }, selfie: { status: 'none' }, payout: { done: false } } }));
-    void hfCall<{ whatsappVerified: boolean }>('GET', '/api/hf/me').then(r => setWa(r.ok ? r.data.whatsappVerified : false));
+    void getMe<{ whatsappVerified: boolean }>().then(r => setWa(r.ok ? r.data.whatsappVerified : false));
     void hfCall<SpacesMe>('GET', '/api/hf/spaces/me').then(r => setSp(r.ok ? r.data : null)); // missing/failed -> show the channel steps
   }, []);
   const st = me?.host?.status ?? null;

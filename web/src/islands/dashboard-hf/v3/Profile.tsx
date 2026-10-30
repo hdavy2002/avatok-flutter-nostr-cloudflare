@@ -2,7 +2,7 @@
  * talk about), the "Notify me on WhatsApp" switch, phone & login facts, and people you blocked.
  * Worker: GET/PATCH /api/hf/me, GET/PUT /api/hf/me/profile, GET/PUT /api/hf/me/prefs, GET /api/hf/blocks, DELETE /api/hf/blocks/:key. */
 import { useEffect, useState } from 'react';
-import { hfCall } from '../../../lib/hfCallsApi';
+import { getMe, hfCall } from '../../../lib/hfCallsApi';
 import { capture } from '../../../lib/analytics';
 import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import { isInfluencer, type DashboardAccount } from '../../../components/account/DashboardNav';
@@ -21,7 +21,7 @@ export default function Profile({ account }: { account: DashboardAccount }) {
   const [langs, setLangs] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<{ field?: string; text: string } | null>(null);
-  useEffect(() => { void hfCall<Me>('GET', '/api/hf/me').then(r => { if (r.ok) setMe(r.data); }); }, []);
+  useEffect(() => { void getMe<Me>().then(r => { if (r.ok) setMe(r.data); }); }, []); // [HF-DASH-CACHE-1] shared /me, no extra request
   useEffect(() => { if (p) { setF({ firstName: p.firstName ?? '', lastName: p.lastName ?? '', displayName: p.displayName ?? '', city: p.city ?? '', talkAbout: p.talkAbout ?? '' }); setLangs(p.languages); } }, [p]);
   const locked = account.closing;
   const filled = [p?.firstName, p?.lastName, p?.username, p?.city, p?.languages.length ? 'x' : '', p?.talkAbout, p?.displayName].filter(Boolean).length + (me?.whatsappVerified ? 1 : 0) + (me?.age18ConfirmedAt ? 1 : 0);

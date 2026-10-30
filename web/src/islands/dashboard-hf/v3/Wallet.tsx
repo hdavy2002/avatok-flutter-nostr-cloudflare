@@ -15,6 +15,7 @@ import TokensPanel from '../../wallet/TokensPanel';
 import Withdraw from '../../wallet/Withdraw'; // [HF-WITHDRAW-1] Withdraw card (UPI setup + ID check + request + status list)
 import PayoutDetails, { PAYOUT_DETAILS_ID } from '../../wallet/PayoutDetails'; // [HF-PAYOUT-CARD]
 import { useDash, spendablePaise } from './data';
+import { useCached } from './swr'; // [HF-DASH-CACHE-1]
 import { Card, Dialog, Empty, Failed, FlowerCluster, Ic, PageHead, Petals, Skel, Sticker, fmtInt, istDay, useToast } from './ui';
 
 type Tab = 'all' | 'purchase' | 'call_spent' | 'call_refund' | 'test';
@@ -187,8 +188,7 @@ function AddMoney({ onPaid }: { onPaid: (text: string) => void }) {
 }
 
 function RefundBox() {
-  const [info, setInfo] = useState<RefundInfo | null>(null);
-  useEffect(() => { void fetchRefunds().then(setInfo).catch(() => setInfo(null)); }, []);
+  const { data: info } = useCached<RefundInfo | null>('wallet:refunds', () => fetchRefunds().catch(() => null), 30_000); // [HF-DASH-CACHE-1] last answer at once, refreshed quietly
   if (!info) return null;
   const open = info.requests.find(r => r.status === 'requested' || r.status === 'processing');
   return <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: 'var(--cream)', border: '1px dashed var(--line)' }}>
@@ -198,11 +198,12 @@ function RefundBox() {
 }
 
 function Receipts({ reloadKey }: { reloadKey: number }) {
-  const [items, setItems] = useState<ReceiptItem[] | null>(null);
-  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
-  useEffect(() => { let live = true; void fetchReceipts().then(r => { if (!live) return; if (r.ok) setItems(r.data.receipts); else { setFailed(true); setItems([]); } }); return () => { live = false; }; }, [reloadKey]);
+  // [HF-DASH-CACHE-1] cached receipts paint at once; a new top-up (reloadKey) forces a re-read.
+  const { data: rr } = useCached('wallet:receipts', fetchReceipts, 30_000, reloadKey);
+  const items: ReceiptItem[] | null = rr ? (rr.ok ? rr.data.receipts : []) : null;
+  const failed = !!rr && !rr.ok;
   if (items === null) return <Skel h={100} />;
   if (failed) return <Failed text="We could not load your receipts." />;
   if (!items.length) return <p className="small muted">Your first top-up receipt will show up here.</p>;

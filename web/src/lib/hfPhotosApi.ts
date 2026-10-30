@@ -3,6 +3,7 @@
  * GET /api/hf/me/photos ({ok, photos:{profile,cover}}). Switch: hfPhotoModerationEnabled in GET /api/config. */
 import { request } from './apiClient';
 import { API_BASE } from './env';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 import { capture } from './analytics';
 import { isSupportHost, isSupportPath } from './supportHost';
 
@@ -11,11 +12,8 @@ export interface PhotoSlot { url: string | null; checking: boolean; refused: str
 /** `complete` is the server's photos_complete (null when the server did not say); `missing` lists 'profile' / 'cover'. */
 export interface MyPhotos { profile: PhotoSlot; cover: PhotoSlot; complete: boolean | null; missing: string[] }
 
-let cfg: Promise<{ moderation: boolean; required: boolean }> | null = null;
-function readFlags() {
-  if (!cfg) cfg = request<{ hfPhotoModerationEnabled?: boolean; hfPhotosRequiredEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
-    .then((c) => ({ moderation: c?.hfPhotoModerationEnabled === true, required: c?.hfPhotosRequiredEnabled === true })).catch(() => ({ moderation: false, required: false }));
-  return cfg;
+function readFlags() { // [HF-DASH-CACHE-1] the one shared /api/config request
+  return publicConfig().then((c) => ({ moderation: c.hfPhotoModerationEnabled === true, required: c.hfPhotosRequiredEnabled === true }));
 }
 /** hfPhotoModerationEnabled from /api/config (one request per page). Any failure counts as off. */
 export function photoModerationEnabled(): Promise<boolean> { return readFlags().then((f) => f.moderation); }

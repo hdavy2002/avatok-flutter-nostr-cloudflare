@@ -7,6 +7,7 @@
  * Every call goes through hfCall (bearer token, typed errors). Money is integer paise on the wire. */
 import { hfCall, type HfResult } from './hfCallsApi';
 import { request } from './apiClient';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 import { API_BASE } from './env';
 import { fileNameHeader } from './uploadHeaders';
 
@@ -53,18 +54,14 @@ export const reportProblem = (id: string, body: { kind: 'wrong' | 'damaged'; not
 
 export const checkPincode = (pin: string) => hfCall<{ deliverable: boolean; etaDays: number | null }>('GET', `/api/hf/merch/pincode/${pin}`, undefined, { auth: false, timeoutMs: 15_000 });
 
-let cfg: Promise<boolean> | null = null;
-/** hfMerchEnabled from /api/config (one request per page). Any failure counts as off. */
+/** hfMerchEnabled from /api/config (one request per page, shared: lib/hfConfig.ts [HF-DASH-CACHE-1]). Any failure counts as off. */
 export function merchEnabled(): Promise<boolean> {
-  if (!cfg) cfg = request<{ hfMerchEnabled?: boolean }>('/api/config', { timeoutMs: 8000 }).then((c) => c?.hfMerchEnabled === true).catch(() => false);
-  return cfg;
+  return publicConfig().then((c) => c.hfMerchEnabled === true);
 }
 
-let cfgCheckout: Promise<boolean> | null = null;
-/** [HF-CHANNEL-WEB-1] hfMerchEnabled && hfMerchCheckoutEnabled from /api/config (one request per page). Any failure counts as off: the Bag still fills, the button reads "Buying opens soon". */
+/** [HF-CHANNEL-WEB-1] hfMerchEnabled && hfMerchCheckoutEnabled from /api/config (shared request). Any failure counts as off: the Bag still fills, the button reads "Buying opens soon". */
 export function merchCheckoutEnabled(): Promise<boolean> {
-  if (!cfgCheckout) cfgCheckout = request<{ hfMerchEnabled?: boolean; hfMerchCheckoutEnabled?: boolean }>('/api/config', { timeoutMs: 8000 }).then((c) => c?.hfMerchEnabled === true && c?.hfMerchCheckoutEnabled === true).catch(() => false);
-  return cfgCheckout;
+  return publicConfig().then((c) => c.hfMerchEnabled === true && c.hfMerchCheckoutEnabled === true);
 }
 
 export type PhotoResult = { ok: true; photoKey: string } | { ok: false; message: string };

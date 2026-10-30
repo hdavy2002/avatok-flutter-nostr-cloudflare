@@ -1,5 +1,6 @@
 import { request, ApiError } from './apiClient';
 import { getActiveTokenWaited } from './clerk';
+import { publicConfig } from './hfConfig'; // [HF-DASH-CACHE-1]
 import { capture } from './analytics';
 import { redirectToPhotoOnboarding } from './hfPhotosApi'; // [HF-PHOTO-CROP-WEB]
 
@@ -32,12 +33,9 @@ export type BookingRole = 'host' | 'customer';
 export interface LegacyHoursPreview { days: unknown; from: unknown; to: unknown }
 export interface LegacyAvailabilityPreview { requiresHostTimezoneConfirmation: boolean; hours: LegacyHoursPreview }
 
-let bookingsConfig: Promise<boolean> | null = null;
-/** Public booking kill switch. Fail closed while config is unavailable. */
+/** Public booking kill switch. Fail closed while config is unavailable. [HF-DASH-CACHE-1] reads the one shared /api/config request. */
 export function bookingsEnabled(): Promise<boolean> {
-  if (!bookingsConfig) bookingsConfig = request<{ hfBookingsEnabled?: boolean }>('/api/config', { timeoutMs: 8000 })
-    .then(config => config?.hfBookingsEnabled === true).catch(() => false);
-  return bookingsConfig;
+  return publicConfig().then(config => config.hfBookingsEnabled === true);
 }
 
 export function normalizeAvailabilitySchedule(schedule: AvailabilitySchedule): AvailabilitySchedule {

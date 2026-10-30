@@ -2,6 +2,7 @@
  * Worker: GET /api/hf/payouts/summary, PUT /api/hf/payouts/upi {vpa} (the same endpoints the app uses; anyone signed in, fans too).
  * There is no UPI name check on save (nameMatched stays null); the ID check (Aadhaar OTP / DigiLocker) is /verify/id. */
 import { ApiError, request } from './apiClient';
+import { cachedFetch } from './hfCallsApi'; // [HF-DASH-CACHE-1]
 
 export interface PayoutSummary {
   readyPaise: number; onHoldPaise: number; minPaise: number;
@@ -27,7 +28,9 @@ async function authed<T>(method: 'GET' | 'PUT' | 'POST', path: string, body?: un
   return request<T>(path, { method, auth: token, body, headers, timeoutMs: 25_000 });
 }
 
-export const fetchPayoutSummary = (): Promise<PayoutSummary> => authed<PayoutSummary>('GET', '/api/hf/payouts/summary');
+// [HF-DASH-CACHE-1] Wallet mounts Withdraw and Payout details together and each asked for the summary: concurrent calls now share one request
+// (ttl 0 = nothing is kept once it lands, so a later call always reads fresh).
+export const fetchPayoutSummary = (): Promise<PayoutSummary> => cachedFetch('payouts:summary', () => authed<PayoutSummary>('GET', '/api/hf/payouts/summary'), 0);
 export const saveUpi = (vpa: string) => authed<{ ok: true; upi: { vpa: string; nameMatched: boolean | null } }>('PUT', '/api/hf/payouts/upi', { vpa });
 
 /** [HF-WITHDRAW-1] Fan + influencer withdrawal list (raw statuses, so "approved" and "cancelled" can be shown). */
