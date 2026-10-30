@@ -43,7 +43,7 @@ import {
   useUser,
   SignInButton as ClerkSignInButton,
 } from '@clerk/clerk-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CLERK_PUBLISHABLE_KEY } from './env';
 import { request, ApiError } from './apiClient';
@@ -288,6 +288,7 @@ async function createGuest(email: string): Promise<string> {
 // ClerkSessionBridge is the shared, de-duplicated version: the first bridge to render
 // claims the provider, every later one renders nothing and reads the same module-level
 // bridge (getActiveToken). A real <ClerkIsland> with children on the page also counts.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 let _providerOwner: symbol | null = null;
 let _fullIslandSeen = false;
 
@@ -298,9 +299,15 @@ export function ClerkSessionBridge() {
   // cleanup, so a render-phase claim leaked: the next, committed instance saw an owner that no longer
   // existed, rendered null, and no ClerkProvider/ClerkBridge ever mounted (window.__siteToken stayed
   // undefined, every authenticated call answered no_session). Effects run only for committed trees.
+  //
+  // [HF-SIGNIN-SPEED-1] That claim is a LAYOUT effect (still commit-only, same leak-safety) so the owner's
+  // setState re-renders and mounts <ClerkProvider> synchronously, before paint, instead of waiting for the
+  // passive-effect flush (React defers those to after paint; on a busy dashboard first render that added tens to
+  // hundreds of ms before Clerk.load() could even start). Server render has no layout effects, so the isomorphic
+  // alias keeps SSR warning-free.
   const [me] = useState(() => Symbol('clerk-bridge'));
   const [owner, setOwner] = useState(false);
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     if (_providerOwner === null && !_fullIslandSeen) { _providerOwner = me; setOwner(true); }
     return () => { if (_providerOwner === me) _providerOwner = null; };
   }, [me]);
