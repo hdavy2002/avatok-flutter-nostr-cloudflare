@@ -17,6 +17,7 @@ export const prerender = false;
 import Base from '../layouts/Base.astro';
 import SignOutIsland from '../islands/auth/SignOutIsland.tsx';
 import { BRAND } from '../lib/brand';
+import { Marigold } from '../islands/dashboard-hf/v3/ui';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
@@ -28,14 +29,20 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
   header
   noindex
 >
+  <!-- [HF-SIGNOUT-MSG-1] One message only (the island renders nothing), in the dashboard's desi card style. -->
   <main class="so-wrap">
-    <p data-i18n="web-sign-out.7d2e71d27419738e" class="so-msg">Signing you out…</p>
+    <section class="so-card" role="status" aria-live="polite">
+      <span class="so-corner so-tl" aria-hidden="true"><Marigold size={64} /></span>
+      <span class="so-corner so-br" aria-hidden="true"><Marigold size={52} tone={1} /></span>
+      <span class="so-spin" aria-hidden="true"><Marigold size={58} tone={1} /></span>
+      <h1 class="so-title">Phir milenge, dost!</h1>
+      <p class="so-msg">Aapko safely sign out kar rahe hain… bas ek pal.</p>
+      <p class="so-note">Chai thandi hone se pehle wapas aana.</p>
+      <noscript>
+        <p class="so-msg">JavaScript is required to sign out. <a href="/">Return home</a>.</p>
+      </noscript>
+    </section>
     <SignOutIsland client:load />
-    <noscript>
-      <p class="so-msg">
-        JavaScript is required to sign out. <a href="/">Return home</a>.
-      </p>
-    </noscript>
   </main>
 
   <style>
@@ -44,15 +51,55 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 40px 20px;
+      padding: 48px 16px;
+      background: #fff8f0;
+    }
+    .so-card {
+      position: relative;
+      overflow: hidden;
+      width: min(100%, 560px);
+      padding: 44px 32px 40px;
+      border-radius: 28px;
+      background: #ffffff;
+      border: 2px solid #f1e3d6;
+      box-shadow: 0 1px 0 rgba(74, 23, 71, .04), 0 18px 40px -18px rgba(74, 23, 71, .28);
+      text-align: center;
+    }
+    .so-card::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 8px;
+      background: repeating-linear-gradient(90deg, #d81b72 0 28px, #f59e0b 28px 56px, #6d4fd0 56px 84px);
+    }
+    .so-corner { position: absolute; line-height: 0; opacity: .95; }
+    .so-tl { left: -18px; top: -14px; }
+    .so-br { right: -14px; bottom: -14px; }
+    .so-spin { display: inline-block; line-height: 0; margin-bottom: 14px; }
+    @media (prefers-reduced-motion: no-preference) {
+      .so-spin { animation: so-turn 2.4s linear infinite; }
+      @keyframes so-turn { to { transform: rotate(360deg); } }
+    }
+    .so-title {
+      margin: 0 0 10px;
+      font-family: 'Nunito', system-ui, sans-serif;
+      font-weight: 900;
+      font-size: clamp(1.75rem, 1.3rem + 2vw, 2.5rem);
+      line-height: 1.15;
+      color: #4a1747;
     }
     .so-msg {
-      font-family: 'Nunito', system-ui, sans-serif;
-      font-size: 16px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      color: #161614;
-      text-align: center;
+      margin: 0;
+      font-family: 'Comfortaa', system-ui, sans-serif;
+      font-size: clamp(16px, 15.2px + .2vw, 19px);
+      font-weight: 700;
+      color: #2b1530;
+    }
+    .so-note {
+      margin: 12px 0 0;
+      font-family: 'Comfortaa', system-ui, sans-serif;
+      font-size: clamp(15px, 14.5px + .15vw, 17px);
+      color: #6f5b6f;
     }
   </style>
 </Base>
