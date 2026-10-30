@@ -333,3 +333,48 @@ describe("PATCH /api/hf/me email [HF-WIRE-2]", () => {
     expect((await call(req("PATCH", { email: "a@b.com" }))).status).toBe(401);
   });
 });
+
+describe("[HF-ME-SPEED-1] parallel getMe + batched base reads", () => {
+  const seed = () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Meena')").run();
+    db.prepare("INSERT INTO hf_user_ack VALUES ('u1','2026-10-10',20)").run();
+    db.prepare("INSERT INTO hf_user_registration VALUES ('u1','meena')").run();
+    db.prepare("INSERT INTO hf_user_email VALUES ('u1','typed@example.com',1)").run();
+    db.prepare("INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES ('u1',0,1,5)").run();
+  };
+  const withBatch = (fail = false) => {
+    const prep = env.DB_META.prepare;
+    let calls = 0;
+    env.DB_META.prepare = (q: string) => {
+      const s = prep(q);
+      const bound = (a: unknown[]) => ({ ...s.bind(...a), __q: q, __a: a });
+      return { ...s, bind: (...a: unknown[]) => bound(a) };
+    };
+    env.DB_META.batch = async (stmts: any[]) => {
+      calls++;
+      if (fail) throw new Error("no such table");
+      return stmts.map((s) => ({ results: db.prepare(s.__q).all(...s.__a) }));
+    };
+    return () => calls;
+  };
+
+  it("batch path returns the same body as the per-statement path, plus Server-Timing", async () => {
+    seed();
+    const plain = await (await call(req("GET"))).json();
+    const calls = withBatch();
+    const r = await call(req("GET"));
+    expect(calls()).toBe(1);
+    expect(await r.json()).toEqual(plain);
+    expect(r.headers.get("cache-control")).toBe("private, no-store");
+    expect(r.headers.get("server-timing")).toMatch(/db;dur=\d+.*total;dur=\d+/);
+    expect(plain).toMatchObject({ displayName: "Meena", username: "meena", ackVersion: "2026-10-10", email: "typed@example.com", prefs: { notifyWhatsapp: false } });
+  });
+  it("a failing batch falls back to isolated queries (missing table never blanks /me)", async () => {
+    seed();
+    db.exec("DROP TABLE hf_user_ack");
+    const calls = withBatch(true);
+    const b = await (await call(req("GET"))).json();
+    expect(calls()).toBe(1);
+    expect(b).toMatchObject({ displayName: "Meena", username: "meena", ackVersion: null, email: "typed@example.com" });
+  });
+});

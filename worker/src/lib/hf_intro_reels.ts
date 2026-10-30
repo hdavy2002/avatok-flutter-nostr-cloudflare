@@ -116,9 +116,11 @@ async function handlesFor(env: Env, uids: string[]): Promise<Map<string, string>
  *  (the dashboard shows a banner; no bulk WhatsApp is sent). Never throws: on a read failure the extra fields are simply left out. */
 export async function introSelfState(env: Env, uid: string, hostStatus: string | null): Promise<Record<string, unknown> | null> {
   try {
-    const h = await env.DB_META.prepare("SELECT call_option, intro_approved_at FROM hf_hosts WHERE uid=?1").bind(uid).first<{ call_option: string | null; intro_approved_at: number | null }>();
-    const app = await env.DB_META.prepare("SELECT status, reject_reasons_json, reject_note FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1")
-      .bind(uid).first<{ status: string; reject_reasons_json: string | null; reject_note: string | null }>();
+    const [h, app] = await Promise.all([ // [HF-ME-SPEED-1] two independent reads, one round
+      env.DB_META.prepare("SELECT call_option, intro_approved_at FROM hf_hosts WHERE uid=?1").bind(uid).first<{ call_option: string | null; intro_approved_at: number | null }>(),
+      env.DB_META.prepare("SELECT status, reject_reasons_json, reject_note FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1")
+      .bind(uid).first<{ status: string; reject_reasons_json: string | null; reject_note: string | null }>(),
+    ]);
     const live = isInfluencer(hostStatus); // [HF-INFLUENCER-GATE-1]
     const approved = !!h?.intro_approved_at;
     return {

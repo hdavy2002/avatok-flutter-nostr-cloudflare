@@ -48,9 +48,12 @@ export async function applicationMissing(env: Env, uid: string, opts: { categori
 export interface InfluencerApplicationState { status: "none" | "draft" | "submitted" | "rejected" | "approved"; rejectReason: string | null; missing: MissingCode[] }
 
 /** The caller's application as /api/hf/me reports it. `missing` is [] for an influencer (nothing left to do). */
-export async function influencerApplicationState(env: Env, uid: string, hostStatus: string | null): Promise<InfluencerApplicationState> {
-  const app = await env.DB_META.prepare("SELECT status, categories_json, reject_reasons_json, reject_note FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1")
+export async function influencerApplicationState(env: Env, uid: string, hostStatusIn: string | null | Promise<string | null>): Promise<InfluencerApplicationState> {
+  // [HF-ME-SPEED-1] hostStatus may arrive as a promise so the caller can start this read before host_status is known.
+  const appQ = env.DB_META.prepare("SELECT status, categories_json, reject_reasons_json, reject_note FROM hf_influencer_applications WHERE uid=?1 ORDER BY submitted_at DESC, id DESC LIMIT 1")
     .bind(uid).first<{ status: string; categories_json: string | null; reject_reasons_json: string | null; reject_note: string | null }>().catch(() => null);
+  const hostStatus = await hostStatusIn;
+  const app = await appQ;
   let status: InfluencerApplicationState["status"] = "none";
   let rejectReason: string | null = null;
   if (app?.status === "submitted") status = "submitted";

@@ -71,10 +71,20 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
   }
 }
 
-async function getMe(env: Env, uid: string): Promise<Response> {
-  // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, registration, registrationPending, lanes, closing, cfg, clerkEmail, prefs, typedEmail, nameRow] = await Promise.all([
-    env.DB_META.prepare(
+type NameRow = { first_name: string | null; last_name: string | null };
+type PrefsRow = { notify_whatsapp: number; appt_reminders: number | null; reel_alerts?: number | null };
+interface MeBase {
+  row: MeRow | null; ack: { version: string } | null; registration: { username: string } | null; registrationPending: unknown;
+  prefs: PrefsRow | null; typedEmail: string | null; nameRow: NameRow | null;
+}
+
+/** [HF-ME-SPEED-1] The seven plain DB_META reads in ONE D1 round trip (batch). Each statement used to be its own failure-isolated
+ *  query (a missing table must never blank /me); a batch is all-or-nothing, so on any batch failure (or no batch support) we fall
+ *  back to the original per-statement queries, which keep that isolation exactly. */
+async function readMeBase(env: Env, uid: string): Promise<MeBase> {
+  const db = env.DB_META;
+  const stmts = [
+    db.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
               (SELECT o.e164 FROM phone_otp o WHERE o.uid=?1 AND o.phone_hash=cv.phone_hash AND o.status='verified' ORDER BY o.verified_at DESC LIMIT 1) AS e164,
@@ -84,46 +94,88 @@ async function getMe(env: Env, uid: string): Promise<Response> {
          LEFT JOIN users u ON u.uid=x.uid
          LEFT JOIN contact_verification cv ON cv.uid=x.uid
          LEFT JOIN hf_hosts h ON h.uid=x.uid`,
-    ).bind(uid).first<MeRow>().catch(() => null),
-    // [HF-NATIVE-S4] Kept apart so a missing table (migration not applied yet) can never blank the rest of the answer.
-    env.DB_META.prepare("SELECT version FROM hf_user_ack WHERE uid=?1 ORDER BY at DESC LIMIT 1").bind(uid).first<{ version: string }>().catch(() => null),
-    // [HF-REF-AUTH-1] Registration is a separate immutable record. Keep this
-    // read failure-isolated so an unapplied migration does not break sign-in.
-    env.DB_META.prepare("SELECT username FROM hf_user_registration WHERE uid=?1").bind(uid).first<{ username: string }>().catch(() => null),
-    // Server-owned signup membership survives reinstalls, lost ticket responses,
-    // and another device signing into an unfinished account.
-    env.DB_META.prepare(`SELECT 1 AS x FROM hf_phone_signup WHERE uid=?1 AND state='done'
-      UNION SELECT 1 AS x FROM hf_registration_progress WHERE uid=?1 LIMIT 1`).bind(uid).first().catch(() => null), // [HF-WIRE-1B] a missing table must not blank /me
-    getLaneAccess(env, uid).catch(() => ({ women: false, lgbtq: false })),
-    isClosing(env, uid),
-    readConfig(env).catch(() => null),
-    // [HF-WIRE-1B] The caller's OWN email (KV-cached Clerk lookup); null if it cannot be read. Never another user's.
-    (async () => emailFor(env, uid))().catch(() => null),
-    (async () => env.DB_META.prepare("SELECT * FROM hf_user_prefs WHERE uid=?1").bind(uid)
-      .first<{ notify_whatsapp: number; appt_reminders: number | null; reel_alerts?: number | null }>())().catch(() => null),
-    // [HF-WIRE-2] The email a fan typed at sign-up (phone-only accounts have no Clerk email). Failure-isolated.
-    env.DB_META.prepare("SELECT email FROM hf_user_email WHERE uid=?1").bind(uid).first<{ email: string }>().then((r) => r?.email ?? null).catch(() => null),
-    // [HF-APP-PARITY-PROFILE] First/last name for the app's edit-profile screen (same source as GET /api/hf/me/profile: registration row wins, else users). Failure-isolated.
-    env.DB_META.prepare(
+    ).bind(uid),
+    // [HF-NATIVE-S4] ack
+    db.prepare("SELECT version FROM hf_user_ack WHERE uid=?1 ORDER BY at DESC LIMIT 1").bind(uid),
+    // [HF-REF-AUTH-1] registration is a separate immutable record
+    db.prepare("SELECT username FROM hf_user_registration WHERE uid=?1").bind(uid),
+    // server-owned signup membership [HF-WIRE-1B]
+    db.prepare(`SELECT 1 AS x FROM hf_phone_signup WHERE uid=?1 AND state='done'
+      UNION SELECT 1 AS x FROM hf_registration_progress WHERE uid=?1 LIMIT 1`).bind(uid),
+    db.prepare("SELECT * FROM hf_user_prefs WHERE uid=?1").bind(uid),
+    // [HF-WIRE-2] the email a fan typed at sign-up
+    db.prepare("SELECT email FROM hf_user_email WHERE uid=?1").bind(uid),
+    // [HF-APP-PARITY-PROFILE] first/last name: registration row wins, else users
+    db.prepare(
       `SELECT COALESCE(NULLIF(TRIM(r.first_name),''), NULLIF(TRIM(u.first_name),'')) AS first_name,
               COALESCE(NULLIF(TRIM(r.last_name),''), NULLIF(TRIM(u.last_name),'')) AS last_name
          FROM (SELECT ?1 AS uid) x LEFT JOIN users u ON u.uid=x.uid LEFT JOIN hf_user_registration r ON r.uid=x.uid`,
-    ).bind(uid).first<{ first_name: string | null; last_name: string | null }>().catch(() => null),
+    ).bind(uid),
+  ];
+  if (typeof (db as { batch?: unknown }).batch === "function") {
+    try {
+      const rs = (await db.batch(stmts)) as Array<{ results?: unknown[] }>;
+      if (Array.isArray(rs) && rs.length === stmts.length) {
+        const f = <T,>(i: number): T | null => (rs[i]?.results?.[0] as T | undefined) ?? null;
+        return {
+          row: f<MeRow>(0), ack: f<{ version: string }>(1), registration: f<{ username: string }>(2), registrationPending: f(3),
+          prefs: f<PrefsRow>(4), typedEmail: f<{ email: string }>(5)?.email ?? null, nameRow: f<NameRow>(6),
+        };
+      }
+    } catch { /* a table/column is missing: fall through to the isolated per-statement reads */ }
+  }
+  const [row, ack, registration, registrationPending, prefs, typedEmail, nameRow] = await Promise.all([
+    stmts[0].first<MeRow>().catch(() => null),
+    stmts[1].first<{ version: string }>().catch(() => null),
+    stmts[2].first<{ username: string }>().catch(() => null),
+    stmts[3].first().catch(() => null),
+    stmts[4].first<PrefsRow>().catch(() => null),
+    stmts[5].first<{ email: string }>().then((r) => r?.email ?? null).catch(() => null),
+    stmts[6].first<NameRow>().catch(() => null),
   ]);
+  return { row, ack, registration, registrationPending, prefs, typedEmail, nameRow };
+}
+
+async function getMe(env: Env, uid: string): Promise<Response> {
+  // [HF-ME-SPEED-1] Everything starts at once; each dependent read chains off only the promise it truly needs, so the whole
+  // answer costs ~2 dependent rounds (base reads -> things keyed on host_status / registration) instead of ~6 sequential ones.
+  const t0 = Date.now();
+  const timings: string[] = [];
+  const tm = <T,>(name: string, p: Promise<T>): Promise<T> => {
+    const s = Date.now();
+    const done = () => { timings.push(`${name};dur=${Date.now() - s}`); };
+    return p.then((v) => { done(); return v; }, (e) => { done(); throw e; });
+  };
+  const base = tm("db", readMeBase(env, uid));
+  const row = base.then((b) => b.row);
+  const hostStatus = row.then((r) => r?.host_status ?? null);
+  const cfgP = tm("cfg", readConfig(env).catch(() => null));
+  const lanesP = tm("lanes", getLaneAccess(env, uid).catch(() => ({ women: false, lgbtq: false })));
+  const closingP = tm("closing", isClosing(env, uid));
+  // [HF-WIRE-1B] The caller's OWN email (KV-cached Clerk lookup); null if it cannot be read. Never another user's.
+  const clerkEmailP = tm("email", (async () => emailFor(env, uid))().catch(() => null));
+  const photosP = tm("photos", photosReady(env, uid));
   // [HF-FIX-HANDLE-1] Everyone has a handle; assign lazily when no registered username exists.
-  const handle = await resolveHfHandle(env, uid, registration?.username);
-  const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
-  const infl = isInfluencer(row?.host_status); // [HF-INFLUENCER-GATE-1] only an admin-approved influencer is a host; a draft row, a channel login or KYC is not
-  const [influencerApplication, photos] = await Promise.all([
-    influencerApplicationState(env, uid, row?.host_status ?? null).catch(() => ({ status: "none" as const, rejectReason: null, missing: [] as string[] })),
-    photosReady(env, uid),
+  const handleP = tm("handle", base.then((b) => resolveHfHandle(env, uid, b.registration?.username)));
+  const walletP = tm("wallet", cfgP.then((c) => readWalletPaise(env, uid, c?.hfTokensEnabled === true)));
+  // influencerApplicationState starts its own read now and only awaits host_status when it needs it.
+  const applicationP = tm("application", influencerApplicationState(env, uid, hostStatus)
+    .catch(() => ({ status: "none" as const, rejectReason: null, missing: [] as string[] })));
+  // [HF-CALL-MODES-A] mode / callState / queue (flag on only); [HF-INFLUENCER-GATE-1] only an approved influencer is a host
+  const hostLineP = tm("line", row.then((r) => isInfluencer(r?.host_status)
+    ? lineFieldsForUids(env, [uid]).catch(() => null).then((m) => m?.get(uid))
+    : undefined));
+  const introP = tm("intro", Promise.all([cfgP, hostStatus]).then(([c, hs]) =>
+    c?.hfIntroOnboardingEnabled === true ? introSelfState(env, uid, hs) : null)); // [HF-INTRO-W1]
+  const [b, lanes, closing, cfg, clerkEmail, photos, handle, walletPaise, influencerApplication, hostLine, intro] = await Promise.all([
+    base, lanesP, closingP, cfgP, clerkEmailP, photosP, handleP, walletP, applicationP, hostLineP, introP,
   ]);
-  const hostLine = infl ? (await lineFieldsForUids(env, [uid]).catch(() => null))?.get(uid) : undefined; // [HF-CALL-MODES-A] mode / callState / queue (flag on only)
+  const { row: r0, ack, registration, registrationPending, prefs, typedEmail, nameRow } = b;
+  const infl = isInfluencer(r0?.host_status);
   const email = clerkEmail ?? typedEmail;
-  const intro = cfg?.hfIntroOnboardingEnabled === true ? await introSelfState(env, uid, row?.host_status ?? null) : null; // [HF-INTRO-W1]
-  const host = infl && row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
-  const displayName = row?.display_name?.trim() ? row.display_name : null;
-  const phoneMasked = maskPhoneLast4(row?.e164);
+  const host = infl && r0?.host_status ? { status: r0.host_status, slug: r0.host_slug ?? null } : null;
+  const displayName = r0?.display_name?.trim() ? r0.display_name : null;
+  const phoneMasked = maskPhoneLast4(r0?.e164);
   const body = {
     uid,
     displayName,
@@ -133,9 +185,9 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     registrationComplete: !!registration?.username,
     registrationRequired: !registration?.username && !!registrationPending,
     phoneMasked,
-    whatsappVerified: Number(row?.phone_verified) === 1,
+    whatsappVerified: Number(r0?.phone_verified) === 1,
     ackVersion: ack?.version ?? null,
-    age18ConfirmedAt: row?.age_at ?? null,
+    age18ConfirmedAt: r0?.age_at ?? null,
     isHost: infl,
     host,
     influencerApplication, // [HF-INFLUENCER-GATE-1] { status, rejectReason, missing[] }
@@ -148,15 +200,17 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     email: email ?? null,
     whatsapp: phoneMasked,
     role: infl ? "host" : "fan",
-    hostStatus: infl ? row?.host_status ?? null : null,
-    presence: infl && row?.host_status ? (row.host_presence ?? "offline") : null,
+    hostStatus: infl ? r0?.host_status ?? null : null,
+    presence: infl && r0?.host_status ? (r0.host_presence ?? "offline") : null,
     ...(hostLine ? { mode: hostLine.mode, callState: hostLine.callState, queue: hostLine.queue } : {}),
     ...(intro ?? {}), // [HF-INTRO-W1] needsIntroVideo, introStatus, callOption, introApprovedAt (flag hfIntroOnboardingEnabled only)
     ...(hostLine?.mainAction ? { callOption: hostLine.callOption ?? null, mainAction: hostLine.mainAction } : {}), // [HF-INTRO-W2] only while hfCallOptionEnabled is on
     walletPaise,
     prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true, reelAlerts: prefs ? Number(prefs.reel_alerts ?? 1) !== 0 : true },
   };
-  return json(body, 200, { "cache-control": "private, no-store" });
+  // [HF-ME-SPEED-1] Server-Timing: per-phase durations (each started at t=0 in parallel; "total" is the wall clock).
+  timings.push(`total;dur=${Date.now() - t0}`);
+  return json(body, 200, { "cache-control": "private, no-store", "server-timing": timings.join(", ") });
 }
 
 /** [HF-WIRE-1B] Caller's own spendable balance in paise; null if unreadable. Token mode reads the lot ledger, the old mode the rupee WalletDO. */
