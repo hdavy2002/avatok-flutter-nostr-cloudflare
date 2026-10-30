@@ -13,6 +13,7 @@ import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import { isInfluencer, type DashboardAccount, type InfluencerApplication } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
+import { takePrefetch } from './prefetch'; // [HF-DASH-COLD-1]
 import { RulesGate, SafetyHomeCard, rulesNeeded, useSafetyMe } from './Safety'; // [HF-CALL-SAFETY-WEB]
 import SafetyBlockNote from '../../../components/safety/SafetyBlockNote';
 import { HF_PLAY_URL } from '../../../lib/hfApp';
@@ -275,9 +276,11 @@ function UpNext({ enabled, uid, onNext, onPending }: { enabled: boolean; uid: st
     if (!enabled) { setRows([]); return; }
     setFailed(false); setRows(null);
     const from = new Date(Date.now() - 60 * 60_000).toISOString(), to = new Date(Date.now() + 60 * 86_400_000).toISOString();
-    listBookings('customer', from, to).then(p => setRows(p.bookings.filter(b => ['confirmed', 'pending_approval', 'starting', 'active'].includes(b.status)).sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc))))
+    // [HF-DASH-COLD-1] first load: adopt the read DashboardApp started together with /me (same uid, bookings flag on); otherwise ask now
+    const pre = takePrefetch(uid, 'bookings');
+    (pre ? pre.then(r => r ?? listBookings('customer', from, to)) : listBookings('customer', from, to)).then(p => setRows(p.bookings.filter(b => ['confirmed', 'pending_approval', 'starting', 'active'].includes(b.status)).sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc))))
       .catch(() => setFailed(true));
-  }, [enabled]);
+  }, [enabled, uid]);
   useEffect(load, [load, uid]);
   // The ticker's "appointment" line is the first booked call; requests still waiting for a yes get their own line.
   useEffect(() => { onNext?.(rows?.find(r => r.status !== 'pending_approval') ?? null); onPending?.(rows ? rows.filter(r => r.status === 'pending_approval') : []); }, [rows, onNext, onPending]);

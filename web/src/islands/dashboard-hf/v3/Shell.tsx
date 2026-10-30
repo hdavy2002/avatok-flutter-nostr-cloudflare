@@ -26,7 +26,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
   const bal = spendablePaise(wallet.data);
   const firstName = profile.data?.firstName || account.displayName || '';
   const handle = profile.data?.username;
-  const safety = useSafetyMe().me; // [HF-CALL-SAFETY-WEB] strike count on the Safety item; null until the worker answers (or while the flag is off)
+  const safety = useSafetyMe(account.uid).me; // [HF-CALL-SAFETY-WEB] strike count on the Safety item; null until the worker answers (or while the flag is off)
   const strikes = safety ? activeOf(safety).length : 0;
   const safetyItem: Item = { key: 'safety', href: '/dashboard/host/safety', label: 'Safety', icon: 'shield', badge: strikes || null };
   const showSafety = isInf || (!!safety && (strikes > 0 || safety.status !== 'active'));

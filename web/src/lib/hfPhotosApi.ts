@@ -34,7 +34,7 @@ export function cacheGateStatus(uid: string, s: GateStatus): void { ssSet(GATE_K
 /** Call after any upload so the next page does not act on a stale "incomplete". */
 export function clearPhotoGateCache(): void { ssDel(GATE_KEY); }
 /** Is the signed-in member's photo set complete? Cached a few minutes. complete:null = unknown (API error): callers fail open. */
-export async function photoGateStatus(uid: string): Promise<GateStatus> {
+export async function photoGateStatus(uid: string, pre?: Promise<MyPhotos | null> | null): Promise<GateStatus> {
   const raw = ssGet(GATE_KEY);
   if (raw) {
     try {
@@ -42,7 +42,9 @@ export async function photoGateStatus(uid: string): Promise<GateStatus> {
       if (c.uid === uid && typeof c.t === 'number' && Date.now() - c.t < GATE_TTL_MS && typeof c.complete === 'boolean') return { complete: c.complete, missing: Array.isArray(c.missing) ? c.missing : [] };
     } catch { /* ignore a broken cache entry */ }
   }
-  const p = await getMyPhotos();
+  // [HF-DASH-COLD-1] `pre` = the read DashboardApp already started at boot (token-scoped, so it did not need the uid). If it came back empty, ask once more.
+  let p = pre ? await pre.catch(() => null) : null;
+  if (!p) p = await getMyPhotos();
   if (!p || p.complete === null) return { complete: null, missing: [] };
   const s = { complete: p.complete, missing: p.missing };
   cacheGateStatus(uid, s);
