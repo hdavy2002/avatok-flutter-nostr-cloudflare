@@ -31,6 +31,22 @@ rm -rf "$HERE/dist/videos" "$HERE/dist/downloads"          # onboarding videos: 
 rm -f "$HERE/dist/404.html" "$HERE/dist/422.html" "$HERE/dist/500.html"   # a 404.html turns off the Pages single-page fallback
 cp "$HERE/src/hf-login.html" "$HERE/src/_redirects" "$HERE/src/_headers" "$HERE/dist/"
 cp "$HERE/CHATWOOT-LICENSE" "$HERE/dist/CHATWOOT-LICENSE.txt"
+# [HF-DESK-THEME-1] brand: our mark replaces Chatwoot's favicons (incl. the unread "badge" ones), plus the theme
+mkdir -p "$HERE/dist/hf" && cp "$HERE"/assets/* "$HERE/dist/hf/"
+for s in 16 32 96; do cp "$HERE/assets/hf-mark-$s.png" "$HERE/dist/favicon-${s}x${s}.png"; cp "$HERE/assets/hf-mark-$s.png" "$HERE/dist/favicon-badge-${s}x${s}.png"; done
+cp "$HERE/assets/hf-mark-128.png" "$HERE/dist/favicon-512x512.png"
+for f in "$HERE"/dist/apple-icon*.png "$HERE"/dist/apple-touch-icon*.png "$HERE"/dist/android-icon-*.png "$HERE"/dist/ms-icon-*.png; do cp "$HERE/assets/hf-mark-128.png" "$f"; done
+python3 "$HERE/gen_theme.py" > "$HERE/dist/hf-theme.css"
+# Chatwoot's brand blue is compiled into its CSS/JS as a literal (theme/colors.js brand: #2781F6), not a variable:
+# swap it for our primary (rani) in the built files.
+python3 - "$HERE/dist/assets" <<'PY'
+import pathlib, re, sys
+for f in pathlib.Path(sys.argv[1]).glob("*"):
+    if f.suffix not in (".css", ".js"): continue
+    s = f.read_text(encoding="utf-8", errors="surrogateescape")
+    t = re.sub(r"#2781f6", "#d81b72", s, flags=re.I).replace("39 129 246", "216 27 114").replace("39,129,246", "216,27,114").replace("39, 129, 246", "216, 27, 114")
+    if t != s: f.write_text(t, encoding="utf-8", errors="surrogateescape")
+PY
 python3 "$HERE/gen_config.py" "$ROOT/Specs/brand.json" > "$HERE/dist/hf-config.js"
 echo "built: $(du -sh "$HERE/dist" | cut -f1) in $HERE/dist"
 

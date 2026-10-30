@@ -4,28 +4,47 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Sign in · Support desk</title>
 <script src="/hf-config.js"></script>
+<link rel="icon" type="image/png" href="/favicon-32x32.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;600;700&family=Nunito:wght@700;800;900&display=swap">
 <style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;font-family:Inter,system-ui,sans-serif;color:#1e293b}
-  .box{width:min(420px,calc(100vw - 32px));text-align:center}
-  h1{font-size:20px;margin:0 0 6px} p{color:#64748b;font-size:14px;margin:0 0 20px}
-  #msg{margin-top:16px;font-size:14px;color:#b91c1c;min-height:20px}
-  button{margin-top:12px;padding:10px 16px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-size:14px}
+  /* [HF-DESK-THEME-1] brand look: warm ivory, plum ink, rani accent, Nunito + Comfortaa */
+  :root{--ivory:#FFF8F0;--plum:#4A1747;--rani:#D81B72;--ink:#2B1530;--muted:#6F5B6F;--line:#F1E3D6;--marigold:#F59E0B}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px 16px;color:var(--ink);font-family:Comfortaa,system-ui,sans-serif;
+    background:radial-gradient(circle at 12% 18%,#FFE6EF 0,transparent 38%),radial-gradient(circle at 88% 82%,#FFF1D6 0,transparent 40%),var(--ivory)}
+  .box{width:min(440px,100%);text-align:center}
+  .logo{width:min(260px,70%);height:auto;display:block;margin:0 auto 6px}
+  h1{font-family:Nunito,system-ui,sans-serif;font-weight:900;font-size:26px;margin:4px 0 6px;color:var(--plum);letter-spacing:.01em}
+  p.sub{color:var(--muted);font-size:14px;margin:0 0 22px}
+  .eyebrow{display:inline-block;font-family:Nunito,sans-serif;font-weight:900;font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:#fff;background:var(--rani);border-radius:999px;padding:5px 12px;margin-bottom:10px}
+  #signin{display:flex;justify-content:center}
+  #msg{margin-top:16px;font-size:14px;color:#B8385A;min-height:20px;font-weight:600}
+  button{margin-top:12px;padding:12px 20px;border-radius:999px;border:2px solid var(--plum);background:#fff;color:var(--plum);cursor:pointer;
+    font:800 15px Nunito,system-ui,sans-serif}
+  button:hover{background:var(--plum);color:#fff}
+  .foot{margin-top:22px;font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
 <div class="box">
-  <h1 id="title">Support desk</h1>
-  <p>Sign in with your team account.</p>
+  <img class="logo" src="/hf/hf-wordmark.png" alt="" width="640" height="267">
+  <span class="eyebrow">Support desk</span>
+  <h1 id="title">Team sign-in</h1>
+  <p class="sub">Sign in with your team account.</p>
   <div id="signin"></div>
   <div id="msg"></div>
   <button id="other" hidden>Use a different account</button>
+  <div class="foot">For the support team only. Customers: use the Help page in the app.</div>
 </div>
 <script>
 // [HF-DESK-CW-1] Clerk sign-in -> desk session. The Clerk session token proves who you are; the API swaps it for a desk
 // token (only if you are on the support team) and the Chatwoot dashboard reads it from the cw_d_session_info cookie.
 (function () {
   var cfg = window.hfDesk;
-  document.getElementById('title').textContent = cfg.name + ' support desk';
+  document.title = 'Sign in · ' + cfg.name + ' support desk';
+  document.querySelector('.logo').alt = cfg.name;
   var msg = function (t) { document.getElementById('msg').textContent = t || ''; };
   var s = document.createElement('script');
   s.async = true; s.crossOrigin = 'anonymous';
@@ -38,7 +57,11 @@
     var q = new URLSearchParams(location.search);
     if (q.get('signout') === '1') { await C.signOut().catch(function () {}); history.replaceState(null, '', '/app/login'); }
     if (!C.user) {
-      C.mountSignIn(document.getElementById('signin'), { forceRedirectUrl: '/app/login', signUpUrl: '/app/login', routing: 'hash' });
+      C.mountSignIn(document.getElementById('signin'), {
+        forceRedirectUrl: '/app/login', signUpUrl: '/app/login', routing: 'hash',
+        appearance: { variables: { colorPrimary: '#D81B72', colorText: '#2B1530', colorTextSecondary: '#6F5B6F', colorBackground: '#FFFFFF', borderRadius: '14px', fontFamily: 'Comfortaa, system-ui, sans-serif', fontFamilyButtons: 'Nunito, system-ui, sans-serif' },
+          elements: { card: { boxShadow: '0 10px 30px rgba(74,23,71,.12)', border: '1px solid #F1E3D6' }, headerTitle: { fontFamily: 'Nunito, sans-serif', fontWeight: 900, color: '#4A1747' }, formButtonPrimary: { fontWeight: 800 } } },
+      });
       return;
     }
     msg('');
