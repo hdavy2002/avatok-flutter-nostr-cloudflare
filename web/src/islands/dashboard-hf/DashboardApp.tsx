@@ -27,6 +27,7 @@ import '../../styles/hf-dash3.css'; // [HF-DASH-V3-1]
 import DashShell from './v3/Shell';
 import { DashDataProvider } from './v3/data';
 import { dropDashCaches, readBoot, writeBoot } from './v3/dashCache'; // [HF-DASH-CACHE-1]
+import { confirmPrefetch, discardPrefetch, hasPrefetch, startColdPrefetch, takePrefetch } from './v3/prefetch'; // [HF-DASH-COLD-1]
 import { ToastProvider } from './v3/ui';
 import OverviewV3 from './v3/Overview';
 import CallsV3 from './v3/Calls';
@@ -91,7 +92,7 @@ function Shell({ initial }: { initial: DashSection }) {
       if (!photosRequired || me.closing || onSupportDesk()) return false;
       const here = dashRouteFor(location.pathname)?.section;
       if (here === 'my-photo' || here === 'support' || here === 'close') return false;
-      const st = await photoGateStatus(me.uid);
+      const st = await photoGateStatus(me.uid, takePrefetch(me.uid, 'photos')); // [HF-DASH-COLD-1] the read started at boot, if any
       return st.complete === false && redirectToPhotoOnboarding('dashboard');
     };
     async function load(useCache: boolean) {
@@ -107,17 +108,24 @@ function Shell({ initial }: { initial: DashSection }) {
         }
       }
       if (!shown) { setPhase('boot'); setAccount(null); }
+      // [HF-DASH-COLD-1] Cold boot (nothing cached to paint): start every read that does not need the uid now, together with /me and the flags.
+      // Their results are only used after /me answers, and only for the uid it answers (confirmPrefetch below).
+      if (!shown && !hasPrefetch()) {
+        const here = dashRouteFor(location.pathname)?.section ?? initial;
+        startColdPrefetch({ overview: here === 'overview', photos: !onSupportDesk() && here !== 'my-photo' && here !== 'support' && here !== 'close' });
+      }
       try {
         // [HF-DASH-CACHE-1] /me (one shared request) and the flags no longer wait for each other.
         const [meR, f] = await Promise.all([getMe<DashboardAccount>({ fresh: true }), loadFlags()]);
         if (!current()) return;
         if (!meR.ok) {
-          if (meR.status === 401) { dropDashCaches(); accountRef.current = null; setAccount(null); setPhase('signedout'); return; }
+          if (meR.status === 401) { discardPrefetch(); dropDashCaches(); accountRef.current = null; setAccount(null); setPhase('signedout'); return; }
           if (!shown) setPhase('error'); // a failed refresh never takes away what the person is already looking at
           return;
         }
         const me = meR.data;
-        if (shown && shown.uid !== me.uid) { dropDashCaches(); shown = null; } // the cache belonged to someone else
+        confirmPrefetch(me.uid); // [HF-DASH-COLD-1] a different uid than the prefetch was confirmed for drops it
+        if (shown && shown.uid !== me.uid) { discardPrefetch(); dropDashCaches(); shown = null; } // the cache belonged to someone else
         if (!shown && await photoGate(me, f.photosRequired)) return;
         if (!current()) return;
         const flags = { bookingOn: f.enabled, favouritesOn: f.favs, merchOn: f.merch, photoOn: f.photos || f.photosRequired };
@@ -173,7 +181,7 @@ function Shell({ initial }: { initial: DashSection }) {
       <main className="h3-main"><span className="sk" style={{ height: 56, maxWidth: 420 }} /><span className="sk card" /><span className="sk card" /><span className="sk card" /><span className="sk card" /></main>
     </div></div></div>;
   if (phase === 'signedout') return <main className="hfc-page"><h1>Dashboard</h1><p>Please sign in to see your dashboard.</p><a className="hfc-btn hfc-primary" href={signInUrl(location.pathname + location.search)}>Sign in</a></main>;
-  if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
+  if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => { discardPrefetch(); setRetry(n => n + 1); }}>Try again</button></main>;
 
   const hostReady = isInfluencer(account) && account.host?.status === 'live' && !account.closing;
   // [HF-INFLUENCER-GATE-1] Influencer pages are for approved influencers only; everyone else goes back to the Overview.

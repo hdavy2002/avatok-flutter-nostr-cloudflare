@@ -8,6 +8,8 @@ import { listFavourites, type FavouriteHost } from '../../../lib/hfFavouritesApi
 import { capture, captureException } from '../../../lib/analytics';
 import type { PriceTier } from '../../../lib/hfStdPlan';
 import { readShell, writeShell } from './dashCache'; // [HF-DASH-CACHE-1]
+import { getInsights, getProfile, prefetchT0, takePrefetch } from './prefetch'; // [HF-DASH-COLD-1]
+export { getInsights, getProfile };
 
 export interface Insights {
   ok: boolean;
@@ -23,8 +25,6 @@ export interface DashProfile { ok: boolean; firstName: string | null; lastName: 
 /** A saved influencer, with the price block the worker now adds ([HF-DASH-V3-1]) so HostCallActions can start a real call. */
 export type Fav = FavouriteHost & { languages?: string[]; topics?: string[]; plan?: string; pricePerMin?: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; womenOnly?: boolean; space?: 'women' | 'lgbtq' | null; videoKycVerified?: boolean; channelVerified?: boolean; channelPlatform?: string | null; followers?: number | null; callerLevel?: 'everyone' | 'video_kyc' };
 
-export const getInsights = () => hfCall<Insights>('GET', '/api/hf/me/insights');
-export const getProfile = () => hfCall<DashProfile>('GET', '/api/hf/me/profile');
 export const putProfile = (body: Partial<{ firstName: string; lastName: string; city: string | null; languages: string[]; talkAbout: string | null }>) => hfCall<DashProfile>('PUT', '/api/hf/me/profile', body);
 export interface Prefs { ok: boolean; notifyWhatsapp: boolean; apptReminders: boolean }
 export const getPrefs = () => hfCall<Prefs>('GET', '/api/hf/me/prefs');
@@ -71,6 +71,13 @@ export function DashDataProvider({ uid, favouritesOn, nav, children }: { uid: st
   const [profile, setProfile] = useState<Part<DashProfile>>(() => seed(snap?.profile));
   const gen = useRef(0);
   const loadedAt = useRef(0);
+  // [HF-DASH-COLD-1] On a cold boot DashboardApp started these reads together with /me; the first load adopts them instead of asking again.
+  // Non-consuming and age-limited, so a repeated first load (dev double effect) still adopts and a later reload asks fresh.
+  const [pf] = useState(() => ({
+    insights: takePrefetch(uid, 'insights', false), summary: takePrefetch(uid, 'summary', false), wallet: takePrefetch(uid, 'wallet', false),
+    profile: takePrefetch(uid, 'profile', false), favs: takePrefetch(uid, 'favs', false), t0: prefetchT0(uid), at: Date.now(),
+  }));
+  const adopt = <T,>(p: Promise<HfResult<T>> | null | undefined): (() => Promise<HfResult<T>>) | null => (p && Date.now() - pf.at < 10_000 ? () => p : null);
 
   const load = useCallback(<T,>(name: string, fn: () => Promise<HfResult<T>>, set: Dispatch<SetStateAction<Part<T>>>) => {
     const run = gen.current;
@@ -85,18 +92,21 @@ export function DashDataProvider({ uid, favouritesOn, nav, children }: { uid: st
 
   const reload = useCallback((part?: PartName) => {
     if (!part) loadedAt.current = Date.now();
-    if (!part || part === 'insights') load('insights', getInsights, setInsights);
+    const cold = !part; // [HF-DASH-COLD-1] a full load adopts the boot prefetch while it is under 10 s old (adopt() checks)
+    if (!part || part === 'insights') load('insights', (cold && adopt(pf.insights)) || getInsights, setInsights);
     if (!part || part === 'summary') {
-      const t0 = performance.now();
-      load('summary', async () => { const r = await getDashSummary(); if (r.ok) capture('hf_dash_summary_load', { ms: Math.round(performance.now() - t0), parts_failed: partsFailed(r.data), role: r.data.role, surface: 'dash_v3' }); return r; }, setSummary);
+      const t0 = cold && pf.t0 != null ? pf.t0 : performance.now();
+      const ad = cold ? adopt(pf.summary) : null;
+      load('summary', async () => { const r = await (ad ? ad() : getDashSummary()); if (r.ok) capture('hf_dash_summary_load', { ms: Math.round(performance.now() - t0), parts_failed: partsFailed(r.data), role: r.data.role, surface: 'dash_v3' }); return r; }, setSummary);
     }
-    if (!part || part === 'wallet') load('wallet', fetchWallet, setWallet);
-    if (!part || part === 'profile') load('profile', getProfile, setProfile);
+    if (!part || part === 'wallet') load('wallet', (cold && adopt(pf.wallet)) || fetchWallet, setWallet);
+    if (!part || part === 'profile') load('profile', (cold && adopt(pf.profile)) || getProfile, setProfile);
     if (!part || part === 'favs') {
-      if (favouritesOn) load('favs', async () => { const r = await listFavourites(); return r.ok ? { ok: true as const, data: r.data.items as Fav[] } : r; }, setFavs);
+      const adFavs = cold ? adopt(pf.favs) : null;
+      if (favouritesOn) load('favs', async () => { const r = await (adFavs ? adFavs() : listFavourites()); return r.ok ? { ok: true as const, data: r.data.items as Fav[] } : r; }, setFavs);
       else setFavs({ data: [], failed: false });
     }
-  }, [load, favouritesOn]);
+  }, [load, favouritesOn, pf]);
 
   useEffect(() => { gen.current++; reload(); }, [uid, reload]);
   // [HF-DASH-CACHE-1] Moving between screens (or Back, or returning to the tab) no longer reloads the shell: only when the data is older than SHELL_STALE_MS.

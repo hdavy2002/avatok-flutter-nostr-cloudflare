@@ -11,6 +11,7 @@ import {
   type SafetyMe, type SafetyStrike,
 } from '../../../lib/hfSafetyApi';
 import { isInfluencer, type DashboardAccount } from '../../../components/account/DashboardNav';
+import { takePrefetch } from './prefetch'; // [HF-DASH-COLD-1]
 import { Dialog, Failed, Hibiscus, Marigold, Skel, useToast } from './ui';
 import '../../../styles/hf-safety.css';
 
@@ -21,9 +22,10 @@ let snap: Snap = FRESH;
 let inflight: Promise<void> | null = null;
 const subs = new Set<() => void>();
 const emit = () => subs.forEach(f => f());
-export function loadSafety(force = false): Promise<void> {
+export function loadSafety(force = false, uid?: string): Promise<void> {
   if (inflight && !force) return inflight;
-  const p: Promise<void> = getSafetyMe()
+  const pre = !force && uid ? takePrefetch(uid, 'safety') : null; // [HF-DASH-COLD-1] the Overview's first read, started together with /me
+  const p: Promise<void> = (pre ?? getSafetyMe())
     .then(r => { snap = r.ok ? { me: r.data, failed: false, loaded: true } : { me: null, failed: true, loaded: true }; })
     .catch(() => { snap = { me: null, failed: true, loaded: true }; })
     .finally(() => { if (inflight === p) inflight = null; emit(); });
@@ -33,12 +35,12 @@ export function loadSafety(force = false): Promise<void> {
 if (typeof window !== 'undefined') {
   window.addEventListener('site:active-session-changed', () => { snap = FRESH; if (subs.size) void loadSafety(true); });
 }
-export function useSafetyMe() {
+export function useSafetyMe(uid?: string) {
   const [, tick] = useState(0);
   useEffect(() => {
     const f = () => tick(n => n + 1);
     subs.add(f);
-    if (!snap.loaded) void loadSafety();
+    if (!snap.loaded) void loadSafety(false, uid);
     return () => { subs.delete(f); };
   }, []);
   return { me: snap.me, failed: snap.failed, loaded: snap.loaded, reload: () => loadSafety(true) };

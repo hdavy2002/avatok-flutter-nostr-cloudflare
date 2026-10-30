@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { hfCall } from '../../lib/hfCallsApi';
 import { capture, captureException } from '../../lib/analytics';
 import { Dialog } from './v3/ui';
+import { takePrefetch } from './v3/prefetch'; // [HF-DASH-COLD-1]
 
 interface Pending { policy: string; path: string; version: string }
 interface Status { required: boolean; note: string; pending: Pending[] }
@@ -23,7 +24,9 @@ export default function PolicyUpdatePrompt({ uid }: { uid: string }) {
 
   useEffect(() => {
     let off = false;
-    hfCall<Status>('GET', '/api/hf/me/policy-update').then((r) => {
+    // [HF-DASH-COLD-1] adopt the read DashboardApp started together with /me (same uid only), else ask now
+    const pre = takePrefetch(uid, 'policy') as Promise<Awaited<ReturnType<typeof hfCall<Status>>>> | null;
+    (pre ?? hfCall<Status>('GET', '/api/hf/me/policy-update')).then((r) => {
       if (off || !r.ok || !r.data.required) return;
       setStatus(r.data); setOpen(true); capture('hf_policy_update_shown', { count: r.data.pending.length });
     }).catch((e) => captureException(e, { area: 'hf_dashboard', step: 'policy_update' }));
