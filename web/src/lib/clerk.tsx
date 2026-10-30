@@ -88,6 +88,23 @@ if (!legacyGuestSurface()) clearLegacyIdentityStorage();
 let _clerkGetToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
 let _clerkLoaded = false;
+// [HF-CLERK-EARLY-1] Wake getActiveTokenWaited() the moment the bridge installs/changes instead of leaving it to a
+// 150 ms poll (up to 150 ms of dead time after the first token was actually ready).
+const _bridgeWaiters = new Set<() => void>();
+function notifyBridge(): void {
+  const ws = Array.from(_bridgeWaiters);
+  _bridgeWaiters.clear();
+  for (const w of ws) w();
+}
+/** Resolves on the next bridge change, or after `ms` — whichever comes first. */
+function waitForBridgeChange(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(t); _bridgeWaiters.delete(finish); resolve(); };
+    const t = setTimeout(finish, ms);
+    _bridgeWaiters.add(finish);
+  });
+}
 /** A synchronous hint only after the active session bridge has loaded. Unknown waits for the token API. */
 export function activeSessionSignedOut(): boolean {
   if (!_hostToken) {
@@ -206,7 +223,8 @@ export async function getActiveTokenWaited(
     const t = await getActiveToken(opts);
     if (t) return t;
     if (Date.now() - start >= timeoutMs) return null;
-    await new Promise((r) => setTimeout(r, 150));
+    // Keep the 150 ms ceiling (and the overall timeout) but wake early when the bridge installs.
+    await waitForBridgeChange(Math.min(150, Math.max(1, timeoutMs - (Date.now() - start))));
   }
 }
 
@@ -330,6 +348,7 @@ function ClerkBridge() {
     // `window` for a script on the page to read, and every call goes through
     // the same waited/cached path every island uses.
     (window as any).__siteToken = () => getActiveTokenWaited(5000);
+    notifyBridge();
     return () => {
       _clerkLoaded = false;
       _clerkGetToken = null;
