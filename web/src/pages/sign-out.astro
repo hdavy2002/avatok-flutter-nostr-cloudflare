@@ -42,11 +42,13 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
         <p class="so-msg">JavaScript is required to sign out. <a href="/">Return home</a>.</p>
       </noscript>
     </section>
-    <SignOutIsland client:load />
+    <SignOutIsland client:only="react" />
   </main>
 
   <style>
     .so-wrap {
+      width: 100%;
+      box-sizing: border-box;
       min-height: 70vh;
       display: flex;
       align-items: center;
@@ -57,8 +59,8 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
     .so-card {
       position: relative;
       overflow: hidden;
-      width: min(100%, 560px);
-      padding: 44px 32px 40px;
+      width: min(100%, 680px);
+      padding: 64px 40px 56px;
       border-radius: 28px;
       background: #ffffff;
       border: 2px solid #f1e3d6;
@@ -73,9 +75,12 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
       background: repeating-linear-gradient(90deg, #d81b72 0 28px, #f59e0b 28px 56px, #6d4fd0 56px 84px);
     }
     .so-corner { position: absolute; line-height: 0; opacity: .95; }
-    .so-tl { left: -18px; top: -14px; }
-    .so-br { right: -14px; bottom: -14px; }
-    .so-spin { display: inline-block; line-height: 0; margin-bottom: 14px; }
+    .so-corner :global(svg) { width: 96px; height: 96px; }
+    .so-br :global(svg) { width: 76px; height: 76px; }
+    .so-spin :global(svg) { width: 84px; height: 84px; }
+    .so-tl { left: -26px; top: -22px; }
+    .so-br { right: -20px; bottom: -20px; }
+    .so-spin { display: inline-block; line-height: 0; margin-bottom: 18px; }
     @media (prefers-reduced-motion: no-preference) {
       .so-spin { animation: so-turn 2.4s linear infinite; }
       @keyframes so-turn { to { transform: rotate(360deg); } }
@@ -84,21 +89,21 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
       margin: 0 0 10px;
       font-family: 'Nunito', system-ui, sans-serif;
       font-weight: 900;
-      font-size: clamp(1.75rem, 1.3rem + 2vw, 2.5rem);
+      font-size: clamp(2.1rem, 1.5rem + 2.6vw, 3.2rem);
       line-height: 1.15;
       color: #4a1747;
     }
     .so-msg {
       margin: 0;
       font-family: 'Comfortaa', system-ui, sans-serif;
-      font-size: clamp(16px, 15.2px + .2vw, 19px);
+      font-size: clamp(18px, 16.8px + .35vw, 22px);
       font-weight: 700;
       color: #2b1530;
     }
     .so-note {
-      margin: 12px 0 0;
+      margin: 14px 0 0;
       font-family: 'Comfortaa', system-ui, sans-serif;
-      font-size: clamp(15px, 14.5px + .15vw, 17px);
+      font-size: clamp(16px, 15.2px + .25vw, 19px);
       color: #6f5b6f;
     }
   </style>
